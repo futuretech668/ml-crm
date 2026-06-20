@@ -356,27 +356,35 @@
         }
       }
 
-      // Inyecta chip de cuenta + cerrar sesión en la barra lateral (aditivo)
+      // Inyecta la fila de cuenta (nombre de empresa) + menú hacia arriba en el pie del rail.
       function injectAccountChip(){
-        const foot=document.querySelector('.rail-foot'); if(!foot || document.getElementById('authChip')) return;
-        const me=window.__AUTH.current();
-        const chip=document.createElement('div');
-        chip.id='authChip';
-        chip.style.cssText='display:flex;align-items:center;gap:10px;padding:12px 14px;border-top:1px solid var(--border-soft);';
-        chip.innerHTML=`
-          <div style="width:30px;height:30px;border-radius:9px;background:var(--bg-elevated);display:flex;align-items:center;justify-content:center;color:var(--accent-primary);flex-shrink:0;"><i data-lucide="user-round" style="width:16px;height:16px;"></i></div>
-          <span style="flex:1;min-width:0;font-size:12px;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${me&&me.email?String(me.email).replace(/[<>"'&]/g,''):''}">${me&&me.email?String(me.email).replace(/[<>"'&]/g,''):'Mi cuenta'}</span>
-          <button id="authLogout" title="Cerrar sesión" aria-label="Cerrar sesión" style="background:transparent;border:1px solid var(--border-soft);color:var(--text-secondary);cursor:pointer;display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:9px;flex-shrink:0;transition:all .15s;"><i data-lucide="log-out" style="width:16px;height:16px;"></i></button>`;
-        foot.parentNode.insertBefore(chip, foot);
-        const _lo=document.getElementById('authLogout');
-        // Clic en el chip (personita + correo) abre el Perfil de la empresa.
-        const _avatar = chip.querySelector('div'); if(_avatar) _avatar.style.cursor='pointer';
-        const _emailSpan = chip.querySelector('span'); if(_emailSpan) _emailSpan.style.cursor='pointer';
-        chip.title = 'Ver perfil de la empresa';
-        chip.addEventListener('click',(e)=>{ if(_lo && _lo.contains(e.target)) return; if(window.openProfile) window.openProfile(); });
-        _lo.addEventListener('click',(e)=>{ e.stopPropagation(); window.__AUTH.logout(); });
-        _lo.addEventListener('mouseover',()=>{ _lo.style.borderColor='var(--accent-danger)'; _lo.style.color='var(--accent-danger)'; });
-        _lo.addEventListener('mouseout',()=>{ _lo.style.borderColor='var(--border-soft)'; _lo.style.color='var(--text-secondary)'; });
+        const rail=document.getElementById('panel'); if(!rail || document.getElementById('accountBtn')) return;
+        const safeName=()=>{ try{ const p=window.ensureProfile?window.ensureProfile():null; const n=(p&&p.companyName)?p.companyName:'NexSell'; return window.DOMPurify?DOMPurify.sanitize(n):String(n).replace(/[<>"'&]/g,''); }catch(e){ return 'NexSell'; } };
+        const wrap=document.createElement('div');
+        wrap.className='acct-wrap';
+        wrap.innerHTML=`
+          <div class="acct-menu" id="accountMenu" role="menu" hidden>
+            <button class="acct-item" type="button" role="menuitem" data-acct="rendimiento">Rendimiento</button>
+            <button class="acct-item" type="button" role="menuitem" data-acct="settings">Configuración</button>
+          </div>
+          <button class="acct" id="accountBtn" type="button" aria-haspopup="menu" aria-expanded="false">
+            <span class="acct-name" id="accountName"></span>
+            <i data-lucide="chevron-up" class="acct-chev"></i>
+          </button>`;
+        rail.appendChild(wrap);
+        const nameEl=wrap.querySelector('#accountName'); const _n=safeName(); nameEl.textContent=_n; nameEl.title=_n;
+        const btn=wrap.querySelector('#accountBtn');
+        const menu=wrap.querySelector('#accountMenu');
+        const closeMenu=()=>{ menu.hidden=true; btn.classList.remove('open'); btn.setAttribute('aria-expanded','false'); };
+        const openMenu=()=>{ menu.hidden=false; btn.classList.add('open'); btn.setAttribute('aria-expanded','true'); };
+        btn.addEventListener('click',(e)=>{ e.stopPropagation(); menu.hidden?openMenu():closeMenu(); });
+        menu.addEventListener('click',(e)=>{
+          const it=e.target.closest('.acct-item'); if(!it) return;
+          closeMenu();
+          if(window.irASeccion) window.irASeccion(it.dataset.acct);
+        });
+        document.addEventListener('click',(e)=>{ if(!menu.hidden && !wrap.contains(e.target)) closeMenu(); });
+        document.addEventListener('keydown',(e)=>{ if(e.key==='Escape') closeMenu(); });
         if(window.lucide&&lucide.createIcons) lucide.createIcons();
       }
 
@@ -2014,12 +2022,41 @@
             color: var(--accent-primary);
             font-weight: 600;
         }
-        .rail-foot {
-            padding: 12px; border-top: 1px solid var(--border-color);
-            display: flex; align-items: center; gap: 10px;
-            font-size: 12px; color: var(--text-muted);
+        /* ---- Cuenta (pie del rail) + menú hacia arriba ---- */
+        .acct-wrap { position: relative; margin-top: auto; padding: 10px; border-top: 1px solid var(--border-soft); }
+        .acct {
+            width: 100%; display: flex; align-items: center; gap: 10px;
+            padding: 11px 12px; background: var(--bg-elevated);
+            border: 1px solid var(--border-soft); border-radius: 11px;
+            color: var(--text-primary); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: background var(--transition-fast), border-color var(--transition-fast);
         }
-        .rail-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--success); box-shadow: 0 0 8px var(--success); flex-shrink: 0; }
+        .acct:hover { background: var(--bg-tertiary); border-color: var(--accent-primary); }
+        .acct.acct-active { border-color: var(--accent-primary); color: var(--accent-primary); }
+        .acct-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+        .acct-chev { width: 16px; height: 16px; flex-shrink: 0; color: var(--text-secondary); transition: transform var(--transition-base); }
+        .acct.open .acct-chev { transform: rotate(180deg); }
+        .acct-menu {
+            position: absolute; left: 10px; right: 10px; bottom: calc(100% + 6px);
+            background: var(--bg-elevated); border: 1px solid var(--border-soft);
+            border-radius: 11px; box-shadow: 0 12px 32px rgba(0,0,0,.35);
+            padding: 6px; display: flex; flex-direction: column; gap: 2px; z-index: 1100;
+        }
+        .acct-menu[hidden] { display: none; }
+        .acct-item {
+            text-align: left; background: transparent; border: 0; color: var(--text-primary);
+            font-size: 13px; font-weight: 500; padding: 10px 12px; border-radius: 8px; cursor: pointer;
+        }
+        .acct-item:hover { background: var(--bg-tertiary); }
+        /* ---- Pestañas Productos / Inventario ---- */
+        .pi-tabs { display: inline-flex; gap: 4px; padding: 4px; margin-bottom: 18px; background: var(--bg-secondary); border: 1px solid var(--border-soft); border-radius: 11px; }
+        .pi-tab {
+            background: transparent; border: 0; color: var(--text-secondary);
+            font-size: 13px; font-weight: 600; padding: 8px 16px; border-radius: 8px; cursor: pointer;
+            transition: background var(--transition-fast), color var(--transition-fast);
+        }
+        .pi-tab:hover { color: var(--text-primary); }
+        .pi-tab.active { background: var(--accent-primary); color: #fff; }
 
         /* ---- Mobile top bar ---- */
         .topbar {
@@ -2079,10 +2116,9 @@
             body.rail-collapsed .rail-cap { display: none; }
             body.rail-collapsed .rail-item { justify-content: center; gap: 0; padding-left: 0; padding-right: 0; font-size: 0; }
             body.rail-collapsed .rail-item [data-lucide], body.rail-collapsed .rail-item svg { width: 20px; height: 20px; }
-            body.rail-collapsed .rail-foot { justify-content: center; }
-            body.rail-collapsed .rail-foot #syncStatus { display: none; }
-            body.rail-collapsed #authChip { justify-content: center; gap: 0; padding-left: 0; padding-right: 0; }
-            body.rail-collapsed #authChip > div:first-child, body.rail-collapsed #authChip span { display: none; }
+            body.rail-collapsed .acct-wrap { padding: 10px 6px; }
+            body.rail-collapsed .acct { justify-content: center; gap: 0; padding-left: 0; padding-right: 0; }
+            body.rail-collapsed .acct-name { display: none; }
         }
 
         /* ---- Section header ---- */
@@ -2196,7 +2232,6 @@
         .rail-item { font-size: 13.5px; padding: 9px 14px; min-height: 38px; border-radius: 9px; gap: 12px; }
         .rail-item.active { background: var(--bg-tertiary); color: var(--text-primary); font-weight: 600; }
         .rail-item.active [data-lucide] { color: var(--accent-primary); }
-        .rail-foot { border-top: 1px solid var(--border-soft); }
 
         /* Cards: no hard borders, no shadow — separation by soft fill + space */
         .card {
@@ -2274,22 +2309,8 @@
             <div class="rail-item" data-sec="dashboard" onclick="irASeccion('dashboard')"><i data-lucide="layout-dashboard"></i>Dashboard</div>
             <div class="rail-item" data-sec="sales" onclick="irASeccion('sales')"><i data-lucide="shopping-cart"></i>Ventas</div>
             <div class="rail-item" data-sec="products" onclick="irASeccion('products')"><i data-lucide="package"></i>Productos</div>
-            <div class="rail-item" data-sec="inventory" onclick="irASeccion('inventory')"><i data-lucide="warehouse"></i>Inventario</div>
             <div class="rail-item" data-sec="agenda" onclick="irASeccion('agenda'); if(window.renderAgenda) renderAgenda();"><i data-lucide="calendar-check"></i>Agenda</div>
-            <div class="rail-cap">Insights</div>
-            <div class="rail-item" data-sec="analytics" onclick="irASeccion('analytics')"><i data-lucide="trending-up"></i>Análisis</div>
-            <div class="rail-item" data-sec="finanzas" onclick="irASeccion('finanzas'); if(window.renderFinanzas) renderFinanzas();"><i data-lucide="wallet"></i>Finanzas</div>
-            <div class="rail-item" data-sec="reportes" onclick="irASeccion('reportes'); if(window.renderReportes) renderReportes();"><i data-lucide="bar-chart-big"></i>Reportes</div>
-            <div class="rail-item" data-sec="metas" onclick="irASeccion('metas'); if(window.renderMetas) renderMetas();"><i data-lucide="target"></i>Metas</div>
-            <div class="rail-item" data-sec="logros" onclick="irASeccion('logros'); if(window.renderLogros) renderLogros();"><i data-lucide="award"></i>Logros</div>
-            <div class="rail-item" data-sec="alerts" onclick="irASeccion('alerts')"><i data-lucide="bell"></i>Alertas</div>
-            <div class="rail-cap">Sistema</div>
-            <div class="rail-item" data-sec="settings" onclick="irASeccion('settings')"><i data-lucide="settings"></i>Configuración</div>
         </nav>
-        <div class="rail-foot">
-            <span class="rail-dot"></span>
-            <span id="syncStatus">Sincronizado</span>
-        </div>
     </aside>
 
     <!-- SCRIM (mobile drawer backdrop) -->
@@ -3325,23 +3346,57 @@
             refreshIcons();
         }
 
+        // Secciones que se muestran apiladas dentro de la vista unificada "Rendimiento".
+        const GRUPO_RENDIMIENTO = ['analytics','finanzas','metas','logros','reportes','alerts'];
+        // Despachador de render por sección (reutilizado por irASeccion y por el sync de nube).
+        const RENDER_SECCION = {
+            analytics: () => renderAnalytics(),
+            finanzas:  () => { if (window.renderFinanzas) renderFinanzas(); },
+            metas:     () => { if (window.renderMetas) renderMetas(); },
+            logros:    () => { if (window.renderLogros) renderLogros(); },
+            reportes:  () => { if (window.renderReportes) renderReportes(); },
+            alerts:    () => renderAlerts(),
+        };
+        // El reorden del DOM de la vista "Rendimiento" se hace una sola vez (no en cada navegación).
+        let _rendimientoApilado = false;
+
         function irASeccion(seccion) {
             // Ocultar todas las secciones (remover clase active)
             document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-            
-            // Mostrar solo la sección elegida (añadir clase active)
-            const sectionEl = document.getElementById(seccion);
-            if (sectionEl) {
-                sectionEl.classList.add('active');
+
+            if (seccion === 'rendimiento') {
+                // Apilar las 6 vistas una sola vez en el orden deseado; luego solo activarlas.
+                if (!_rendimientoApilado) {
+                    const first = document.getElementById(GRUPO_RENDIMIENTO[0]);
+                    const parent = first && first.parentNode;
+                    if (parent) GRUPO_RENDIMIENTO.forEach(id => { const el = document.getElementById(id); if (el) parent.appendChild(el); });
+                    _rendimientoApilado = true;
+                }
+                GRUPO_RENDIMIENTO.forEach(id => { const el = document.getElementById(id); if (el) el.classList.add('active'); });
+            } else {
+                // Mostrar solo la sección elegida (añadir clase active)
+                const sectionEl = document.getElementById(seccion);
+                if (sectionEl) {
+                    sectionEl.classList.add('active');
+                }
             }
-            
+
             seccionActiva = seccion;
             STATE.currentSection = seccion;
 
-            // Resaltar item activo en el rail
+            // Resaltar item activo en el rail. 'inventory' mantiene activo el item "Productos".
+            const railSec = (seccion === 'inventory') ? 'products' : seccion;
             document.querySelectorAll('.rail-item').forEach(el => {
-                el.classList.toggle('active', el.dataset.sec === seccion);
+                el.classList.toggle('active', el.dataset.sec === railSec);
             });
+            // 'rendimiento' y 'settings' se abren desde el menú de cuenta: resaltar su botón.
+            const accountBtn = document.getElementById('accountBtn');
+            if (accountBtn) accountBtn.classList.toggle('acct-active', seccion === 'rendimiento' || seccion === 'settings');
+
+            // Sincronizar pestañas Productos / Inventario
+            if (seccion === 'products' || seccion === 'inventory') {
+                document.querySelectorAll('.pi-tab').forEach(t => t.classList.toggle('active', t.dataset.pi === seccion));
+            }
 
             // Renderizar según sección
             if (seccion === 'analytics') renderAnalytics();
@@ -3351,6 +3406,9 @@
             if (seccion === 'sales') { updateDropdowns(); renderSalesList(); }
             if (seccion === 'products') renderProductsList();
             if (seccion === 'settings') { if (window.fillProfileInputs) fillProfileInputs(); if (window.fillBusinessInputs) fillBusinessInputs(); if (window.mlRefreshStatus) mlRefreshStatus(); }
+            if (seccion === 'rendimiento') {
+                GRUPO_RENDIMIENTO.forEach(id => { try { RENDER_SECCION[id](); } catch (e) {} });
+            }
             if (window.applyBusinessConfig) applyBusinessConfig();
 
             // Scroll hacia arriba
@@ -3362,6 +3420,23 @@
             refreshIcons();
         }
 
+        // Inyecta la barra de pestañas Productos / Inventario al inicio de ambas secciones.
+        function injectProductTabs(){
+            [['products'], ['inventory']].forEach(([id]) => {
+                const sec = document.getElementById(id);
+                if (!sec || sec.querySelector('.pi-tabs')) return;
+                const bar = document.createElement('div');
+                bar.className = 'pi-tabs';
+                bar.innerHTML = '<button type="button" class="pi-tab" data-pi="products">Productos</button>'
+                              + '<button type="button" class="pi-tab" data-pi="inventory">Inventario</button>';
+                bar.addEventListener('click', (e) => {
+                    const t = e.target.closest('.pi-tab');
+                    if (t && window.irASeccion) window.irASeccion(t.dataset.pi);
+                });
+                sec.insertBefore(bar, sec.firstChild);
+            });
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
             // Restaurar estado colapsado del sidebar (preferencia de UI por dispositivo)
             try { if (window.localStorage.getItem('nexsell_rail_collapsed') === '1') document.body.classList.add('rail-collapsed'); } catch (e) {}
@@ -3369,6 +3444,7 @@
             if (window.applyBranding) applyBranding();
             initializeDateFields();
             setupEventListeners();
+            injectProductTabs();
             renderDashboard();
             // FIX: refrescar todas las secciones con los datos cargados desde el almacenamiento
             updateDropdowns();
@@ -3556,6 +3632,7 @@
                 if (window.lucide && lucide.createIcons) lucide.createIcons();
             }
             var tb = document.querySelector('.topbar-title'); if (tb) tb.textContent = name;
+            var acctName = document.getElementById('accountName'); if (acctName) { acctName.textContent = safeName; acctName.title = safeName; }
             try { document.title = name; } catch (e) {}
         }
         window.applyBranding = applyBranding;
@@ -3927,13 +4004,18 @@
             renderInventory();
             renderDashboard();
             renderAlerts();
-            if (STATE.currentSection === 'analytics') renderAnalytics();
-            // Refrescar también las secciones nuevas si están abiertas al llegar datos remotos.
-            if (STATE.currentSection === 'finanzas' && window.renderFinanzas) renderFinanzas();
-            if (STATE.currentSection === 'reportes' && window.renderReportes) renderReportes();
-            if (STATE.currentSection === 'agenda' && window.renderAgenda) renderAgenda();
-            if (STATE.currentSection === 'metas' && window.renderMetas) renderMetas();
-            if (STATE.currentSection === 'logros' && window.renderLogros) renderLogros();
+            // Refrescar la sección abierta. En la vista "Rendimiento" se refrescan las 6 apiladas.
+            const _sec = STATE.currentSection;
+            if (_sec === 'rendimiento') {
+                GRUPO_RENDIMIENTO.forEach(id => { try { RENDER_SECCION[id](); } catch (e) {} });
+            } else {
+                if (_sec === 'analytics') renderAnalytics();
+                if (_sec === 'finanzas' && window.renderFinanzas) renderFinanzas();
+                if (_sec === 'reportes' && window.renderReportes) renderReportes();
+                if (_sec === 'agenda' && window.renderAgenda) renderAgenda();
+                if (_sec === 'metas' && window.renderMetas) renderMetas();
+                if (_sec === 'logros' && window.renderLogros) renderLogros();
+            }
         }
 
         let _cloudSyncStarted = false;
