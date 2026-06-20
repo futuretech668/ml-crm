@@ -25,7 +25,7 @@ const MAX_TOKENS_CAP = 1500;
 function cors() {
   return {
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Title, HTTP-Referer',
     'Access-Control-Allow-Methods': 'POST, OPTIONS'
   };
 }

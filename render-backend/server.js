@@ -32,7 +32,7 @@ const SECRET = process.env.RUN_SECRET || '';
 const ALLOW_ORIGIN = (process.env.APP_URL || '*').replace(/\/+$/, '');
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': ALLOW_ORIGIN,
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Title, HTTP-Referer',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS'
 };
 
