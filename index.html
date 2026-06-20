@@ -6382,10 +6382,51 @@
 
         // Lectores tolerantes para items con forma parcialmente desconocida (un solo lugar a ajustar).
         const MIA_READ = {
-            didText(it)     { return (it && (it.summary || it.text || it.label || it.message)) || (typeof it === 'string' ? it : 'Acción realizada'); },
+            // did[] del contrato: items {action, ...campos}. Mapeamos a texto humano.
+            didText(it)     {
+                if (typeof it === 'string') return it;
+                if (!it) return 'Acción realizada';
+                if (it.summary || it.text || it.label) return it.summary || it.text || it.label; // tolerante
+                const c = (n) => (window.formatCurrency ? formatCurrency(n) : ('$' + Math.round(Number(n)||0).toLocaleString('es-CL')));
+                switch (it.action) {
+                    case 'add_sale':     return 'Venta agregada: ' + (it.quantity != null ? it.quantity + '× ' : '') + (it.productName || 'producto') + ' · ' + c(it.totalPrice) + (it.profit != null ? ' (ganancia ' + c(it.profit) + ')' : '');
+                    case 'delete_sale':  return 'Venta eliminada' + (it.productName ? ': ' + it.productName : '') + ' (stock restaurado)';
+                    case 'add_product':  return 'Producto creado: ' + (it.name || 'producto');
+                    case 'edit_product': return 'Producto actualizado: ' + (it.name || 'producto');
+                    case 'task_add':      return 'Tarea agregada' + (it.titulo ? ': ' + it.titulo : '');
+                    case 'task_complete': return 'Tarea completada';
+                    case 'task_delete':   return 'Tarea eliminada';
+                    case 'save_memory':   return 'Lo recordaré 🧠';
+                    case 'send_report':   return 'Reporte enviado' + (it.period ? ' (' + it.period + ')' : '');
+                    case 'ml_answer_question': return 'Respondí la pregunta en Mercado Libre';
+                    case 'ml_update_listing':  return 'Publicación actualizada en Mercado Libre';
+                    case 'ml_send_message':    return 'Mensaje enviado al comprador';
+                    default: return it.action ? ('Hecho: ' + it.action) : 'Acción realizada';
+                }
+            },
             propToken(it)   { return it && (it.confirmToken || it.token || it.confirm_token) || null; },
-            propTitle(it)   { return (it && (it.title || it.label || it.tool)) || 'Acción propuesta'; },
-            propPreview(it) { return (it && (it.preview || it.summary || it.text || it.message || it.body)) || 'MIA quiere realizar una acción hacia afuera (Mercado Libre).'; },
+            // proposed[] del contrato: {tipo, ...}. Título humano por tipo.
+            propTitle(it)   {
+                const t = it && (it.tipo || it.type || it.tool || it.title || it.label);
+                if (t === 'ml_answer_question') return 'Responder pregunta en Mercado Libre';
+                if (t === 'ml_update_listing')  return 'Actualizar publicación en Mercado Libre';
+                if (t === 'ml_send_message')    return 'Enviar mensaje al comprador';
+                return (it && (it.title || it.label)) || 'Acción propuesta';
+            },
+            // Preview exacto de lo que se ejecutará (texto de respuesta/mensaje o los cambios de la publicación).
+            propPreview(it) {
+                if (!it) return 'MIA quiere realizar una acción hacia afuera (Mercado Libre).';
+                if (it.text) return it.text;
+                if (it.cambios && typeof it.cambios === 'object') {
+                    const c = (n) => (window.formatCurrency ? formatCurrency(n) : ('$' + Math.round(Number(n)||0).toLocaleString('es-CL')));
+                    const parts = [];
+                    if (it.cambios.price != null)              parts.push('Precio → ' + c(it.cambios.price));
+                    if (it.cambios.available_quantity != null) parts.push('Stock → ' + it.cambios.available_quantity);
+                    if (it.cambios.status)                     parts.push('Estado → ' + (it.cambios.status === 'paused' ? 'pausada' : it.cambios.status === 'active' ? 'activa' : it.cambios.status));
+                    if (parts.length) return parts.join(' · ');
+                }
+                return it.preview || it.summary || it.message || it.body || 'MIA quiere realizar una acción hacia afuera (Mercado Libre).';
+            },
             propResend(it)  { return (it && (it.resendMessage || it.message)) || CHAT.lastUserMessage || 'Confirmo'; },
             sugLabel(s)     { return (typeof s === 'string') ? s : (s && (s.label || s.text || s.title)) || ''; },
             sugMessage(s)   { return (typeof s === 'string') ? s : (s && (s.message || s.send || s.label || s.text)) || ''; },
