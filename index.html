@@ -3256,35 +3256,251 @@
     <!-- ============================================================= -->
     <!-- 💬 CHAT FLOTANTE CON IA (PASO 2)                              -->
     <!-- ============================================================= -->
+    <!-- Estilos del copiloto MIA (Linear-minimal + asistente sin burbuja, acento verde único) -->
+    <style id="miaStyles">
+        /* ---- FAB ---- */
+        #chatFab{ position:fixed; bottom:24px; right:24px; width:56px; height:56px;
+            border-radius:16px; border:none; cursor:pointer; z-index:3000;
+            background:var(--accent-primary); color:#04130C;
+            box-shadow:0 2px 8px rgba(0,0,0,.18), 0 10px 28px -10px rgba(16,199,132,.5);
+            display:flex; align-items:center; justify-content:center;
+            transition:transform var(--transition-fast), box-shadow var(--transition-fast); }
+        #chatFab:hover{ transform:translateY(-2px); box-shadow:0 4px 12px rgba(0,0,0,.22), 0 14px 32px -10px rgba(16,199,132,.6); }
+        #chatFab:active{ transform:translateY(0); }
+        #chatFab:focus-visible{ outline:2px solid var(--accent-primary); outline-offset:3px; }
+        #chatBadge{ position:absolute; top:-6px; right:-6px; min-width:20px; height:20px; padding:0 5px;
+            border-radius:10px; background:var(--danger); color:#fff; font-size:11px; font-weight:700;
+            align-items:center; justify-content:center; box-sizing:border-box; line-height:20px; text-align:center;
+            border:2px solid var(--bg-primary); }
+
+        /* ---- Ventana ---- */
+        #chatWindow{ position:fixed; bottom:92px; right:24px; width:404px; max-width:calc(100vw - 32px);
+            height:min(624px, calc(100vh - 128px)); background:var(--bg-secondary);
+            border-radius:18px; z-index:3001; flex-direction:column; overflow:hidden;
+            box-shadow:0 0 0 1px rgba(255,255,255,.05), 0 16px 40px -10px rgba(0,0,0,.5), 0 4px 14px -4px rgba(0,0,0,.4);
+            animation:miaPop var(--transition-base); }
+        @keyframes miaPop{ from{ opacity:0; transform:translateY(10px) scale(.985); } to{ opacity:1; transform:none; } }
+
+        /* ---- Cabecera plana ---- */
+        .mia-head{ position:relative; z-index:6; padding:13px 14px 13px 16px; background:var(--bg-secondary);
+            border-bottom:1px solid var(--border-soft); display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
+        .mia-head-id{ display:flex; align-items:center; gap:10px; min-width:0; }
+        .mia-head-av{ width:34px; height:34px; border-radius:10px; background:var(--accent-primary); flex-shrink:0;
+            display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:800; color:#04130C;
+            font-family:'Poppins',sans-serif; letter-spacing:-.5px; }
+        .mia-head-title{ font-weight:700; font-size:14px; color:var(--text-primary); font-family:'Poppins',sans-serif;
+            display:flex; align-items:center; gap:6px; line-height:1.15; }
+        .mia-head-dot{ width:7px; height:7px; border-radius:50%; background:var(--success); display:inline-block;
+            box-shadow:0 0 0 0 rgba(22,199,132,.5); animation:miaPulse 2.4s infinite; }
+        @keyframes miaPulse{ 0%{ box-shadow:0 0 0 0 rgba(22,199,132,.45); } 70%{ box-shadow:0 0 0 5px rgba(22,199,132,0); } 100%{ box-shadow:0 0 0 0 rgba(22,199,132,0); } }
+        .mia-head-sub{ font-size:11px; color:var(--text-muted); line-height:1.2; }
+        .mia-head-actions{ display:flex; align-items:center; gap:2px; }
+        .mia-head-btn{ width:32px; height:32px; border-radius:8px; border:none; background:transparent;
+            color:var(--text-muted); cursor:pointer; display:flex; align-items:center; justify-content:center;
+            transition:background var(--transition-fast), color var(--transition-fast); }
+        .mia-head-btn:hover{ background:var(--bg-elevated); color:var(--text-primary); }
+        .mia-head-btn:focus-visible{ outline:2px solid var(--accent-primary); outline-offset:1px; }
+        .mia-head-btn i, .mia-head-btn svg{ width:17px; height:17px; }
+
+        /* ---- Mensajes ---- */
+        .mia-messages{ position:relative; flex:1; overflow-y:auto; padding:16px 16px 8px; display:flex;
+            flex-direction:column; gap:16px; scroll-behavior:smooth; }
+        .mia-messages::-webkit-scrollbar{ width:8px; }
+        .mia-messages::-webkit-scrollbar-thumb{ background:var(--border-color); border-radius:8px; border:2px solid var(--bg-secondary); }
+        .mia-msg{ display:flex; max-width:100%; animation:miaFade var(--transition-base); }
+        @keyframes miaFade{ from{ opacity:0; transform:translateY(6px); } to{ opacity:1; transform:none; } }
+        .mia-msg.user{ justify-content:flex-end; }
+        .mia-msg.user .bubble{ max-width:80%; padding:9px 13px; border-radius:14px 14px 6px 14px;
+            background:color-mix(in srgb, var(--accent-primary) 15%, var(--bg-elevated));
+            color:var(--text-primary); font-size:14px; line-height:1.5; word-wrap:break-word; overflow-wrap:anywhere; }
+        .mia-msg.user .bubble img{ max-width:100%; border-radius:10px; display:block; }
+        .mia-msg.assistant{ gap:10px; align-items:flex-start; }
+        .mia-msg.assistant .avatar{ width:24px; height:24px; border-radius:7px; flex-shrink:0; margin-top:1px;
+            background:var(--accent-primary); color:#04130C; font-size:12px; font-weight:800; font-family:'Poppins',sans-serif;
+            display:flex; align-items:center; justify-content:center; }
+        .mia-msg.assistant .body{ flex:1; min-width:0; font-size:14px; line-height:1.6; color:var(--text-primary);
+            word-wrap:break-word; overflow-wrap:anywhere; }
+        .mia-msg.assistant .body strong{ font-weight:650; color:var(--text-primary); }
+        .mia-msg.assistant .body a{ color:var(--accent-primary); }
+        .mia-msg.assistant .body p{ margin:0 0 8px; }
+        .mia-msg.assistant .body p:last-child{ margin-bottom:0; }
+
+        /* ---- Indicador de escritura ---- */
+        .mia-typing{ display:flex; gap:4px; padding:6px 0 2px; }
+        .mia-typing span{ width:6px; height:6px; border-radius:50%; background:var(--text-muted); animation:miaBlink 1.2s infinite; }
+        .mia-typing span:nth-child(2){ animation-delay:.18s; }
+        .mia-typing span:nth-child(3){ animation-delay:.36s; }
+        @keyframes miaBlink{ 0%,60%,100%{ opacity:.25; } 30%{ opacity:1; } }
+        @keyframes spin{ to{ transform:rotate(360deg); } }
+        .mia-spin{ animation:spin 1s linear infinite; }
+
+        /* ---- Recibo de acción ejecutada (did[]) ---- */
+        .mia-receipt{ align-self:flex-start; display:inline-flex; align-items:center; gap:7px; max-width:90%;
+            padding:6px 11px; border-radius:9px; font-size:12.5px; color:var(--text-secondary);
+            background:color-mix(in srgb, var(--accent-primary) 8%, var(--bg-tertiary));
+            border:1px solid var(--border-soft); animation:miaFade var(--transition-base); }
+        .mia-receipt i, .mia-receipt svg{ width:14px; height:14px; color:var(--accent-primary); flex-shrink:0; }
+
+        /* ---- Tarjeta de aprobación (proposed[]) ---- */
+        .mia-action{ align-self:flex-start; max-width:94%; border:1px solid var(--border-color);
+            border-left:3px solid var(--accent-primary);
+            background:color-mix(in srgb, var(--accent-primary) 6%, var(--bg-tertiary));
+            border-radius:12px; padding:12px 14px; font-size:13.5px; color:var(--text-primary);
+            animation:miaFade var(--transition-base); }
+        .mia-action .title{ font-weight:700; font-size:11px; letter-spacing:.04em; text-transform:uppercase;
+            color:var(--text-muted); margin-bottom:7px; display:flex; align-items:center; gap:6px; }
+        .mia-action .title i, .mia-action .title svg{ width:13px; height:13px; color:var(--accent-primary); }
+        .mia-action .preview{ line-height:1.5; }
+        .mia-action .row{ display:flex; gap:8px; margin-top:12px; }
+        .mia-action button{ flex:1; padding:9px 0; border-radius:9px; font-size:13px; font-weight:600;
+            cursor:pointer; transition:filter var(--transition-fast), background var(--transition-fast); }
+        .mia-action .approve{ background:var(--accent-primary); color:#04130C; border:none; }
+        .mia-action .approve:hover{ filter:brightness(1.07); }
+        .mia-action .reject{ background:transparent; color:var(--text-secondary); border:1px solid var(--border-color); }
+        .mia-action .reject:hover{ background:var(--bg-elevated); color:var(--text-primary); }
+        .mia-action button:disabled{ opacity:.55; cursor:default; }
+        .mia-action.done{ border-left-color:var(--text-muted); opacity:.9; }
+        .mia-action.done.ok{ border-left-color:var(--accent-primary); }
+        .mia-action.done .row{ display:none; }
+        .mia-action .receipt-line{ display:none; margin-top:9px; font-size:12.5px; color:var(--text-secondary);
+            align-items:center; gap:6px; }
+        .mia-action.done .receipt-line{ display:flex; }
+
+        /* ---- Sugerencias contextuales ---- */
+        .mia-suggestions{ display:flex; gap:8px; overflow-x:auto; padding:6px 14px 10px; flex-shrink:0;
+            scrollbar-width:none; -webkit-overflow-scrolling:touch; }
+        .mia-suggestions::-webkit-scrollbar{ display:none; }
+        .mia-chip{ flex:0 0 auto; padding:7px 12px; border-radius:9px; font-size:13px; background:transparent;
+            border:1px solid var(--border-color); color:var(--text-secondary); cursor:pointer; white-space:nowrap;
+            font-family:inherit; transition:background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast); }
+        .mia-chip:hover{ background:var(--bg-elevated); border-color:var(--accent-primary); color:var(--text-primary); }
+        .mia-chip:focus-visible{ outline:2px solid var(--accent-primary); outline-offset:1px; }
+
+        /* ---- Estado vacío ---- */
+        .mia-empty{ flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
+            text-align:center; gap:6px; padding:24px 28px; color:var(--text-muted); }
+        .mia-empty .av{ width:46px; height:46px; border-radius:13px; background:var(--accent-primary); color:#04130C;
+            display:flex; align-items:center; justify-content:center; font-size:20px; font-weight:800;
+            font-family:'Poppins',sans-serif; margin-bottom:6px; }
+        .mia-empty h4{ font-family:'Poppins',sans-serif; font-size:15px; color:var(--text-primary); margin:0; }
+        .mia-empty p{ font-size:12.5px; line-height:1.5; margin:0; max-width:240px; }
+
+        /* ---- Composer ---- */
+        .mia-composer{ padding:10px 12px 12px; border-top:1px solid var(--border-soft); display:flex; gap:8px;
+            align-items:flex-end; flex-shrink:0; background:var(--bg-secondary); }
+        #chatInput{ flex:1; resize:none; max-height:120px; min-height:42px; padding:11px 13px; line-height:1.45;
+            background:var(--bg-primary); border:1px solid var(--border-color); border-radius:11px;
+            color:var(--text-primary); font-size:14px; font-family:'Inter',sans-serif; outline:none;
+            transition:border-color var(--transition-fast); }
+        #chatInput:focus{ border-color:var(--accent-primary); }
+        #chatInput::placeholder{ color:var(--text-muted); }
+        #chatSend{ width:42px; height:42px; flex-shrink:0; border:none; border-radius:11px; cursor:pointer;
+            background:var(--accent-primary); color:#04130C; display:flex; align-items:center; justify-content:center;
+            transition:filter var(--transition-fast), background var(--transition-fast), opacity var(--transition-fast); }
+        #chatSend:hover{ filter:brightness(1.07); }
+        #chatSend:disabled{ opacity:.4; cursor:default; filter:none; }
+        #chatSend.stop{ background:var(--bg-elevated); color:var(--text-secondary); }
+        #chatSend.stop:disabled{ opacity:1; cursor:progress; }
+        #chatSend i, #chatSend svg{ width:18px; height:18px; }
+
+        /* ---- Píldora "nuevos mensajes" ---- */
+        .mia-newpill{ position:absolute; left:50%; bottom:12px; transform:translateX(-50%) translateY(8px);
+            display:none; align-items:center; gap:5px; padding:6px 12px; border-radius:999px; font-size:12px; font-weight:600;
+            background:var(--bg-elevated); color:var(--text-primary); border:1px solid var(--border-color);
+            box-shadow:var(--shadow-md); cursor:pointer; z-index:4; opacity:0; transition:opacity var(--transition-fast), transform var(--transition-fast); }
+        .mia-newpill.show{ display:flex; opacity:1; transform:translateX(-50%); }
+
+        /* ---- Panel de historial ---- */
+        .mia-history{ position:absolute; inset:0; background:var(--bg-secondary); transform:translateX(100%);
+            transition:transform var(--transition-base); display:flex; flex-direction:column; z-index:7;
+            will-change:transform; }
+        .mia-history.open{ transform:translateX(0); }
+        .mia-history-head{ padding:13px 14px 13px 16px; border-bottom:1px solid var(--border-soft); display:flex;
+            align-items:center; justify-content:space-between; flex-shrink:0; }
+        .mia-history-head h3{ margin:0; font-family:'Poppins',sans-serif; font-size:14px; color:var(--text-primary); }
+        .mia-newchat{ display:flex; align-items:center; gap:7px; margin:12px 14px 4px; padding:10px 12px;
+            border-radius:10px; border:1px dashed var(--border-color); background:transparent; color:var(--accent-primary);
+            font-size:13px; font-weight:600; cursor:pointer; font-family:inherit;
+            transition:background var(--transition-fast), border-color var(--transition-fast); }
+        .mia-newchat:hover{ background:color-mix(in srgb, var(--accent-primary) 8%, transparent); border-color:var(--accent-primary); }
+        .mia-newchat i, .mia-newchat svg{ width:15px; height:15px; }
+        .mia-thread-list{ flex:1; overflow-y:auto; padding:6px 0 12px; }
+        .mia-thread{ position:relative; padding:11px 38px 11px 16px; cursor:pointer; border-bottom:1px solid var(--border-soft);
+            transition:background var(--transition-fast); }
+        .mia-thread:hover{ background:var(--bg-elevated); }
+        .mia-thread:focus-visible{ outline:2px solid var(--accent-primary); outline-offset:-2px; }
+        .mia-thread .t-title{ font-size:13.5px; color:var(--text-primary); white-space:nowrap; overflow:hidden;
+            text-overflow:ellipsis; font-weight:500; }
+        .mia-thread .t-prev{ font-size:12px; color:var(--text-secondary); white-space:nowrap; overflow:hidden;
+            text-overflow:ellipsis; margin-top:2px; }
+        .mia-thread .t-meta{ font-size:11px; color:var(--text-muted); margin-top:3px; }
+        .mia-thread .t-del{ position:absolute; top:50%; right:8px; transform:translateY(-50%); width:26px; height:26px;
+            border-radius:7px; border:none; background:transparent; color:var(--text-muted); cursor:pointer; opacity:0;
+            display:flex; align-items:center; justify-content:center; transition:opacity var(--transition-fast), background var(--transition-fast), color var(--transition-fast); }
+        .mia-thread:hover .t-del, .mia-thread:focus-within .t-del{ opacity:1; }
+        .mia-thread .t-del:hover{ background:var(--bg-tertiary); color:var(--danger); }
+        .mia-thread .t-del i, .mia-thread .t-del svg{ width:14px; height:14px; }
+        .mia-hist-empty{ padding:40px 24px; text-align:center; color:var(--text-muted); font-size:13px; line-height:1.5; }
+        .mia-hist-state{ padding:18px 16px; text-align:center; color:var(--text-muted); font-size:12.5px; }
+
+        /* ---- Móvil: casi pantalla completa, paridad con el menú móvil ---- */
+        @media (max-width:480px){
+            #chatWindow{ right:8px; left:8px; bottom:8px; width:auto; max-width:none; height:calc(100dvh - 16px);
+                height:calc(100vh - 16px); border-radius:16px; }
+            #chatFab{ bottom:18px; right:18px; }
+        }
+
+        /* ---- Reduced motion ---- */
+        @media (prefers-reduced-motion:reduce){
+            #chatWindow, .mia-msg, .mia-receipt, .mia-action{ animation:none; }
+            .mia-typing span, .mia-head-dot, .mia-spin{ animation:none; }
+            .mia-history, .mia-newpill, #chatFab, .mia-messages{ transition:none; scroll-behavior:auto; }
+            #chatFab:hover{ transform:none; }
+        }
+    </style>
+
     <!-- Botón flotante -->
-    <button id="chatFab" aria-label="Abrir MIA" style="position:fixed;bottom:24px;right:24px;width:58px;height:58px;border-radius:18px;border:none;cursor:pointer;z-index:3000;background:var(--accent-primary);color:#fff;box-shadow:0 8px 24px rgba(16,185,129,0.35);display:flex;align-items:center;justify-content:center;transition:transform 150ms ease, box-shadow 150ms ease;">
-        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
-        <span id="chatBadge" style="display:none;position:absolute;top:-6px;right:-6px;min-width:20px;height:20px;padding:0 5px;border-radius:10px;background:#EF4444;color:#fff;font-size:11px;font-weight:700;align-items:center;justify-content:center;box-sizing:border-box;line-height:20px;text-align:center;border:2px solid var(--bg-primary);"></span>
+    <button id="chatFab" aria-label="Abrir MIA, tu asistente de ventas" aria-haspopup="dialog">
+        <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+        <span id="chatBadge" style="display:none;"></span>
     </button>
 
     <!-- Ventana del chat -->
-    <div id="chatWindow" style="display:none;position:fixed;bottom:96px;right:24px;width:380px;max-width:calc(100vw - 32px);height:560px;max-height:calc(100vh - 130px);background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:16px;z-index:3001;flex-direction:column;overflow:hidden;box-shadow:0 20px 48px rgba(0,0,0,0.5);">
-        <!-- Cabecera -->
-        <div style="padding:14px 16px;background:var(--bg-tertiary);border-bottom:1px solid var(--border-color);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
-            <div style="display:flex;align-items:center;gap:11px;">
-                <div style="width:38px;height:38px;border-radius:12px;background:var(--accent-primary);display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:800;color:#fff;font-family:'Poppins',sans-serif;letter-spacing:-0.5px;">M</div>
-                <div>
-                    <div style="font-weight:700;font-size:15px;color:var(--text-primary);font-family:'Poppins',sans-serif;display:flex;align-items:center;gap:6px;">MIA <span style="width:7px;height:7px;border-radius:50%;background:var(--success);display:inline-block;"></span></div>
-                    <div style="font-size:11px;color:var(--text-muted);">Tu asistente de ventas</div>
+    <div id="chatWindow" style="display:none;" role="dialog" aria-modal="false" aria-label="MIA — asistente de ventas">
+        <!-- Cabecera plana -->
+        <div class="mia-head">
+            <div class="mia-head-id">
+                <div class="mia-head-av" aria-hidden="true">M</div>
+                <div style="min-width:0;">
+                    <div class="mia-head-title">MIA <span class="mia-head-dot" title="En línea"></span></div>
+                    <div class="mia-head-sub">Tu copiloto de ventas</div>
                 </div>
             </div>
-            <button id="chatClose" aria-label="Cerrar" style="background:transparent;border:none;color:var(--text-secondary);font-size:24px;cursor:pointer;padding:4px 8px;line-height:1;">×</button>
+            <div class="mia-head-actions">
+                <button id="chatNewBtn" class="mia-head-btn" aria-label="Nueva conversación" title="Nueva conversación"><i data-lucide="plus"></i></button>
+                <button id="chatHistBtn" class="mia-head-btn" aria-label="Conversaciones anteriores" title="Conversaciones anteriores"><i data-lucide="history"></i></button>
+                <button id="chatClose" class="mia-head-btn" aria-label="Cerrar chat" title="Cerrar"><i data-lucide="x"></i></button>
+            </div>
         </div>
         <!-- Mensajes -->
-        <div id="chatMessages" style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px;"></div>
-        <!-- Sugerencias rápidas -->
-        <div id="chatSuggestions" style="display:flex;gap:6px;flex-wrap:wrap;padding:0 12px 8px;flex-shrink:0;"></div>
-        <!-- Entrada -->
-        <div style="padding:12px;border-top:1px solid var(--border-color);display:flex;gap:8px;flex-shrink:0;background:var(--bg-secondary);">
-            <input id="chatPhotoInput" type="file" accept="image/*" style="display:none;">
-            <button id="chatPhotoBtn" aria-label="Enviar foto del producto" title="Enviar foto del producto para registrar la venta" style="width:44px;height:44px;flex-shrink:0;border:1px solid var(--border-color);border-radius:10px;cursor:pointer;background:var(--bg-tertiary);color:var(--text-secondary);display:flex;align-items:center;justify-content:center;"><i data-lucide="image"></i></button>
-            <input id="chatInput" type="text" placeholder="Escríbele a MIA..." autocomplete="off" style="flex:1;padding:11px 14px;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:10px;color:var(--text-primary);font-size:14px;font-family:'Inter',sans-serif;outline:none;">
-            <button id="chatSend" aria-label="Enviar" style="width:44px;height:44px;flex-shrink:0;border:none;border-radius:10px;cursor:pointer;background:var(--accent-primary);color:#04130C;display:flex;align-items:center;justify-content:center;"><i data-lucide="send-horizontal"></i></button>
+        <div id="chatMessages" class="mia-messages" aria-live="polite" aria-relevant="additions" role="log"></div>
+        <!-- Píldora nuevos mensajes -->
+        <button id="chatNewPill" class="mia-newpill" aria-label="Ir a los mensajes nuevos"><i data-lucide="arrow-down"></i> Nuevos mensajes</button>
+        <!-- Sugerencias contextuales -->
+        <div id="chatSuggestions" class="mia-suggestions" style="display:none;" aria-label="Sugerencias"></div>
+        <!-- Composer -->
+        <div class="mia-composer">
+            <textarea id="chatInput" rows="1" placeholder="Escríbele a MIA…" autocomplete="off" aria-label="Mensaje para MIA"></textarea>
+            <button id="chatSend" aria-label="Enviar" disabled><i data-lucide="send-horizontal"></i></button>
+        </div>
+        <!-- Panel de historial (deslizante) -->
+        <div id="chatHistory" class="mia-history" aria-hidden="true">
+            <div class="mia-history-head">
+                <h3>Conversaciones</h3>
+                <button id="chatHistClose" class="mia-head-btn" aria-label="Volver al chat" title="Volver"><i data-lucide="x"></i></button>
+            </div>
+            <button id="chatNewChatBtn" class="mia-newchat"><i data-lucide="plus"></i> Nueva conversación</button>
+            <div id="chatThreadList" class="mia-thread-list"></div>
         </div>
     </div>
 
@@ -6097,13 +6313,90 @@
         // =============================================================
         // 💬 CHAT CON IA (PASO 2) + mapeo/notificaciones (PASO 4 y 5)
         // =============================================================
+        // El cliente ya NO calcula stats ni arma el system-prompt: el agente del servidor
+        // (LangChain) hace el grounding y las escrituras; onSnapshot refleja los cambios del CRM.
         const CHAT = {
-            apiKey: 'proxy',  // La key real vive en el backend (función ai-proxy). Ya NO está en el HTML público.
-            model: 'xiaomi/mimo-v2.5',
-            endpoint: window.API_BASE + '/api/ai-proxy',
-            history: [],   // turnos usuario/asistente (sin el system)
+            apiKey: 'proxy',     // se mantiene SOLO para la ruta de visión (ai-proxy), intacta.
+            endpoint: window.API_BASE + '/api/ai-proxy',  // visión usa este endpoint
+            threadId: null,      // conversación activa con el agente
             open: false,
-            busy: false
+            busy: false,
+            opened: false,       // ya se disparó op:'open' en esta conversación
+            lastUserMessage: '', // para reenviar el turno al confirmar una acción ML
+            _stick: true         // auto-scroll pegado al fondo
+        };
+
+        // ====================================================================
+        // MIA_API — ÚNICO punto de contacto con el backend del agente.
+        // Centraliza endpoint, ops y nombres de campos: si aparece CONTRACT.md
+        // con otra forma, este objeto es el ÚNICO lugar a reconciliar.
+        // ====================================================================
+        const MIA_API = {
+            endpoint: window.API_BASE + '/api/ai-agent',
+            // Nombres de campo de la respuesta (plan B.4 / sección C). Editar aquí si el contrato difiere.
+            fields: { ok:'ok', reply:'reply', did:'did', proposed:'proposed', threadId:'threadId',
+                      threads:'threads', messages:'messages', suggestions:'suggestions' },
+            async _post(payload) {
+                const token = (window.FB && window.FB.getIdToken) ? await window.FB.getIdToken() : null;
+                if (!token) { const e = new Error('AUTH'); e.code = 'AUTH'; throw e; }
+                let res;
+                try {
+                    res = await fetch(this.endpoint, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                        body: JSON.stringify(payload),
+                        signal: (window.AbortSignal && AbortSignal.timeout) ? AbortSignal.timeout(60000) : undefined
+                    });
+                } catch (err) {
+                    const e = new Error('NET'); e.code = 'NET'; throw e;
+                }
+                if (!res.ok) {
+                    const t = await res.text().catch(() => '');
+                    const e = new Error('HTTP ' + res.status); e.code = 'HTTP'; e.status = res.status; e.detail = t.slice(0, 300);
+                    throw e;
+                }
+                return this._normalize(await res.json().catch(() => ({})));
+            },
+            // Normaliza a una forma canónica para que el resto de la UI no dependa de nombres exactos.
+            _normalize(d) {
+                d = d || {};
+                const f = this.fields;
+                return {
+                    ok: d[f.ok] !== false,
+                    reply: d[f.reply] != null ? d[f.reply] : '',
+                    did: Array.isArray(d[f.did]) ? d[f.did] : [],
+                    proposed: Array.isArray(d[f.proposed]) ? d[f.proposed] : [],
+                    threadId: d[f.threadId] || null,
+                    threads: Array.isArray(d[f.threads]) ? d[f.threads] : (Array.isArray(d.threadIndex) ? d.threadIndex : []),
+                    messages: Array.isArray(d[f.messages]) ? d[f.messages] : [],
+                    suggestions: Array.isArray(d[f.suggestions]) ? d[f.suggestions] : [],
+                    error: d.error || d.msg || null
+                };
+            },
+            open(threadId)               { return this._post({ op: 'open', threadId: threadId || undefined }); },
+            send(message, threadId, ct)  { return this._post({ op: 'send', message, threadId: threadId || undefined, confirmToken: ct || undefined }); },
+            list()                       { return this._post({ op: 'list' }); },
+            get(threadId)                { return this._post({ op: 'get', threadId }); },
+            del(threadId)                { return this._post({ op: 'delete', threadId }); }
+        };
+
+        // Lectores tolerantes para items con forma parcialmente desconocida (un solo lugar a ajustar).
+        const MIA_READ = {
+            didText(it)     { return (it && (it.summary || it.text || it.label || it.message)) || (typeof it === 'string' ? it : 'Acción realizada'); },
+            propToken(it)   { return it && (it.confirmToken || it.token || it.confirm_token) || null; },
+            propTitle(it)   { return (it && (it.title || it.label || it.tool)) || 'Acción propuesta'; },
+            propPreview(it) { return (it && (it.preview || it.summary || it.text || it.message || it.body)) || 'MIA quiere realizar una acción hacia afuera (Mercado Libre).'; },
+            propResend(it)  { return (it && (it.resendMessage || it.message)) || CHAT.lastUserMessage || 'Confirmo'; },
+            sugLabel(s)     { return (typeof s === 'string') ? s : (s && (s.label || s.text || s.title)) || ''; },
+            sugMessage(s)   { return (typeof s === 'string') ? s : (s && (s.message || s.send || s.label || s.text)) || ''; },
+            // threadIndex item (op:'list') — plan shape {id,title,createdAt,updatedAt,preview}
+            threadId(t)     { return t && (t.id || t.threadId) || null; },
+            threadTitle(t)  { return (t && t.title) || 'Conversación'; },
+            threadPreview(t){ return (t && t.preview) || ''; },
+            threadTime(t)   { return t && (t.updatedAt || t.createdAt) || null; },
+            // message item (op:'get') — {role, content}
+            msgRole(m)      { return m && m.role; },
+            msgContent(m)   { return (m && (m.content != null ? m.content : m.text)) || ''; }
         };
 
         // ---- Utilidades de fecha ----
@@ -6113,488 +6406,224 @@
             d.setDate(d.getDate() - day); d.setHours(0,0,0,0); return d;
         }
 
-        // ---- Estadísticas precalculadas para que la IA no invente cifras ----
-        function computeStats() {
-            const sales = STATE.sales || [];
-            const today = _ymd(new Date());
-            const weekStart = _startOfWeek();
-            const monthStr = today.slice(0, 7);
-            const sum = (arr, f) => arr.reduce((a, s) => a + (f(s) || 0), 0);
-
-            const ventasHoy = sales.filter(s => s.date === today);
-            const ventasSemana = sales.filter(s => new Date(s.date) >= weekStart);
-            const ventasMes = sales.filter(s => (s.date || '').slice(0,7) === monthStr);
-
-            const porProducto = {};
-            sales.forEach(s => {
-                const k = s.productName || 'N/D';
-                if (!porProducto[k]) porProducto[k] = { unidades: 0, ingresos: 0, ganancia: 0 };
-                porProducto[k].unidades += s.quantity || 0;
-                porProducto[k].ingresos += s.totalPrice || 0;
-                porProducto[k].ganancia += s.profit || 0;
-            });
-
-            const productosInfo = (STATE.products || []).filter(p => !p.archived).map(p => {
-                const comm = p.commissionType === 'fixed' ? p.commission : p.salePrice * (p.commission / 100);
-                const margenUnit = p.salePrice - p.costPrice - comm - p.shipping;
-                const margenPct = p.salePrice > 0 ? (margenUnit / p.salePrice) * 100 : 0;
-                return {
-                    nombre: p.name, precioCompra: p.costPrice, precioVenta: p.salePrice,
-                    comision: Math.round(comm), envio: p.shipping, stock: p.stock,
-                    margenUnitario: Math.round(margenUnit), margenPorcentaje: +margenPct.toFixed(1)
-                };
-            });
-
-            // ---- Finanzas completas (IVA, gastos fijos, gastos variables, publicidad) ----
-            const _fzChat = (window.getFinanzas ? window.getFinanzas() : { netProfit: 0, totalProfit: 0 });
-            const finanzas = {
-                // Ganancia NETA real (= la que muestran Dashboard y Análisis): operativa - IVA - publicidad.
-                gananciaNetaReal: Math.round(_fzChat.netProfit),
-                gananciaOperativa: Math.round(_fzChat.totalProfit),
-                ivaTotalPagado: (window.ivaResumenMeses ? Math.round(window.ivaResumenMeses().totalIva || 0) : 0),
-                ivaPct: (STATE.finConfig && STATE.finConfig.ivaPct) || 0,
-                ivaActivo: !!(STATE.finConfig && STATE.finConfig.ivaEnabled),
-                publicidad: (window.publicidadTotal ? window.publicidadTotal() : 0),
-                gastosFijosMensualEstimado: (window.totalGastosFijosMensual ? Math.round(window.totalGastosFijosMensual()) : 0),
-                gastosFijos: (STATE.gastosFijos || []).map(g => ({ nombre: g.nombre, monto: g.monto, frecuencia: g.frecuencia })),
-                gastosVariables: (STATE.expenses || []).slice(-20).map(e => ({ nombre: e.nombre, monto: e.monto, fecha: e.fecha }))
-            };
-            // ---- Agenda (tareas pendientes / hoy / atrasadas) ----
-            const _tareasPend = (STATE.tasks || []).filter(t => t && t.estado !== 'hecha');
-            const agenda = {
-                pendientes: _tareasPend.length,
-                paraHoy: _tareasPend.filter(t => t.fecha === today).length,
-                atrasadas: _tareasPend.filter(t => t.fecha && t.fecha < today).length,
-                tareas: _tareasPend.slice(0, 20).map(t => ({ titulo: t.titulo, fecha: t.fecha, prioridad: t.prioridad, atrasada: !!(t.fecha && t.fecha < today) }))
-            };
-            // ---- Logros ----
-            const logros = (window.logrosResumen ? window.logrosResumen() : null);
-
-            return {
-                fechaHoy: today,
-                finanzas: finanzas,
-                agenda: agenda,
-                logros: logros,
-                gananciaHoy: Math.round(sum(ventasHoy, s => s.profit)),
-                gananciaSemana: Math.round(sum(ventasSemana, s => s.profit)),
-                gananciaMes: Math.round(sum(ventasMes, s => s.profit)),
-                gananciaTotal: Math.round(sum(sales, s => s.profit)),
-                ingresosTotal: Math.round(sum(sales, s => s.totalPrice)),
-                comisionesTotal: Math.round(sum(sales, s => s.commission)),
-                enviosTotal: Math.round(sum(sales, s => s.shipping)),
-                unidadesTotal: sum(sales, s => s.quantity),
-                ventasHoyCount: ventasHoy.length,
-                ventasSemanaCount: ventasSemana.length,
-                ventasMesCount: ventasMes.length,
-                productos: productosInfo,
-                resumenPorProducto: porProducto,
-                ultimasVentas: [...sales].sort((a,b)=> new Date(b.date)-new Date(a.date)).slice(0,30)
-                    .map(s => ({ fecha: s.date, producto: s.productName, cantidad: s.quantity, precio: s.totalPrice, ganancia: Math.round(s.profit) })),
-                publicacionesPendientes: (STATE.pendingMappings || []).map(p => ({
-                    item_id: p.item_id, titulo: p.title, precio: p.price, cantidad: p.quantity, sugerencia: p.suggestedName || null
-                }))
-            };
+        // ---- Markdown ligero + sanitizado ----
+        function _miaMd(text) {
+            return DOMPurify.sanitize(String(text == null ? '' : text)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\n/g, '<br>'));
         }
 
-        function buildSystemPrompt() {
-            const stats = computeStats();
-            return [
-                "Te llamas MIA, la asistente de una app de gestión de ventas (CRM).",
-                "Respondes SIEMPRE en español, de forma breve, clara y amable. Montos en pesos chilenos (CLP) con separador de miles.",
-                "Usa EXCLUSIVAMENTE los datos en el bloque DATOS. Si algo no está, dilo; no inventes cifras.",
-                "Para 'cuánto gané' usa gananciaHoy/gananciaSemana/gananciaMes/gananciaTotal según pidan.",
-                "Para 'mayor margen' usa margenPorcentaje de productos; para 'más vendido' usa unidades de resumenPorProducto.",
-                "Para finanzas usa el bloque 'finanzas': ivaTotalPagado, gastosFijos, gastosVariables y publicidad.",
-                "Para la agenda usa el bloque 'agenda': pendientes, paraHoy, atrasadas y la lista 'tareas'. Si te preguntan qué tienen que hacer, prioriza las atrasadas.",
-                "Para logros usa el bloque 'logros': 'desbloqueados' (ya conseguidos) y 'proximos' (los más cercanos a desbloquear, con su %).",
-                "Cuando aporte valor, da un consejo de negocio breve y accionable basado SOLO en estos datos reales (ej: producto de bajo margen, stock por agotarse, gasto fijo alto, racha por perder). Nunca inventes.",
-                "",
-                "CONFIRMACIÓN DE PUBLICACIONES (importante):",
-                "Si hay publicacionesPendientes y el usuario indica a qué producto corresponde una (ej: 'ese es el cargador de 65w', 'sí, es ese', 'corresponde a X'),",
-                "responde confirmando en lenguaje natural Y agrega como ÚLTIMA línea, sola, una acción con este formato EXACTO:",
-                '[[ACTION]]{"type":"map","item_id":"<el item_id>","producto":"<nombre EXACTO del producto de la lista>"}[[/ACTION]]',
-                "Si el usuario dice 'sí'/'correcto' sin nombrar producto, usa la 'sugerencia' de esa publicación pendiente.",
-                "No muestres el bloque [[ACTION]] como texto explicativo; es una instrucción para el sistema.",
-                "",
-                "ACCIONES QUE PUEDES EJECUTAR (cuando el usuario pida HACER algo, no solo consultar):",
-                "Responde breve en lenguaje natural y agrega como ÚLTIMA línea, sola, UN bloque de acción con el formato EXACTO. El sistema le pedirá CONFIRMACIÓN al usuario antes de ejecutar, así que tú NO preguntes '¿seguro?' ni confirmes tú mismo.",
-                "Si falta un dato obligatorio (qué producto, cantidad, precio, etc.), NO emitas la acción: pregunta primero. NUNCA inventes datos. Usa los nombres de producto/tarea TAL CUAL aparecen en los DATOS.",
-                'Registrar venta: [[ACTION]]{"type":"add_sale","producto":"<nombre>","cantidad":<n>,"precio":<opcional>,"comision":<monto opcional>,"comisionPorcentaje":<% opcional>,"envio":<opcional>,"canal":"manual|mercadolibre|otro"}[[/ACTION]]',
-                'Eliminar venta: [[ACTION]]{"type":"delete_sale","producto":"<nombre>","fecha":"YYYY-MM-DD (opcional)"}[[/ACTION]]',
-                'Crear producto: [[ACTION]]{"type":"add_product","nombre":"<nombre>","costo":<n>,"precio":<n>,"stock":<opcional>,"comision":<opcional>,"envio":<opcional>}[[/ACTION]]',
-                'Editar producto: [[ACTION]]{"type":"edit_product","nombre":"<nombre>","nuevo_precio":<opcional>,"nuevo_costo":<opcional>,"nuevo_stock":<opcional>}[[/ACTION]]',
-                'Agregar tarea: [[ACTION]]{"type":"add_task","titulo":"<texto>","fecha":"YYYY-MM-DD (opcional)","prioridad":"alta|media|baja"}[[/ACTION]]',
-                'Completar tarea: [[ACTION]]{"type":"complete_task","titulo":"<texto de la tarea>"}[[/ACTION]]',
-                'Eliminar tarea: [[ACTION]]{"type":"delete_task","titulo":"<texto de la tarea>"}[[/ACTION]]',
-                'Mostrar lo que has hecho: [[ACTION]]{"type":"show_log"}[[/ACTION]]',
-                'Enviar el reporte de ventas al correo del usuario: [[ACTION]]{"type":"send_report","periodo":"semana|mes|hoy"}[[/ACTION]] (ej: "mándame el reporte de esta semana por correo" → periodo "semana"). El correo se decide en el servidor (el del usuario); tú no necesitas preguntarlo.',
-                "",
-                "DATOS (JSON):",
-                JSON.stringify(stats)
-            ].join("\n");
+        // ---- Scroll inteligente (no arrastra al usuario si subió a leer) ----
+        function _miaIsNearBottom() {
+            const c = document.getElementById('chatMessages'); if (!c) return true;
+            return (c.scrollHeight - c.scrollTop - c.clientHeight) < 90;
+        }
+        function _miaScroll(force) {
+            const c = document.getElementById('chatMessages'); if (!c) return;
+            if (force || CHAT._stick) {
+                c.scrollTop = c.scrollHeight;
+                _miaNewPill(false);
+            } else {
+                _miaNewPill(true);
+            }
+        }
+        function _miaNewPill(show) {
+            const p = document.getElementById('chatNewPill'); if (!p) return;
+            p.classList.toggle('show', !!show);
+        }
+        function _miaClearMessages() {
+            const c = document.getElementById('chatMessages'); if (!c) return;
+            c.innerHTML = ''; _miaNewPill(false);
         }
 
-        // ---- Render de mensajes ----
+        // ---- Render de mensajes (usuario = burbuja sutil · asistente = ancho completo sin burbuja) ----
         function chatRenderMessage(role, text) {
             const cont = document.getElementById('chatMessages');
-            const wrap = document.createElement('div');
+            if (!cont) return null;
+            _miaClearEmpty();
             const isUser = role === 'user';
-            wrap.style.cssText = `display:flex;${isUser ? 'justify-content:flex-end' : 'justify-content:flex-start'};`;
-            const bubble = document.createElement('div');
-            bubble.style.cssText = `max-width:85%;padding:10px 14px;border-radius:14px;font-size:13.5px;line-height:1.5;word-wrap:break-word;` +
-                (isUser
-                    ? 'background:linear-gradient(135deg,#10B981,#3B82F6);color:#fff;border-bottom-right-radius:4px;'
-                    : 'background:var(--bg-tertiary);color:var(--text-primary);border:1px solid var(--border-color);border-bottom-left-radius:4px;');
-            const safe = DOMPurify.sanitize(String(text)
-                .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-                .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
-                .replace(/\n/g,'<br>'));
-            bubble.innerHTML = safe;
-            wrap.appendChild(bubble);
+            const wrap = document.createElement('div');
+            wrap.className = 'mia-msg ' + (isUser ? 'user' : 'assistant');
+            let body;
+            if (isUser) {
+                body = document.createElement('div');
+                body.className = 'bubble';
+                body.innerHTML = _miaMd(text);
+                wrap.appendChild(body);
+            } else {
+                const av = document.createElement('div');
+                av.className = 'avatar'; av.setAttribute('aria-hidden', 'true'); av.textContent = 'M';
+                body = document.createElement('div');
+                body.className = 'body';
+                body.innerHTML = _miaMd(text);
+                wrap.appendChild(av); wrap.appendChild(body);
+            }
             cont.appendChild(wrap);
-            cont.scrollTop = cont.scrollHeight;
-            return bubble;
+            _miaScroll(isUser);   // los mensajes propios siempre llevan al fondo
+            return body;
         }
 
+        // Estado vacío amigable (onboarding ligero)
+        function _miaRenderEmpty() {
+            const cont = document.getElementById('chatMessages'); if (!cont) return;
+            cont.innerHTML =
+                '<div class="mia-empty" id="miaEmpty">' +
+                '<div class="av" aria-hidden="true">M</div>' +
+                '<h4>Soy MIA, tu copiloto de ventas</h4>' +
+                '<p>Pregúntame por tus ganancias, stock, márgenes o pídeme registrar una venta. Toco tus datos reales.</p>' +
+                '</div>';
+        }
+        function _miaClearEmpty() {
+            const e = document.getElementById('miaEmpty'); if (e) e.remove();
+        }
+
+        // Indicador de escritura (tres puntos, sin burbuja, fila del asistente)
         function chatTyping(show) {
-            const cont = document.getElementById('chatMessages');
+            const cont = document.getElementById('chatMessages'); if (!cont) return;
             let el = document.getElementById('chatTyping');
             if (show) {
                 if (el) return;
+                _miaClearEmpty();
                 const wrap = document.createElement('div');
-                wrap.id = 'chatTyping';
-                wrap.style.cssText = 'display:flex;justify-content:flex-start;';
-                wrap.innerHTML = '<div style="padding:10px 14px;border-radius:14px;background:var(--bg-tertiary);border:1px solid var(--border-color);color:var(--text-muted);font-size:13px;">escribiendo…</div>';
+                wrap.id = 'chatTyping'; wrap.className = 'mia-msg assistant';
+                wrap.setAttribute('aria-label', 'MIA está escribiendo');
+                wrap.innerHTML = '<div class="avatar" aria-hidden="true">M</div><div class="body"><div class="mia-typing" aria-hidden="true"><span></span><span></span><span></span></div></div>';
                 cont.appendChild(wrap);
-                cont.scrollTop = cont.scrollHeight;
+                _miaScroll(false);
             } else if (el) { el.remove(); }
         }
 
-        // ---- Llamada a OpenRouter ----
-        async function chatAsk(userText) {
-            const messages = [
-                { role: 'system', content: buildSystemPrompt() },
-                ...CHAT.history.slice(-10),
-                { role: 'user', content: userText }
-            ];
-            const res = await fetch(CHAT.endpoint, {
-                method: 'POST',
-                headers: {
-                    'Authorization': 'Bearer ' + CHAT.apiKey,
-                    'Content-Type': 'application/json',
-                    'HTTP-Referer': location.origin || 'https://ml-crm-app',
-                    'X-Title': 'NexSell'
-                },
-                body: JSON.stringify({ model: CHAT.model, messages, temperature: 0.3, max_tokens: 700 }),
-                signal: (window.AbortSignal && AbortSignal.timeout) ? AbortSignal.timeout(30000) : undefined
-            });
-            if (!res.ok) {
-                const t = await res.text().catch(()=> '');
-                throw new Error('OpenRouter ' + res.status + ': ' + t.slice(0,200));
-            }
-            const data = await res.json();
-            return (data.choices && data.choices[0] && data.choices[0].message.content) || '(sin respuesta)';
+        // Recibo compacto por cada acción ejecutada del CRM (did[])
+        function chatRenderReceipt(text) {
+            const cont = document.getElementById('chatMessages'); if (!cont) return;
+            _miaClearEmpty();
+            const r = document.createElement('div');
+            r.className = 'mia-receipt';
+            r.innerHTML = '<i data-lucide="check-circle-2"></i><span>' + _miaMd(text) + '</span>';
+            cont.appendChild(r);
+            _miaScroll(false);   // los íconos se refrescan una vez por turno en _miaRenderResult
         }
 
+        // Tarjeta de aprobación para acciones confirm-gated de Mercado Libre (proposed[])
+        function chatRenderAction(item) {
+            const cont = document.getElementById('chatMessages'); if (!cont) return;
+            const token = MIA_READ.propToken(item);
+            const card = document.createElement('div');
+            card.className = 'mia-action';
+            card.innerHTML =
+                '<div class="title"><i data-lucide="shield-check"></i>' + _miaMd(MIA_READ.propTitle(item)) + '</div>' +
+                '<div class="preview">' + _miaMd(MIA_READ.propPreview(item)) + '</div>' +
+                '<div class="row"><button class="approve" type="button">Confirmar</button><button class="reject" type="button">Cancelar</button></div>' +
+                '<div class="receipt-line"></div>';
+            cont.appendChild(card);
+            _miaScroll(false);   // íconos refrescados una vez por turno en _miaRenderResult
+            const approve = card.querySelector('.approve');
+            const reject = card.querySelector('.reject');
+            const receipt = card.querySelector('.receipt-line');
+            let done = false;
+            const settle = (ok, msg) => {
+                done = true;
+                card.classList.add('done'); if (ok) card.classList.add('ok');
+                receipt.innerHTML = (ok ? '<i data-lucide="check-circle-2"></i>' : '<i data-lucide="x-circle"></i>') +
+                    '<span>' + _miaMd(msg) + '</span>';
+                try { refreshIcons(); } catch (e) {}
+            };
+            approve.addEventListener('click', async () => {
+                if (done || CHAT.busy) return;
+                approve.disabled = true; reject.disabled = true; approve.textContent = 'Confirmando…';
+                if (!token) { settle(false, 'No pude confirmar: falta el token de seguridad. Pídeme la acción otra vez.'); return; }
+                try {
+                    await miaTurn(MIA_READ.propResend(item), token);
+                    settle(true, 'Confirmado · ' + _miaNow());
+                } catch (e) {
+                    approve.disabled = false; reject.disabled = false; approve.textContent = 'Confirmar';
+                    chatRenderMessage('assistant', _miaErr(e));
+                }
+            });
+            reject.addEventListener('click', () => {
+                if (done) return;
+                settle(false, 'Cancelado · ' + _miaNow());
+            });
+        }
+
+        function _miaNow() {
+            try { return new Date().toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }); }
+            catch (e) { return ''; }
+        }
+        function _miaErr(e) {
+            if (e && e.code === 'AUTH') return '⚠️ Necesitas haber iniciado sesión para hablar con MIA. Vuelve a entrar e intenta de nuevo.';
+            if (e && e.code === 'NET')  return '⚠️ No pude conectar con el servidor. Revisa tu conexión y vuelve a intentarlo.';
+            if (e && e.code === 'HTTP' && e.status === 429) return '⚠️ Vas muy rápido 😅 Espera unos segundos y vuelve a preguntarme.';
+            if (e && e.code === 'HTTP' && e.status === 401) return '⚠️ Tu sesión expiró. Vuelve a iniciar sesión para seguir conversando.';
+            return '⚠️ Tuve un problema para responder. Intenta de nuevo en un momento.';
+        }
+
+        // Renderiza la respuesta del agente: recibos (did) → texto → tarjetas de aprobación (proposed)
+        function _miaRenderResult(r) {
+            (r.did || []).forEach(it => chatRenderReceipt(MIA_READ.didText(it)));
+            if (r.reply) chatRenderMessage('assistant', r.reply);
+            (r.proposed || []).forEach(it => chatRenderAction(it));
+            try { refreshIcons(); } catch (e) {}   // un solo barrido de íconos por turno (recibos + tarjetas)
+            if (r.threadId) CHAT.threadId = r.threadId;
+            if (r.suggestions && r.suggestions.length) renderSuggestions(r.suggestions);
+        }
+
+        // ---- Un turno del usuario contra el agente (op:'send') ----
+        async function miaTurn(message, confirmToken) {
+            if (CHAT.busy) return;
+            CHAT.busy = true; _miaSetSending(true); chatTyping(true);
+            try {
+                const r = await MIA_API.send(message, CHAT.threadId, confirmToken);
+                chatTyping(false);
+                _miaRenderResult(r);
+            } catch (e) {
+                chatTyping(false);
+                chatRenderMessage('assistant', _miaErr(e));
+                throw e;
+            } finally {
+                CHAT.busy = false; _miaSetSending(false);
+            }
+        }
+
+        // ---- Enviar desde el composer ----
         async function chatSend(text) {
-            text = (text || document.getElementById('chatInput').value).trim();
+            const input = document.getElementById('chatInput');
+            text = (text != null ? text : (input ? input.value : '')).trim();
             if (!text || CHAT.busy) return;
-            document.getElementById('chatInput').value = '';
+            if (input) { input.value = ''; _miaAutoGrow(input); _miaSyncSendBtn(); }
+            CHAT.lastUserMessage = text;
             chatRenderMessage('user', text);
-            CHAT.history.push({ role: 'user', content: text });
-            CHAT.busy = true; chatTyping(true);
+            try { await miaTurn(text); } catch (e) { /* ya renderizado */ }
+        }
+
+        // ---- Abrir conversación: briefing inicial + sugerencias (op:'open') ----
+        async function miaOpen(force) {
+            if (CHAT.opened && !force) return;
+            CHAT.opened = true;
+            _miaClearMessages();
+            CHAT.busy = true; _miaSetSending(true); chatTyping(true);
             try {
-                let reply = await chatAsk(text);
-                // PASO 4: extraer y ejecutar acción de mapeo si la hay
-                reply = await chatHandleActions(reply);
+                const r = await MIA_API.open(CHAT.threadId);
                 chatTyping(false);
-                chatRenderMessage('assistant', reply);
-                CHAT.history.push({ role: 'assistant', content: reply });
-                // Si la acción quedó pendiente de confirmación, mostrar la tarjeta con botones.
-                if (CHAT._pendingAction) { const pa = CHAT._pendingAction; CHAT._pendingAction = null; chatRenderConfirm(pa); }
+                if (r.threadId) CHAT.threadId = r.threadId;
+                if (r.reply) chatRenderMessage('assistant', r.reply);
+                else chatRenderMessage('assistant', 'Hola, soy **MIA** 👋 Tu copiloto de ventas. ¿En qué te ayudo hoy?');
+                renderSuggestions(r.suggestions && r.suggestions.length ? r.suggestions : null);
             } catch (e) {
                 chatTyping(false);
-                chatRenderMessage('assistant', '⚠️ No pude responder: ' + e.message + '\n\nRevisa la API key de OpenRouter o tu conexión.');
+                CHAT.opened = false;   // permitir reintento al reabrir
+                _miaRenderEmpty();
+                chatRenderMessage('assistant', _miaErr(e));
+                renderSuggestions(null);
             } finally {
-                CHAT.busy = false;
+                CHAT.busy = false; _miaSetSending(false);
             }
         }
 
-        // ---- Foto del producto en el chat -> identificar con IA -> registrar venta ----
-        function chatRenderPhotoBubble(dataURL) {
-            const cont = document.getElementById('chatMessages');
-            if (!cont) return;
-            const wrap = document.createElement('div');
-            wrap.style.cssText = 'display:flex;justify-content:flex-end;';
-            const bub = document.createElement('div');
-            if (dataURL) {
-                bub.style.cssText = 'max-width:60%;padding:4px;border-radius:14px;border-bottom-right-radius:4px;background:linear-gradient(135deg,#10B981,#3B82F6);';
-                const im = document.createElement('img');
-                im.src = dataURL;
-                im.style.cssText = 'max-width:100%;border-radius:11px;display:block;';
-                bub.appendChild(im);
-            } else {
-                bub.style.cssText = 'padding:10px 14px;border-radius:14px;border-bottom-right-radius:4px;background:linear-gradient(135deg,#10B981,#3B82F6);color:#fff;font-size:13.5px;';
-                bub.textContent = '📸 Foto del producto';
-            }
-            wrap.appendChild(bub);
-            cont.appendChild(wrap);
-            cont.scrollTop = cont.scrollHeight;
-        }
+        // El reconocimiento de producto por foto se relocaliza como herramienta del agente
+        // (intent-driven, Fase 2). El flujo de visión (visionIdentifyFromFile / askVision) queda intacto.
 
-        async function chatHandlePhoto(file) {
-            if (!file || CHAT.busy) return;
-            // Vista previa en el chat (efímera: solo en pantalla, no se guarda en STATE ni en la nube).
-            let preview = null;
-            try {
-                preview = await new Promise((res) => {
-                    const fr = new FileReader();
-                    fr.onload = () => res(fr.result);
-                    fr.onerror = () => res(null);
-                    fr.readAsDataURL(file);
-                });
-            } catch (e) {}
-            chatRenderPhotoBubble(preview);
-            preview = null; // descartar referencia
-            if (!window.visionIdentifyFromFile) {
-                chatRenderMessage('assistant', '⚠️ La función de foto no está disponible.');
-                return;
-            }
-            CHAT.busy = true; chatTyping(true);
-            try {
-                const res = await window.visionIdentifyFromFile(file);
-                chatTyping(false);
-                if (res && res.product) {
-                    chatRenderMessage('assistant', `📸 Detecté **${res.product.name}**${res.confianza ? ` (confianza ${res.confianza})` : ''}. Confírmame la cantidad y registro la venta. 👇`);
-                    if (window.showPhotoSaleConfirm) window.showPhotoSaleConfirm(res.product, res.confianza);
-                } else {
-                    chatRenderMessage('assistant', '📸 No reconocí un producto de tu catálogo en la foto. Dime el nombre exacto y lo registramos, o créalo primero en la sección Productos.');
-                }
-            } catch (e) {
-                chatTyping(false);
-                const msg = (e && e.message) || '';
-                if (msg === 'SIN_PRODUCTOS') chatRenderMessage('assistant', '⚠️ Aún no tienes productos en el catálogo. Crea uno en la sección Productos y luego te registro la venta por foto.');
-                else if (msg === 'NO_API') chatRenderMessage('assistant', '⚠️ La IA de visión no está configurada.');
-                else chatRenderMessage('assistant', '⚠️ No pude analizar la foto. Puedes registrarla a mano en la sección Ventas.');
-            } finally {
-                CHAT.busy = false;
-            }
-        }
-
-        // ---- PASO 4: ejecutar acciones [[ACTION]]{...}[[/ACTION]] ----
-        // ====================================================================
-        // MOTOR DE ACCIONES DEL ASISTENTE (MIA puede EJECUTAR, con confirmación)
-        // Todo opera SOLO sobre STATE (los datos del usuario logueado). Las acciones
-        // que modifican/eliminan pasan SIEMPRE por una tarjeta de confirmación.
-        // ====================================================================
-        const AI_MUTATING = new Set(['add_sale','delete_sale','add_task','complete_task','delete_task','add_product','edit_product','send_report']);
-
-        function aiFindProduct(name){
-            if (!name) return null;
-            var t = String(name).toLowerCase().trim();
-            return (STATE.products||[]).find(p=>!p.archived && String(p.name||'').toLowerCase()===t)
-                || (STATE.products||[]).find(p=>!p.archived && String(p.name||'').toLowerCase().includes(t))
-                || (STATE.products||[]).find(p=>!p.archived && t.includes(String(p.name||'').toLowerCase())) || null;
-        }
-        function aiFindTask(a){
-            if (a.id!=null){ var byId=(STATE.tasks||[]).find(t=>String(t.id)===String(a.id)); if (byId) return byId; }
-            var t=String(a.titulo||a.texto||'').toLowerCase().trim(); if(!t) return null;
-            return (STATE.tasks||[]).find(x=>x.estado!=='hecha' && String(x.titulo||'').toLowerCase().includes(t))
-                || (STATE.tasks||[]).find(x=>String(x.titulo||'').toLowerCase().includes(t)) || null;
-        }
-        function aiResolveSale(a){
-            if (a.id!=null){ var s=(STATE.sales||[]).find(x=>String(x.id)===String(a.id)); if (s) return s; }
-            var t=String(a.producto||'').toLowerCase().trim(); if(!t) return null;
-            var cands=(STATE.sales||[]).filter(s=>String(s.productName||'').toLowerCase().includes(t));
-            if (a.fecha) cands=cands.filter(s=>s.date===a.fecha);
-            cands.sort((x,y)=>new Date(y.date)-new Date(x.date));
-            return cands[0]||null;
-        }
-        function _aiSaveRenderAll(){
-            saveToLocalStorage();
-            try{ if(window.updateDropdowns)updateDropdowns(); }catch(e){}
-            try{ if(window.renderSalesList)renderSalesList(); }catch(e){}
-            try{ if(window.renderProductsList)renderProductsList(); }catch(e){}
-            try{ if(window.renderInventory)renderInventory(); }catch(e){}
-            try{ if(window.renderDashboard)renderDashboard(); }catch(e){}
-            try{ if(window.renderAlerts)renderAlerts(); }catch(e){}
-            try{ if(window.renderFinanzas)renderFinanzas(); }catch(e){}
-            try{ if(window.renderAgenda)renderAgenda(); }catch(e){}
-        }
-        function _aiLog(msg){
-            if(!Array.isArray(STATE.aiLog)) STATE.aiLog=[];
-            STATE.aiLog.push({ ts:new Date().toISOString(), msg:String(msg||'') });
-            if(STATE.aiLog.length>200) STATE.aiLog=STATE.aiLog.slice(-200);
-            saveToLocalStorage();
-        }
-        function aiRenderLogText(){
-            var l=(STATE.aiLog||[]).slice(-10).reverse();
-            if(!l.length) return 'Aún no he ejecutado ninguna acción.';
-            return '🗒️ Últimas acciones que hice:\n' + l.map(function(x){
-                var d=''; try{ d=new Date(x.ts).toLocaleString('es-CL',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); }catch(e){}
-                return '• ' + (d?('['+d+'] '):'') + x.msg;
-            }).join('\n');
-        }
-
-        // Resumen legible para la tarjeta de confirmación (o null si falta info / no se encontró el objetivo).
-        function aiActionVerbo(a){
-            switch(a.type){
-                case 'add_sale': {
-                    if(!a.producto || !aiFindProduct(a.producto)) return null;
-                    var p=aiFindProduct(a.producto);
-                    return 'Registrar venta de <strong>'+DOMPurify.sanitize(p.name)+'</strong> x'+(parseInt(a.cantidad)||1)+
-                        (a.precio!=null && !isNaN(parseFloat(a.precio)) ? (' a '+formatCurrency(parseFloat(a.precio))) : ' al precio guardado')+'.';
-                }
-                case 'delete_sale': { var s=aiResolveSale(a); return s? ('Eliminar la venta de <strong>'+DOMPurify.sanitize(s.productName)+'</strong> x'+s.quantity+' del '+s.date+' (devuelve el stock).') : null; }
-                case 'add_task': { if(!a.titulo) return null; return 'Agregar tarea: <strong>'+DOMPurify.sanitize(String(a.titulo))+'</strong>'+(a.fecha?(' para el '+DOMPurify.sanitize(String(a.fecha))):'')+'.'; }
-                case 'complete_task': { var t=aiFindTask(a); return t? ('Marcar como hecha la tarea: <strong>'+DOMPurify.sanitize(t.titulo)+'</strong>.') : null; }
-                case 'delete_task': { var t2=aiFindTask(a); return t2? ('Eliminar la tarea: <strong>'+DOMPurify.sanitize(t2.titulo)+'</strong>.') : null; }
-                case 'add_product': { if(!a.nombre || isNaN(parseFloat(a.costo)) || isNaN(parseFloat(a.precio))) return null; return 'Crear producto <strong>'+DOMPurify.sanitize(String(a.nombre))+'</strong> (compra '+formatCurrency(parseFloat(a.costo))+', venta '+formatCurrency(parseFloat(a.precio))+').'; }
-                case 'edit_product': {
-                    var pe=aiFindProduct(a.nombre||a.producto); if(!pe) return null;
-                    var parts=[];
-                    if(a.nuevo_precio!=null && !isNaN(parseFloat(a.nuevo_precio))) parts.push('precio venta → '+formatCurrency(parseFloat(a.nuevo_precio)));
-                    if(a.nuevo_costo!=null && !isNaN(parseFloat(a.nuevo_costo))) parts.push('costo → '+formatCurrency(parseFloat(a.nuevo_costo)));
-                    if(a.nuevo_stock!=null && !isNaN(parseInt(a.nuevo_stock))) parts.push('stock → '+parseInt(a.nuevo_stock));
-                    if(!parts.length) return null;
-                    return 'Editar <strong>'+DOMPurify.sanitize(pe.name)+'</strong>: '+parts.join(', ')+'.';
-                }
-                case 'send_report': { var per=(a.periodo==='hoy'||a.periodo==='daily')?'de hoy':((a.periodo==='mes'||a.periodo==='monthly')?'del mes':'de la semana'); return '📧 Enviarte por correo el <strong>reporte '+per+'</strong> de tus ventas.'; }
-            }
-            return null;
-        }
-
-        // Ejecuta la acción (ya confirmada). Devuelve {ok, msg}. SOLO toca STATE del usuario actual (o el backend con tu token).
-        async function aiExecuteAction(a){
-            try{
-                switch(a.type){
-                    case 'send_report': {
-                        if(!(window.FB && window.FB.getIdToken)) return {ok:false,msg:'Necesitas haber iniciado sesión para enviarte el reporte por correo.'};
-                        var idt = await window.FB.getIdToken();
-                        if(!idt) return {ok:false,msg:'No pude verificar tu sesión. Vuelve a iniciar sesión e intenta de nuevo.'};
-                        var per=(a.periodo==='hoy'||a.periodo==='daily')?'daily':((a.periodo==='mes'||a.periodo==='monthly')?'monthly':'weekly');
-                        var r = await fetch(window.API_BASE + '/api/send-report', { method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+idt}, body: JSON.stringify({period:per}) });
-                        var d = await r.json().catch(function(){ return {}; });
-                        if(d && d.ok) return {ok:true,msg:'📧 Reporte enviado a '+(d.sentTo||'tu correo')+' ('+(d.count||0)+' venta(s) en el período).'};
-                        return {ok:false,msg:(d && d.msg) || 'No se pudo enviar el reporte. Intenta más tarde.'};
-                    }
-                    case 'add_sale': {
-                        var p=aiFindProduct(a.producto); if(!p) return {ok:false,msg:'No encontré el producto.'};
-                        if(p.hasVariants) return {ok:false,msg:'"'+p.name+'" tiene variantes; regístrala desde la sección Ventas para elegir color/talla.'};
-                        var qty=parseInt(a.cantidad)||1; if(qty<1) qty=1;
-                        if(qty>(Number(p.stock)||0)) return {ok:false,msg:'No hay stock suficiente de "'+p.name+'" (disponible: '+(Number(p.stock)||0)+').'};
-                        var precio=(a.precio!=null && !isNaN(parseFloat(a.precio)))? parseFloat(a.precio) : (Number(p.salePrice)||0);
-                        if(precio<=0) return {ok:false,msg:'El precio de venta no puede ser 0.'};
-                        var canal=(a.canal==='mercadolibre'||a.canal==='otro')?a.canal:'manual';
-                        var total=precio*qty, comTipo='fixed', comVal=0, comMonto=0;
-                        if(a.comisionPorcentaje!=null && !isNaN(parseFloat(a.comisionPorcentaje))){ comTipo='percentage'; comVal=Math.max(0,parseFloat(a.comisionPorcentaje)); comMonto=total*comVal/100; }
-                        else if(a.comision!=null && !isNaN(parseFloat(a.comision))){ comTipo='fixed'; comVal=Math.max(0,parseFloat(a.comision)); comMonto=comVal; }
-                        var envio=(a.envio!=null && !isNaN(parseFloat(a.envio)))? Math.max(0,parseFloat(a.envio)) : 0;
-                        var costo=Number(p.costPrice)||0;
-                        var profit=total - costo*qty - comMonto - envio;
-                        STATE.sales.push({ id:Date.now(), date:(a.fecha||new Date().toLocaleDateString('en-CA')),
-                            time:new Date().toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'}),
-                            productId:p.id, productName:DOMPurify.sanitize(p.name), quantity:qty, salePrice:precio, costPrice:costo,
-                            commission:comMonto, commissionType:comTipo, commissionValue:comVal, shipping:envio,
-                            totalPrice:total, profit:profit, source:canal, createdAt:new Date().toISOString() });
-                        p.stock=Math.max(0,(Number(p.stock)||0)-qty); p.lastModified=new Date().toISOString();
-                        _aiSaveRenderAll();
-                        return {ok:true,msg:'✅ Venta registrada: '+p.name+' x'+qty+' por '+formatCurrency(total)+' (ganancia '+formatCurrency(profit)+').'};
-                    }
-                    case 'delete_sale': {
-                        var s=aiResolveSale(a); if(!s) return {ok:false,msg:'No encontré esa venta.'};
-                        var prod=(STATE.products||[]).find(x=>x.id===s.productId);
-                        if(prod){
-                            if(s.variantId!=null && prod.hasVariants && Array.isArray(prod.variants)){ var v=prod.variants.find(x=>String(x.id)===String(s.variantId)); if(v){ v.stock=(Number(v.stock)||0)+s.quantity; if(window.recalcVariantStock)recalcVariantStock(prod); } else prod.stock+=s.quantity; }
-                            else prod.stock=(Number(prod.stock)||0)+s.quantity;
-                            prod.lastModified=new Date().toISOString();
-                        }
-                        STATE.sales=STATE.sales.filter(x=>x.id!==s.id);
-                        _aiSaveRenderAll();
-                        return {ok:true,msg:'🗑️ Venta eliminada: '+s.productName+' x'+s.quantity+' ('+s.date+').'};
-                    }
-                    case 'add_task': {
-                        var titulo=String(a.titulo||'').trim(); if(!titulo) return {ok:false,msg:'¿Cuál es el título de la tarea?'};
-                        var fecha=a.fecha || new Date().toLocaleDateString('en-CA');
-                        var pr=(a.prioridad==='alta'||a.prioridad==='baja')?a.prioridad:'media';
-                        if(!Array.isArray(STATE.tasks)) STATE.tasks=[];
-                        STATE.tasks.push({ id:'t'+Date.now()+Math.floor((Date.now()%1000)), titulo:DOMPurify.sanitize(titulo), tipo:'manual', prioridad:pr, fecha:fecha, hora:a.hora||'', estado:'pendiente', recurrente:null, creada:new Date().toISOString() });
-                        _aiSaveRenderAll();
-                        return {ok:true,msg:'✅ Tarea agregada: "'+titulo+'" ('+fecha+').'};
-                    }
-                    case 'complete_task': { var tk=aiFindTask(a); if(!tk) return {ok:false,msg:'No encontré esa tarea.'}; tk.estado='hecha'; tk.completada=new Date().toISOString(); _aiSaveRenderAll(); return {ok:true,msg:'✅ Tarea completada: "'+tk.titulo+'".'}; }
-                    case 'delete_task': { var td=aiFindTask(a); if(!td) return {ok:false,msg:'No encontré esa tarea.'}; if(!Array.isArray(STATE.tasksBorradas)) STATE.tasksBorradas=[]; STATE.tasksBorradas.push(String(td.id)); STATE.tasks=STATE.tasks.filter(x=>x.id!==td.id); _aiSaveRenderAll(); return {ok:true,msg:'🗑️ Tarea eliminada: "'+td.titulo+'".'}; }
-                    case 'add_product': {
-                        var nombre=String(a.nombre||'').trim(); if(!nombre) return {ok:false,msg:'¿Cómo se llama el producto?'};
-                        var costo=parseFloat(a.costo), venta=parseFloat(a.precio);
-                        if(isNaN(costo)||costo<0) return {ok:false,msg:'Dame el precio de compra (costo).'};
-                        if(isNaN(venta)||venta<0) return {ok:false,msg:'Dame el precio de venta.'};
-                        var stock=parseInt(a.stock); if(isNaN(stock)||stock<0) stock=0;
-                        var com=0, comTipo2='percentage';
-                        if(a.comision!=null && !isNaN(parseFloat(a.comision))){ com=Math.max(0,parseFloat(a.comision)); comTipo2=(a.comisionTipo==='fixed')?'fixed':'percentage'; }
-                        var envio2=parseFloat(a.envio); if(isNaN(envio2)||envio2<0) envio2=0;
-                        STATE.products.push({ id:Date.now(), name:DOMPurify.sanitize(nombre), costPrice:costo, salePrice:venta, stock:stock, stockInit:stock, stockMin:(parseInt(a.stockMin)||1), shipping:envio2, commission:com, commissionType:comTipo2, hasVariants:false, variants:[], archived:false, createdDate:new Date().toISOString(), lastModified:new Date().toISOString() });
-                        _aiSaveRenderAll();
-                        return {ok:true,msg:'✅ Producto creado: "'+nombre+'" (compra '+formatCurrency(costo)+', venta '+formatCurrency(venta)+', stock '+stock+').'};
-                    }
-                    case 'edit_product': {
-                        var pp=aiFindProduct(a.nombre||a.producto); if(!pp) return {ok:false,msg:'No encontré ese producto.'};
-                        if(pp.hasVariants) return {ok:false,msg:'"'+pp.name+'" tiene variantes; edítalo desde la sección Productos.'};
-                        var ch=[];
-                        if(a.nuevo_precio!=null && !isNaN(parseFloat(a.nuevo_precio))){ pp.salePrice=parseFloat(a.nuevo_precio); ch.push('precio venta '+formatCurrency(pp.salePrice)); }
-                        if(a.nuevo_costo!=null && !isNaN(parseFloat(a.nuevo_costo))){ pp.costPrice=parseFloat(a.nuevo_costo); ch.push('costo '+formatCurrency(pp.costPrice)); }
-                        if(a.nuevo_stock!=null && !isNaN(parseInt(a.nuevo_stock))){ pp.stock=parseInt(a.nuevo_stock); if((Number(pp.stockInit)||0)<pp.stock) pp.stockInit=pp.stock; ch.push('stock '+pp.stock); }
-                        if(!ch.length) return {ok:false,msg:'¿Qué quieres cambiar: precio, costo o stock?'};
-                        pp.lastModified=new Date().toISOString(); _aiSaveRenderAll();
-                        return {ok:true,msg:'✅ "'+pp.name+'" actualizado: '+ch.join(', ')+'.'};
-                    }
-                }
-            }catch(e){ return {ok:false,msg:'No pude completar la acción: '+(e&&e.message?e.message:'error')+'.'}; }
-            return {ok:false,msg:'Acción no reconocida.'};
-        }
-
-        // Tarjeta de confirmación en el chat (botones reales, inmunes a comillas).
-        function chatRenderConfirm(pa){
-            const cont=document.getElementById('chatMessages'); if(!cont) return;
-            const wrap=document.createElement('div'); wrap.style.cssText='display:flex;justify-content:flex-start;';
-            const card=document.createElement('div');
-            card.style.cssText='max-width:90%;padding:12px 14px;border-radius:14px;border-bottom-left-radius:4px;background:var(--bg-tertiary);border:1px solid var(--accent-primary);font-size:13.5px;color:var(--text-primary);';
-            card.innerHTML='<div style="margin-bottom:10px;">⚠️ <strong>Confirma esta acción:</strong><br>'+pa.summary+'</div>';
-            const row=document.createElement('div'); row.style.cssText='display:flex;gap:8px;';
-            const ok=document.createElement('button'); ok.className='btn btn-primary btn-small'; ok.innerHTML='<i data-lucide="check"></i>Confirmar';
-            const no=document.createElement('button'); no.className='btn btn-secondary btn-small'; no.textContent='Cancelar';
-            row.appendChild(ok); row.appendChild(no); card.appendChild(row); wrap.appendChild(card); cont.appendChild(wrap);
-            cont.scrollTop=cont.scrollHeight; try{ refreshIcons(); }catch(e){}
-            let done=false;
-            ok.addEventListener('click', async function(){ if(done)return; done=true; ok.disabled=true; no.disabled=true;
-                ok.innerHTML='…';
-                const r = await aiExecuteAction(pa.action);
-                if(r&&r.ok) _aiLog(r.msg);
-                chatRenderMessage('assistant', (r&&r.msg)||'Listo.');
-            });
-            no.addEventListener('click', function(){ if(done)return; done=true; ok.disabled=true; no.disabled=true; chatRenderMessage('assistant','❌ Acción cancelada.'); });
-        }
-
-        async function chatHandleActions(reply) {
-            const m = reply.match(/\[\[ACTION\]\]([\s\S]*?)\[\[\/ACTION\]\]/);
-            if (!m) return reply;
-            let cleaned = reply.replace(m[0], '').trim();
-            try {
-                const action = JSON.parse(m[1].trim());
-                if (action.type === 'map' && action.item_id) {
-                    const ok = confirmMapping(action.item_id, action.producto);
-                    if (ok) cleaned += (cleaned ? '\n\n' : '') + '✅ Mapeo guardado y venta registrada.';
-                    else cleaned += (cleaned ? '\n\n' : '') + '⚠️ No encontré ese producto. Dime el nombre exacto o créalo en la sección Productos.';
-                } else if (action.type === 'show_log') {
-                    cleaned += (cleaned ? '\n\n' : '') + aiRenderLogText();
-                } else if (AI_MUTATING.has(action.type)) {
-                    const summary = aiActionVerbo(action);
-                    if (!summary) cleaned += (cleaned ? '\n\n' : '') + '⚠️ Me falta info o no identifiqué bien sobre qué actuar. ¿Puedes darme el dato exacto (producto, cantidad, etc.)?';
-                    else { CHAT._pendingAction = { action: action, summary: summary }; if (!cleaned) cleaned = 'Antes de hacerlo, confírmame 👇'; }
-                }
-            } catch (e) { console.warn('Acción no válida:', e); }
-            return cleaned || '✅ Listo.';
-        }
 
         // ---- PASO 4: confirmar mapeo item_id -> producto y registrar la venta retenida ----
         function confirmMapping(itemId, productName) {
@@ -6897,75 +6926,188 @@
             const win = document.getElementById('chatWindow');
             win.style.display = CHAT.open ? 'flex' : 'none';
             if (CHAT.open) {
-                const msgs = document.getElementById('chatMessages');
-                if (!msgs.dataset.greeted) {
-                    chatRenderMessage('assistant', 'Hola, soy MIA 👋 Tu asistente de ventas. Pregúntame por tus ganancias, stock, márgenes o lo que necesites.');
-                    msgs.dataset.greeted = '1';
-                }
-                renderSuggestions();   // rotan en cada apertura
-                flushChatNotifications();
-                setTimeout(() => document.getElementById('chatInput').focus(), 100);
+                miaCloseHistory();
+                // briefing + sugerencias del servidor (op:'open'); luego las pendientes/notificaciones de ML (PASO 4 y 5)
+                miaOpen().finally(() => flushChatNotifications());
+                setTimeout(() => { const i = document.getElementById('chatInput'); if (i) i.focus(); }, 120);
             }
             updateChatBadge();
         }
 
-        // Pool de sugerencias (se muestran 3 al azar y rotan en cada apertura)
-        const CHAT_SUGGESTION_POOL = [
+        // Sugerencias contextuales: las propone el agente cada turno (suggestions[]).
+        // Fallback estático para arranque / errores.
+        const CHAT_SUGGESTION_FALLBACK = [
             '¿Cuánto gané esta semana?',
-            '¿Cuánto gané hoy?',
             '¿Qué producto tiene más margen?',
-            '¿Cuál es mi producto más vendido?',
             '¿Cuál es mi stock más bajo?',
-            'Resumen del mes',
-            '¿Cuánto pagué en comisiones?',
-            '¿Qué productos no se han vendido?',
-            'Dame un consejo para vender más'
+            'Resumen del mes'
         ];
-        const _chatDismissed = new Set();
 
-        function renderSuggestions() {
+        function renderSuggestions(list) {
             const sc = document.getElementById('chatSuggestions');
             if (!sc) return;
             sc.innerHTML = '';
-            const disponibles = CHAT_SUGGESTION_POOL.filter(q => !_chatDismissed.has(q));
-            const elegidas = disponibles.sort(() => Math.random() - 0.5).slice(0, 3);
-            elegidas.forEach(q => {
-                const chip = document.createElement('div');
-                chip.style.cssText = 'display:inline-flex;align-items:center;gap:6px;background:var(--bg-tertiary);border:1px solid var(--border-color);border-radius:16px;padding:6px 6px 6px 12px;font-size:11.5px;color:var(--text-secondary);';
-                const txt = document.createElement('span');
-                txt.textContent = q;
-                txt.style.cursor = 'pointer';
-                txt.onclick = () => chatSend(q);
-                const x = document.createElement('span');
-                x.textContent = '×';
-                x.title = 'Quitar sugerencia';
-                x.style.cssText = 'cursor:pointer;font-size:15px;line-height:1;color:var(--text-muted);width:17px;height:17px;display:flex;align-items:center;justify-content:center;border-radius:50%;';
-                x.onmouseover = () => { x.style.background = 'var(--bg-elevated)'; x.style.color = 'var(--text-primary)'; };
-                x.onmouseout = () => { x.style.background = 'transparent'; x.style.color = 'var(--text-muted)'; };
-                x.onclick = (e) => { e.stopPropagation(); _chatDismissed.add(q); renderSuggestions(); };
-                chip.appendChild(txt);
-                chip.appendChild(x);
+            const items = (Array.isArray(list) && list.length) ? list : CHAT_SUGGESTION_FALLBACK;
+            const chips = items.map(s => ({ label: MIA_READ.sugLabel(s), message: MIA_READ.sugMessage(s) }))
+                               .filter(s => s.label).slice(0, 5);
+            chips.forEach(s => {
+                const chip = document.createElement('button');
+                chip.type = 'button';
+                chip.className = 'mia-chip';
+                chip.textContent = s.label;
+                chip.addEventListener('click', () => { if (!CHAT.busy) chatSend(s.message || s.label); });
                 sc.appendChild(chip);
             });
-            sc.style.display = elegidas.length ? 'flex' : 'none';
+            sc.style.display = chips.length ? 'flex' : 'none';
+        }
+
+        // ---- Composer: auto-grow + estado del botón enviar/detener ----
+        function _miaAutoGrow(ta) {
+            if (!ta) return;
+            ta.style.height = 'auto';
+            ta.style.height = Math.min(ta.scrollHeight, 120) + 'px';
+        }
+        function _miaSyncSendBtn() {
+            const ta = document.getElementById('chatInput');
+            const btn = document.getElementById('chatSend');
+            if (!ta || !btn || btn.classList.contains('stop')) return;
+            btn.disabled = !ta.value.trim();
+        }
+        function _miaSetSending(sending) {
+            const btn = document.getElementById('chatSend');
+            if (!btn) return;
+            if (sending) {
+                btn.classList.add('stop'); btn.disabled = true;
+                btn.setAttribute('aria-label', 'Generando respuesta…');
+                btn.innerHTML = '<i data-lucide="loader-2" class="mia-spin"></i>';
+            } else {
+                btn.classList.remove('stop');
+                btn.setAttribute('aria-label', 'Enviar');
+                btn.innerHTML = '<i data-lucide="send-horizontal"></i>';
+                _miaSyncSendBtn();
+            }
+            try { refreshIcons(); } catch (e) {}
+        }
+
+        // ---- Panel de historial (op:'list' / op:'get' / op:'delete') ----
+        function miaOpenHistory() {
+            const panel = document.getElementById('chatHistory');
+            if (!panel) return;
+            panel.classList.add('open'); panel.setAttribute('aria-hidden', 'false');
+            miaLoadThreadList();
+            setTimeout(() => { const c = document.getElementById('chatHistClose'); if (c) c.focus(); }, 120);
+        }
+        function miaCloseHistory() {
+            const panel = document.getElementById('chatHistory');
+            if (!panel) return;
+            panel.classList.remove('open'); panel.setAttribute('aria-hidden', 'true');
+        }
+        async function miaLoadThreadList() {
+            const cont = document.getElementById('chatThreadList');
+            if (!cont) return;
+            cont.innerHTML = '<div class="mia-hist-state">Cargando conversaciones…</div>';
+            let r;
+            try { r = await MIA_API.list(); }
+            catch (e) { cont.innerHTML = '<div class="mia-hist-state">' + _miaMd(_miaErr(e)) + '</div>'; return; }
+            const threads = (r.threads || []).slice().sort((a, b) =>
+                (new Date(MIA_READ.threadTime(b) || 0)) - (new Date(MIA_READ.threadTime(a) || 0)));
+            if (!threads.length) {
+                cont.innerHTML = '<div class="mia-hist-empty">Aún no tienes conversaciones guardadas.<br>Empieza una nueva arriba ✨</div>';
+                return;
+            }
+            cont.innerHTML = '';
+            threads.forEach(t => {
+                const id = MIA_READ.threadId(t);
+                const title = MIA_READ.threadTitle(t);
+                const preview = MIA_READ.threadPreview(t);
+                const row = document.createElement('div');
+                row.className = 'mia-thread'; row.tabIndex = 0; row.setAttribute('role', 'button');
+                row.setAttribute('aria-label', 'Abrir conversación ' + title);
+                row.innerHTML =
+                    '<div class="t-title">' + _miaMd(title) + '</div>' +
+                    (preview ? '<div class="t-prev">' + _miaMd(preview) + '</div>' : '') +
+                    '<div class="t-meta">' + _miaRelTime(MIA_READ.threadTime(t)) + '</div>' +
+                    '<button class="t-del" type="button" aria-label="Eliminar conversación" title="Eliminar"><i data-lucide="trash-2"></i></button>';
+                const open = () => miaLoadThread(id);
+                row.addEventListener('click', open);
+                row.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+                row.querySelector('.t-del').addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    row.style.opacity = '.5';
+                    try { await MIA_API.del(id); row.remove(); if (CHAT.threadId === id) miaNewThread(); if (!cont.children.length) miaLoadThreadList(); }
+                    catch (err) { row.style.opacity = '1'; }
+                });
+                cont.appendChild(row);
+            });
+            try { refreshIcons(); } catch (e) {}
+        }
+        async function miaLoadThread(threadId) {
+            if (!threadId) return;
+            miaCloseHistory();
+            _miaClearMessages();
+            CHAT.threadId = threadId; CHAT.opened = true;
+            chatTyping(true);
+            try {
+                const r = await MIA_API.get(threadId);
+                chatTyping(false);
+                const msgs = (r.messages || []).filter(m => { const role = MIA_READ.msgRole(m); return role === 'user' || role === 'assistant'; });
+                if (!msgs.length) { _miaRenderEmpty(); }
+                else msgs.forEach(m => chatRenderMessage(MIA_READ.msgRole(m), MIA_READ.msgContent(m)));
+                renderSuggestions(null);
+                _miaScroll(true);
+            } catch (e) {
+                chatTyping(false);
+                chatRenderMessage('assistant', _miaErr(e));
+            }
+        }
+        // Nueva conversación: descarta el hilo activo y dispara un briefing fresco.
+        function miaNewThread() {
+            miaCloseHistory();
+            CHAT.threadId = null; CHAT.opened = false; CHAT.lastUserMessage = '';
+            miaOpen(true);
+        }
+        function _miaRelTime(ts) {
+            if (!ts) return '';
+            const d = new Date(ts); if (isNaN(d)) return String(ts);
+            const diff = Date.now() - d.getTime(); const min = Math.floor(diff / 60000);
+            if (min < 1) return 'ahora';
+            if (min < 60) return 'hace ' + min + ' min';
+            const h = Math.floor(min / 60); if (h < 24) return 'hace ' + h + ' h';
+            const days = Math.floor(h / 24); if (days < 7) return 'hace ' + days + ' d';
+            try { return d.toLocaleDateString('es-CL', { day: '2-digit', month: 'short' }); } catch (e) { return ''; }
         }
 
         function initChat() {
-            document.getElementById('chatFab').addEventListener('click', () => chatToggle());
-            document.getElementById('chatClose').addEventListener('click', () => chatToggle(false));
-            document.getElementById('chatSend').addEventListener('click', () => chatSend());
-            document.getElementById('chatInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') chatSend(); });
-            // Botón de foto: enviar foto del producto al chat para registrar la venta
-            const _pBtn = document.getElementById('chatPhotoBtn');
-            const _pIn = document.getElementById('chatPhotoInput');
-            if (_pBtn && _pIn) {
-                _pBtn.addEventListener('click', () => _pIn.click());
-                _pIn.addEventListener('change', (e) => {
-                    const f = e.target.files && e.target.files[0];
-                    e.target.value = '';
-                    if (f) chatHandlePhoto(f);
-                });
-            }
+            const $ = (id) => document.getElementById(id);
+            $('chatFab').addEventListener('click', () => chatToggle());
+            $('chatClose').addEventListener('click', () => chatToggle(false));
+            $('chatSend').addEventListener('click', () => { if (!CHAT.busy) chatSend(); });
+
+            const input = $('chatInput');
+            input.addEventListener('input', () => { _miaAutoGrow(input); _miaSyncSendBtn(); });
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (!CHAT.busy) chatSend(); }
+            });
+
+            // Historial / nueva conversación
+            $('chatHistBtn').addEventListener('click', miaOpenHistory);
+            $('chatHistClose').addEventListener('click', miaCloseHistory);
+            $('chatNewBtn').addEventListener('click', miaNewThread);
+            $('chatNewChatBtn').addEventListener('click', miaNewThread);
+
+            // Píldora "nuevos mensajes" + scroll inteligente
+            const msgs = $('chatMessages');
+            msgs.addEventListener('scroll', () => { CHAT._stick = _miaIsNearBottom(); if (CHAT._stick) _miaNewPill(false); });
+            $('chatNewPill').addEventListener('click', () => { CHAT._stick = true; _miaScroll(true); });
+
+            // Cerrar con Escape (panel → ventana)
+            document.addEventListener('keydown', (e) => {
+                if (e.key !== 'Escape' || !CHAT.open) return;
+                const panel = $('chatHistory');
+                if (panel && panel.classList.contains('open')) miaCloseHistory();
+                else chatToggle(false);
+            });
+
             updateChatBadge();
         }
 
