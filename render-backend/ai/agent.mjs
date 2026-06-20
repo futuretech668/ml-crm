@@ -95,7 +95,7 @@ async function defaultMakeAgent(systemPrompt, tools) {
   const { createAgent } = await import('langchain');
   const { ChatOpenAI } = await import('@langchain/openai');
   const model = new ChatOpenAI({
-    model: process.env.AI_MODEL || 'qwen/qwen-max',
+    model: process.env.AI_MODEL || 'qwen/qwen-plus',
     apiKey: process.env.OPENROUTER_API_KEY,
     temperature: 0.2,
     configuration: {
@@ -136,6 +136,20 @@ function bearer(event) {
   const a = h.authorization || h.Authorization || '';
   const m = String(a).match(/^Bearer\s+(.+)$/i);
   return m ? m[1].trim() : '';
+}
+// Extrae status + mensaje de un error lanzado por el SDK de OpenAI/LangChain al
+// llamar a OpenRouter. Sin esto, un 404/403/429 del proveedor quedaba escondido
+// tras un genérico "server" y era imposible diagnosticar (p. ej. el clásico
+// "No endpoints found for <modelo>" cuando el slug no tiene proveedor disponible).
+function upstreamInfo(e) {
+  const status = (e && (e.status || e.statusCode || (e.response && e.response.status))) || null;
+  let detail = '';
+  try {
+    const raw = (e && (e.error || (e.response && e.response.data))) || null;
+    if (raw) detail = (raw.error && raw.error.message) ? String(raw.error.message) : JSON.stringify(raw);
+    else detail = (e && e.message) ? String(e.message) : '';
+  } catch (_) { detail = (e && e.message) ? String(e.message) : ''; }
+  return { status, detail: detail.slice(0, 300) };
 }
 function contentToString(content) {
   if (typeof content === 'string') return content;
@@ -220,7 +234,18 @@ export async function handle(event) {
     if (op === 'open') return await opOpen({ svc, gtoken, uid, email, state, aiDoc });
     return await opSend({ svc, gtoken, uid, email, statePath, state, aiDoc, body, idToken });
   } catch (e) {
-    console.error('ai-agent op ' + op + ':', e && e.message ? e.message : e);
+    const u = upstreamInfo(e);
+    console.error('ai-agent op ' + op + ':', u.status ? ('upstream ' + u.status) : '', u.detail || (e && e.message) || e);
+    // Errores del proveedor de IA (OpenRouter) traducidos a algo accionable en vez del genérico "server".
+    if (u.status === 404 || /no endpoints? found/i.test(u.detail)) {
+      return fail(502, 'model_unavailable', 'El modelo de IA no está disponible ahora mismo. Avísale al equipo (revisa AI_MODEL).');
+    }
+    if (u.status === 401 || u.status === 403) {
+      return fail(502, 'upstream_auth', 'Hay un problema de configuración con el proveedor de IA.');
+    }
+    if (u.status === 429) {
+      return fail(429, 'upstream_rate', 'El proveedor de IA está saturado. Intenta en un momento.');
+    }
     return fail(500, 'server', 'Tuve un problema procesando eso. Intenta de nuevo.');
   }
 }

@@ -29,12 +29,16 @@ POST {API_BASE}/api/ai-agent
 
 ```json
 { "ok": false, "reason": "no_token" | "bad_token" | "bad_json" | "no_message"
-   | "rate" | "config" | "gtoken" | "load" | "server" | "method",
+   | "rate" | "config" | "gtoken" | "load" | "server" | "method"
+   | "model_unavailable" | "upstream_auth" | "upstream_rate",
   "msg": "texto amable en español (opcional)" }
 ```
 
 Códigos: `401` (sin token / token inválido), `400` (json/mensaje), `429`
-(rate-limit), `500` (config/servidor). Nunca devuelve stack traces.
+(rate-limit propio o del proveedor de IA → `upstream_rate`), `500`
+(config/servidor), `502` (error del proveedor de IA: `model_unavailable` cuando
+OpenRouter no tiene endpoints para el modelo configurado, `upstream_auth` cuando
+la key del proveedor falla). Nunca devuelve stack traces.
 
 ---
 
