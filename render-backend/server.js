@@ -121,3 +121,6 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => console.log('NexSell backend escuchando en el puerto ' + PORT));
+
+// Exportación aditiva: permite a las pruebas e2e arrancar y cerrar el servidor.
+module.exports = server;

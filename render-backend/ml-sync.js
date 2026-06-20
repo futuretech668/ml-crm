@@ -188,6 +188,29 @@ function makeMlClient(tk, clientId, clientSecret) {
       throw new Error('ML ' + res.status + ': ' + (await res.text()).slice(0, 160));
     }
   }
+  // Petición genérica (GET/POST/PUT/DELETE) con la MISMA gestión de token y
+  // backoff que `get`. La usa el copiloto MIA para las escrituras de ML
+  // (answers / items / messages). Aditivo: no cambia el comportamiento del cron.
+  async function request(method, endpoint, body, opts) {
+    opts = opts || {};
+    await ensureFresh();
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const init = { method, headers: Object.assign({ Authorization: 'Bearer ' + access, 'Content-Type': 'application/json', Accept: 'application/json' }, opts.headers || {}) };
+      if (body !== undefined && body !== null) init.body = JSON.stringify(body);
+      let res;
+      try {
+        res = await fetch(ML_API + endpoint, init);
+      } catch (e) {
+        if (attempt === 3) throw e;
+        await sleep(1000 * 2 ** attempt); continue;
+      }
+      if (res.ok) { const t = await res.text(); return t ? JSON.parse(t) : {}; }
+      if (res.status === 404 && opts.allow404) return null;
+      if (res.status === 401 && attempt < 3) { await doRefresh(); continue; }
+      if ((res.status === 429 || res.status >= 500) && attempt < 3) { await sleep(1000 * 2 ** attempt); continue; }
+      throw new Error('ML ' + res.status + ': ' + (await res.text()).slice(0, 160));
+    }
+  }
   async function fetchOrders(status, fromISO) {
     const out = []; const limit = 50; let offset = 0;
     const fromParam = fromISO ? '&order.date_created.from=' + encodeURIComponent(fromISO) : '';
@@ -203,7 +226,7 @@ function makeMlClient(tk, clientId, clientSecret) {
     }
     return out;
   }
-  return { get, fetchOrders, state: () => ({ access, refresh, expiresAt, userId, refreshed }) };
+  return { get, request, fetchOrders, state: () => ({ access, refresh, expiresAt, userId, refreshed }) };
 }
 
 async function getShip(ml, shippingId) {
@@ -410,6 +433,10 @@ async function syncOneUser(svc, gtoken, uid, tk, email, clientId, clientSecret) 
 
   return { nuevas, pendientes, restantes };
 }
+
+// Reutilizable por el copiloto MIA (render-backend/ai/ml.mjs) para refrescar
+// tokens y llamar a la API de ML por usuario. Exportación aditiva.
+exports.makeMlClient = makeMlClient;
 
 exports.handler = async () => {
   let svc;

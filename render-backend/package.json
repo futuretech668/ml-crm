@@ -9,6 +9,13 @@
   "scripts": {
     "start": "node server.js",
     "sync": "node run-sync.js",
-    "emails": "node run-emails.js"
+    "emails": "node run-emails.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@langchain/core": "^1.2.0",
+    "@langchain/openai": "^1.5.1",
+    "langchain": "^1.5.0",
+    "zod": "^3.25.76"
   }
 }
