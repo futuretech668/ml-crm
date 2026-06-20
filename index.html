@@ -6271,6 +6271,8 @@
                 if (!res.ok) {
                     const t = await res.text().catch(() => '');
                     const e = new Error('HTTP ' + res.status); e.code = 'HTTP'; e.status = res.status; e.detail = t.slice(0, 300);
+                    // El contrato devuelve { ok:false, reason, msg } — propaga el mensaje amable del servidor.
+                    try { const b = JSON.parse(t); e.reason = b && b.reason; e.serverMsg = b && b.msg; } catch (_) {}
                     throw e;
                 }
                 return this._normalize(await res.json().catch(() => ({})));
@@ -6299,12 +6301,51 @@
         };
 
         // Lectores tolerantes para items con forma parcialmente desconocida (un solo lugar a ajustar).
+        const _miaMoney = (n) => { try { return formatCurrency(Number(n) || 0); } catch (e) { return '$' + (Number(n) || 0); } };
         const MIA_READ = {
-            didText(it)     { return (it && (it.summary || it.text || it.label || it.message)) || (typeof it === 'string' ? it : 'Acción realizada'); },
-            propToken(it)   { return it && (it.confirmToken || it.token || it.confirm_token) || null; },
-            propTitle(it)   { return (it && (it.title || it.label || it.tool)) || 'Acción propuesta'; },
-            propPreview(it) { return (it && (it.preview || it.summary || it.text || it.message || it.body)) || 'MIA quiere realizar una acción hacia afuera (Mercado Libre).'; },
-            propResend(it)  { return (it && (it.resendMessage || it.message)) || CHAT.lastUserMessage || 'Confirmo'; },
+            // did[] (CONTRACT): { action, ... } — un recibo amable por acción ejecutada.
+            didText(it) {
+                if (typeof it === 'string') return it;
+                if (it && (it.summary || it.text)) return it.summary || it.text;
+                const a = it && it.action;
+                switch (a) {
+                    case 'add_sale':    return 'Venta registrada: ' + (it.productName || 'producto') + ' ×' + (it.quantity || 1) + ' — ' + _miaMoney(it.totalPrice) + (it.profit != null ? (' · ganancia ' + _miaMoney(it.profit)) : '');
+                    case 'delete_sale': return 'Venta eliminada' + (it.productName ? ': ' + it.productName : '');
+                    case 'add_product': return 'Producto creado' + (it.name ? ': ' + it.name : '');
+                    case 'edit_product':return 'Producto actualizado' + (it.name ? ': ' + it.name : '');
+                    case 'task_add':    return 'Tarea agregada' + (it.titulo ? ': ' + it.titulo : '');
+                    case 'task_complete': return 'Tarea completada';
+                    case 'task_delete': return 'Tarea eliminada';
+                    case 'save_memory': return 'Guardé una nota en mi memoria';
+                    case 'send_report': return 'Reporte enviado por correo' + (it.period ? ' (' + it.period + ')' : '');
+                    case 'ml_answer_question': return 'Respondí la pregunta en Mercado Libre';
+                    case 'ml_update_listing':  return 'Publicación actualizada en Mercado Libre';
+                    case 'ml_send_message':    return 'Mensaje enviado al comprador';
+                    default: return 'Acción realizada';
+                }
+            },
+            // proposed[] (CONTRACT): { token, tipo, ... } — confirm-gate de acciones de ML.
+            propToken(it)   { return it && (it.token || it.confirmToken || it.confirm_token) || null; },
+            propTitle(it) {
+                const m = { ml_answer_question: 'Responder pregunta en Mercado Libre',
+                            ml_update_listing:  'Actualizar publicación en Mercado Libre',
+                            ml_send_message:    'Enviar mensaje al comprador' };
+                return (it && (m[it.tipo] || it.title || it.label || it.tool)) || 'Acción propuesta';
+            },
+            propPreview(it) {
+                if (!it) return 'MIA quiere realizar una acción hacia afuera (Mercado Libre).';
+                if (it.preview || it.summary) return it.preview || it.summary;
+                if (it.tipo === 'ml_update_listing' && it.cambios) {
+                    const c = it.cambios, parts = [];
+                    if (c.price != null) parts.push('precio → ' + _miaMoney(c.price));
+                    if (c.available_quantity != null) parts.push('stock → ' + c.available_quantity);
+                    if (c.status != null) parts.push('estado → ' + (c.status === 'paused' ? 'pausada' : c.status === 'active' ? 'activa' : c.status));
+                    return 'Publicación ' + (it.itemId || '') + (parts.length ? ': ' + parts.join(', ') : '');
+                }
+                return it.text || it.message || it.body || 'MIA quiere realizar una acción hacia afuera (Mercado Libre).';
+            },
+            // Confirmar = un turno posterior con "confirmo" + el mismo confirmToken (NO el mensaje original, que re-propondría).
+            propResend(it)  { return 'Confirmo'; },
             sugLabel(s)     { return (typeof s === 'string') ? s : (s && (s.label || s.text || s.title)) || ''; },
             sugMessage(s)   { return (typeof s === 'string') ? s : (s && (s.message || s.send || s.label || s.text)) || ''; },
             // threadIndex item (op:'list') — plan shape {id,title,createdAt,updatedAt,preview}
@@ -6472,6 +6513,7 @@
         function _miaErr(e) {
             if (e && e.code === 'AUTH') return '⚠️ Necesitas haber iniciado sesión para hablar con MIA. Vuelve a entrar e intenta de nuevo.';
             if (e && e.code === 'NET')  return '⚠️ No pude conectar con el servidor. Revisa tu conexión y vuelve a intentarlo.';
+            if (e && e.serverMsg) return '⚠️ ' + e.serverMsg;   // mensaje amable del servidor (CONTRACT)
             if (e && e.code === 'HTTP' && e.status === 429) return '⚠️ Vas muy rápido 😅 Espera unos segundos y vuelve a preguntarme.';
             if (e && e.code === 'HTTP' && e.status === 401) return '⚠️ Tu sesión expiró. Vuelve a iniciar sesión para seguir conversando.';
             return '⚠️ Tuve un problema para responder. Intenta de nuevo en un momento.';
