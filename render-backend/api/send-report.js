@@ -14,8 +14,6 @@
 
 const core = require('./lib/_core.js');
 
-const FROM_NAME = process.env.EMAIL_FROM_NAME || 'NexSell';
-
 function cors() {
   return {
     'Access-Control-Allow-Origin': '*',
@@ -93,8 +91,9 @@ exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 200, headers: cors(), body: '' };
   if (event.httpMethod !== 'POST') return reply(405, { ok: false, reason: 'method' });
 
-  const GMAIL_USER = process.env.GMAIL_USER, GMAIL_PASS = process.env.GMAIL_APP_PASSWORD;
-  if (!GMAIL_USER || !GMAIL_PASS) return reply(500, { ok: false, reason: 'config', msg: 'Falta configurar el correo en el servidor.' });
+  // Correos apagados a propósito: respuesta clara, NO un error de servidor.
+  if ((process.env.EMAIL_ENABLED || 'true') === 'false') return reply(200, { ok: false, reason: 'disabled', msg: 'El envío de correos está desactivado por el administrador.' });
+  if (!process.env.RESEND_API_KEY) return reply(500, { ok: false, reason: 'config', msg: 'Falta configurar el correo en el servidor.' });
 
   // Token del usuario (Authorization: Bearer <idToken>)
   const h = event.headers || {};
@@ -148,7 +147,7 @@ exports.handler = async (event) => {
     const html = buildReportHtml(period, range, enRango);
     const subject = 'NexSell — ' + (period === 'daily' ? 'Reporte de hoy' : (period === 'monthly' ? 'Reporte del mes' : 'Reporte de la semana'));
 
-    const sent = await core.gmailSmtpSend(GMAIL_USER, GMAIL_PASS, FROM_NAME, to, subject, html);
+    const sent = await core.sendEmail(to, subject, html);
     if (!sent) return reply(502, { ok: false, reason: 'send', msg: 'No se pudo enviar el correo.' });
 
     // Enmascarar el correo para no exponerlo entero en la respuesta.

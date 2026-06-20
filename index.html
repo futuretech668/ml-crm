@@ -152,40 +152,21 @@
             <div class="auth-links"><span>¿Ya tienes cuenta? <a data-go="login">Iniciar sesión</a></span></div>
           </div>
 
-          <!-- VERIFICAR CORREO (post-registro, antes de crear la cuenta) -->
+          <!-- VERIFICAR CORREO (post-registro) — enlace de Firebase -->
           <div class="auth-panel" id="panel-verify">
             <h2 class="auth-h">Verifica tu correo</h2>
-            <p class="auth-sub">Te enviamos un código de 6 dígitos a tu correo. Escríbelo aquí para activar tu cuenta.</p>
-            <div class="auth-field"><label>Código de 6 dígitos</label><input id="vf-code" type="text" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="______"></div>
-            <button class="auth-btn" id="vf-btn">Verificar y crear cuenta</button>
-            <div class="auth-links"><a id="vf-resend">Reenviar código</a><a data-go="register">Cambiar correo</a></div>
+            <p class="auth-sub">Te enviamos un enlace de verificación a tu correo. Ábrelo para activar tu cuenta y luego entra aquí.</p>
+            <button class="auth-btn" id="vf-btn">Ya verifiqué — entrar</button>
+            <div class="auth-links"><a id="vf-resend">Reenviar enlace</a><a data-go="login">Volver a iniciar sesión</a></div>
           </div>
 
-          <!-- CÓDIGO DE RECUPERACIÓN (post-registro) -->
-          <div class="auth-panel" id="panel-code">
-            <h2 class="auth-h">Guarda tu código de recuperación</h2>
-            <p class="auth-sub">Lo necesitarás si olvidas tu contraseña. Anótalo en un lugar seguro — no se vuelve a mostrar.</p>
-            <div class="auth-code" id="rg-code">--------</div>
-            <button class="auth-btn" id="code-btn">Entendido, entrar</button>
-          </div>
-
-          <!-- RECUPERAR — paso 1: pedir código por correo -->
+          <!-- RECUPERAR — enlace de Firebase -->
           <div class="auth-panel" id="panel-recover">
             <h2 class="auth-h">Recuperar contraseña</h2>
-            <p class="auth-sub">Ingresa tu correo y te enviaremos un código para crear una contraseña nueva.</p>
+            <p class="auth-sub">Ingresa tu correo y te enviaremos un enlace para crear una contraseña nueva.</p>
             <div class="auth-field"><label>Correo</label><input id="rc-email" type="email" placeholder="tucorreo@ejemplo.com"></div>
-            <button class="auth-btn" id="rc-btn">Enviarme un código</button>
+            <button class="auth-btn" id="rc-btn">Enviarme el enlace</button>
             <div class="auth-links"><a data-go="login">Volver a iniciar sesión</a></div>
-          </div>
-
-          <!-- RECUPERAR — paso 2: código + nueva contraseña -->
-          <div class="auth-panel" id="panel-recover2">
-            <h2 class="auth-h">Crea tu nueva contraseña</h2>
-            <p class="auth-sub">Escribe el código de 6 dígitos que te llegó al correo y tu nueva contraseña.</p>
-            <div class="auth-field"><label>Código de 6 dígitos</label><input id="rc2-code" type="text" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="______"></div>
-            <div class="auth-field"><label>Nueva contraseña (mínimo 6)</label><input id="rc2-pass" type="password" autocomplete="new-password" placeholder="••••••••"></div>
-            <button class="auth-btn" id="rc2-btn">Cambiar contraseña</button>
-            <div class="auth-links"><a id="rc2-resend">Reenviar código</a><a data-go="recover">Cambiar correo</a></div>
           </div>
         </div>`;
       }
@@ -198,163 +179,127 @@
       function err(m){ const e=document.getElementById('authErr'); if(e){ e.textContent=m; e.style.display=m?'block':'none'; } }
       function ok(m){ const e=document.getElementById('authOk'); if(e){ e.textContent=m; e.style.display=m?'block':'none'; } }
 
+      // La cuenta DUEÑA usa el doc histórico crm/state; las demás usan crm_users/{uid}.
+      // Quién es dueño lo decide un CUSTOM CLAIM (owner=true) firmado por el backend
+      // dentro del token de Firebase — nunca un correo escrito aquí. El cliente solo lo
+      // LEE; la seguridad real la imponen las reglas de Firestore (request.auth.token.owner).
+      // Traduce los códigos de error de Firebase Auth a mensajes claros en español.
+      function fbAuthMsg(code){
+        switch(code){
+          case 'auth/invalid-email': return 'Correo no válido.';
+          case 'auth/email-already-in-use': return 'Ya existe una cuenta con ese correo. Inicia sesión.';
+          case 'auth/weak-password': return 'La contraseña debe tener al menos 6 caracteres.';
+          case 'auth/user-not-found': return 'No existe una cuenta con ese correo.';
+          case 'auth/wrong-password':
+          case 'auth/invalid-credential': return 'Correo o contraseña incorrectos.';
+          case 'auth/too-many-requests': return 'Demasiados intentos. Espera unos minutos e inténtalo de nuevo.';
+          case 'auth/network-request-failed': return 'Sin conexión. Revisa tu internet e inténtalo de nuevo.';
+          default: return 'No se pudo completar la operación. Inténtalo de nuevo.';
+        }
+      }
+      // Marca la sesión local (igual que antes) y entra a la app. `isOwner` viene del
+      // custom claim del token (no de un correo). Aunque se manipule ml_auth_owner en el
+      // navegador, Firestore rechaza crm/state sin el claim real → no da acceso.
+      function enterApp(email, uid, isOwner){
+        // Sin uid válido NO marcamos sesión: guardar 'null'/undefined dejaría una
+        // sesión rota (start() lo trataría como válido y Firestore negaría todo).
+        if(!uid){ err('No se pudo completar el inicio de sesión. Inténtalo de nuevo.'); return; }
+        const all=users(); all[email]={ uid, email }; saveUsers(all);
+        if(isOwner) _set('ml_auth_owner', uid); else _rem('ml_auth_owner');
+        _set('ml_auth_uid', uid); location.reload();
+      }
+
       function wire(){
         const gate=document.getElementById('authGate');
         gate.querySelectorAll('[data-go]').forEach(a=>a.addEventListener('click',()=>show(a.getAttribute('data-go'))));
 
-        // LOGIN
+        // LOGIN (Firebase Authentication)
         const doLogin=async()=>{
+          if(!(window.__AUTHFB && window.__AUTHFB.ready)) return err('La autenticación no está disponible ahora. Recarga la página.');
           const btn=document.getElementById('li-btn');
           const email=norm(document.getElementById('li-email').value);
           const pass=document.getElementById('li-pass').value;
           if(!validEmail(email)) return err('Correo no válido.');
-          // Login validado en el BACKEND: el navegador nunca ve correos/hashes ajenos.
           err(''); if(btn){ btn.disabled=true; btn.textContent='Entrando…'; }
-          let resp; try { resp = await apiPost('auth-token', { email, password: pass }); } catch(e){ resp = { ok:false, reason:'neterror' }; }
+          let user;
+          try { user = await window.__AUTHFB.login(email, pass); }
+          catch(e){ if(btn){ btn.disabled=false; btn.textContent='Entrar'; } return err(fbAuthMsg(e && e.code)); }
           if(btn){ btn.disabled=false; btn.textContent='Entrar'; }
-          if(!(resp && resp.ok && resp.uid && resp.token)){
-            const reason = resp ? resp.reason : 'neterror';
-            if(reason==='nouser') return err('No existe una cuenta con ese correo.');
-            if(reason==='badpass') return err('Contraseña incorrecta.');
-            if(reason==='rate') return err('Demasiados intentos. Espera unos minutos e inténtalo de nuevo.');
-            return err('No se pudo iniciar sesión ahora. Revisa tu conexión e inténtalo de nuevo.');
+          if(!user.emailVerified){
+            // Correo aún sin verificar: reenvía el enlace y muestra el paso de verificación.
+            _pendingReg = { email };
+            try { await window.__AUTHFB.resendVerification(); }catch(e){}
+            show('verify');
+            return ok('Tu correo aún no está verificado. Te reenviamos el enlace a '+email+'. Ábrelo y vuelve a entrar.');
           }
-          try{ await window.__fbAuthSignIn(resp.token); }catch(e){} // pase de seguridad
-          const all=users(); all[email]={ uid:resp.uid, email }; saveUsers(all);
-          if(resp.isOwner) _set('ml_auth_owner', resp.uid); else _rem('ml_auth_owner'); // dueño lo decide el backend
-          _set('ml_auth_uid', resp.uid); location.reload();
+          const claims = await window.__AUTHFB.claims();
+          enterApp(email, user.uid, claims.owner === true);
         };
         document.getElementById('li-btn').addEventListener('click',doLogin);
         document.getElementById('li-pass').addEventListener('keypress',e=>{if(e.key==='Enter')doLogin();});
 
-        // REGISTRO — paso 1: validar y enviar el código de verificación al correo.
-        async function startVerification(email, btn){
-          err('');
-          if(btn){ btn.disabled=true; btn.textContent='Enviando código…'; }
-          let resp;
-          try { resp = await apiPost('email-verify-start', { email }); }
-          catch(e){ resp = { ok:false, reason:'neterror' }; }
-          if(btn){ btn.disabled=false; btn.textContent='Crear cuenta'; }
-          if(resp && resp.ok) return true;
-          const reason = resp ? resp.reason : 'neterror';
-          if(reason==='domain') err('Ese correo no existe o su dominio no recibe correos. Revísalo bien.');
-          else if(reason==='format') err('Correo no válido.');
-          else err('No se pudo verificar el correo ahora. Revisa tu conexión e inténtalo de nuevo.');
-          return false;
-        }
-
+        // REGISTRO (Firebase Authentication): crea la cuenta y envía el enlace de verificación.
         document.getElementById('rg-btn').addEventListener('click',async()=>{
+          if(!(window.__AUTHFB && window.__AUTHFB.ready)) return err('La autenticación no está disponible ahora. Recarga la página.');
           const email=norm(document.getElementById('rg-email').value);
           const p1=document.getElementById('rg-pass').value, p2=document.getElementById('rg-pass2').value;
+          const honey=((document.getElementById('rg-website')||{}).value || '').trim();
+          if(honey) return; // honeypot anti-bot: el campo oculto debe ir vacío
           if(!validEmail(email)) return err('Correo no válido.');
           if(p1.length<6) return err('La contraseña debe tener al menos 6 caracteres.');
           if(p1!==p2) return err('Las contraseñas no coinciden.');
-          if(users()[email]) return err('Ya existe una cuenta con ese correo.');
-          // Guardar los datos pendientes y mandar el código (la cuenta se crea en el backend al verificar).
-          _pendingReg = { email, p1, website: ((document.getElementById('rg-website')||{}).value || '') };
-          if(await startVerification(email, document.getElementById('rg-btn'))){
-            const vc=document.getElementById('vf-code'); if(vc) vc.value='';
-            show('verify');
-            ok('Te enviamos un código a '+email+'. Revisa tu correo (y la carpeta de Spam).');
-          }
+          const btn=document.getElementById('rg-btn');
+          err(''); btn.disabled=true; btn.textContent='Creando cuenta…';
+          let user;
+          try { user = await window.__AUTHFB.signup(email, p1); }
+          catch(e){ btn.disabled=false; btn.textContent='Crear cuenta'; return err(fbAuthMsg(e && e.code)); }
+          btn.disabled=false; btn.textContent='Crear cuenta';
+          _pendingReg = { email };
+          show('verify');
+          ok('Te enviamos un enlace de verificación a '+email+'. Ábrelo (revisa también Spam) y luego entra.');
         });
 
-        // REGISTRO — paso 2: el backend valida el código, crea la cuenta y devuelve el pase.
+        // VERIFICAR — "ya verifiqué, entrar": recarga el estado y entra si el correo ya está verificado.
         document.getElementById('vf-btn').addEventListener('click',async()=>{
-          if(!_pendingReg) return show('register');
-          const code=String(document.getElementById('vf-code').value||'').trim();
-          if(!/^\d{6}$/.test(code)) return err('Escribe el código de 6 dígitos que te llegó al correo.');
+          const email=_pendingReg && _pendingReg.email;
+          if(!email) return show('login');
           const btn=document.getElementById('vf-btn');
-          err(''); btn.disabled=true; btn.textContent='Verificando…';
-          let resp;
-          try { resp = await apiPost('auth-register', { email:_pendingReg.email, password:_pendingReg.p1, code, website:_pendingReg.website }); }
-          catch(e){ resp = { ok:false, reason:'neterror' }; }
-          btn.disabled=false; btn.textContent='Verificar y crear cuenta';
-          if(resp && resp.ok && resp.uid && resp.token){
-            const email=_pendingReg.email;
-            const all=users(); all[email]={ uid:resp.uid, email }; saveUsers(all);
-            if(resp.isOwner) _set('ml_auth_owner', resp.uid); else _rem('ml_auth_owner'); // dueño lo decide el backend
-            _pendingUid=resp.uid; _pendingToken=resp.token;
-            document.getElementById('rg-code').textContent=resp.recovery||'(sin código)';
-            _pendingReg=null; show('code'); return;
-          }
-          const reason = resp ? resp.reason : 'neterror';
-          if(reason==='exists') err('Ya existe una cuenta con ese correo. Inicia sesión.');
-          else if(reason==='rate') err('Demasiados intentos desde tu conexión. Espera unos minutos e inténtalo de nuevo.');
-          else if(reason==='wrong') err('Código incorrecto. Revísalo e inténtalo de nuevo.');
-          else if(reason==='expired'||reason==='nocode') err('El código venció o no existe. Pide uno nuevo con "Reenviar código".');
-          else if(reason==='attempts') err('Demasiados intentos. Pide un código nuevo con "Reenviar código".');
-          else err('No se pudo crear la cuenta ahora. Inténtalo de nuevo.');
+          err(''); btn.disabled=true; btn.textContent='Comprobando…';
+          let verified=false;
+          try { verified = await window.__AUTHFB.refreshVerified(); }catch(e){}
+          btn.disabled=false; btn.textContent='Ya verifiqué — entrar';
+          if(verified){ const uid=window.__AUTHFB.uid(); const claims=await window.__AUTHFB.claims(); _pendingReg=null; return enterApp(email, uid, claims.owner === true); }
+          err('Tu correo aún no aparece como verificado. Abre el enlace que te enviamos y vuelve a intentar.');
         });
 
+        // VERIFICAR — reenviar el enlace.
         document.getElementById('vf-resend').addEventListener('click',async()=>{
-          if(!_pendingReg) return show('register');
-          if(await startVerification(_pendingReg.email, null)) ok('Te reenviamos un código nuevo a '+_pendingReg.email+'.');
+          err('');
+          let okSent=false; try { okSent = await window.__AUTHFB.resendVerification(); }catch(e){}
+          if(okSent) ok('Te reenviamos el enlace de verificación'+(_pendingReg&&_pendingReg.email?(' a '+_pendingReg.email):'')+'.');
+          else err('Inicia sesión de nuevo para reenviar el enlace.');
         });
 
-        // CÓDIGO -> entrar
-        document.getElementById('code-btn').addEventListener('click',async()=>{ if(_pendingToken){ try{ await window.__fbAuthSignIn(_pendingToken); }catch(e){} } _set('ml_auth_uid', _pendingUid); location.reload(); });
-
-        // RECUPERAR — paso 1: verificar que la cuenta existe y enviar el código por correo.
+        // RECUPERAR (Firebase Authentication): envía el enlace para crear una nueva contraseña.
         document.getElementById('rc-btn').addEventListener('click',async()=>{
+          if(!(window.__AUTHFB && window.__AUTHFB.ready)) return err('La autenticación no está disponible ahora. Recarga la página.');
           const email=norm(document.getElementById('rc-email').value);
           if(!validEmail(email)) return err('Correo no válido.');
-          _pendingRecover={ email };
           const btn=document.getElementById('rc-btn');
-          err(''); btn.disabled=true; btn.textContent='Enviando código…';
-          let resp; try { resp=await apiPost('email-verify-start',{ email }); } catch(e){ resp={ok:false,reason:'neterror'}; }
-          btn.disabled=false; btn.textContent='Enviarme un código';
-          if(resp && resp.ok){
-            const c=document.getElementById('rc2-code'); if(c) c.value='';
-            const p=document.getElementById('rc2-pass'); if(p) p.value='';
-            show('recover2');
-            ok('Te enviamos un código a '+email+'. Revisa tu correo (y la carpeta de Spam).');
-          } else err('No se pudo enviar el código ahora. Intenta de nuevo en un momento.');
-        });
-
-        // RECUPERAR — paso 2: verificar el código y cambiar la contraseña.
-        document.getElementById('rc2-btn').addEventListener('click',async()=>{
-          if(!_pendingRecover) return show('recover');
-          const code=String(document.getElementById('rc2-code').value||'').trim();
-          const np=document.getElementById('rc2-pass').value;
-          if(!/^\d{6}$/.test(code)) return err('Escribe el código de 6 dígitos que te llegó al correo.');
-          if(np.length<6) return err('La nueva contraseña debe tener al menos 6 caracteres.');
-          const btn=document.getElementById('rc2-btn');
-          err(''); btn.disabled=true; btn.textContent='Verificando…';
-          let resp; try { resp=await apiPost('auth-recover',{ email:_pendingRecover.email, code, newPassword:np }); } catch(e){ resp={ok:false,reason:'neterror'}; }
-          btn.disabled=false; btn.textContent='Cambiar contraseña';
-          if(resp && resp.ok){ _pendingRecover=null; show('login'); ok('¡Contraseña actualizada! Ya puedes iniciar sesión.'); return; }
-          const reason=resp?resp.reason:'neterror';
-          if(reason==='wrong') return err('Código incorrecto. Revísalo e inténtalo de nuevo.');
-          if(reason==='expired'||reason==='nocode') return err('El código venció o no existe. Pide uno nuevo con "Reenviar código".');
-          if(reason==='attempts') return err('Demasiados intentos. Pide un código nuevo.');
-          if(reason==='nouser') return err('No existe una cuenta con ese correo.');
-          return err('No se pudo cambiar la contraseña ahora. Inténtalo de nuevo.');
-        });
-
-        // RECUPERAR — reenviar código.
-        document.getElementById('rc2-resend').addEventListener('click',async()=>{
-          if(!_pendingRecover) return show('recover');
-          err('');
-          let resp; try { resp=await apiPost('email-verify-start',{ email:_pendingRecover.email }); } catch(e){ resp={ok:false,reason:'neterror'}; }
-          if(resp && resp.ok) ok('Te reenviamos un código a '+_pendingRecover.email+'.'); else err('No se pudo reenviar el código.');
+          err(''); btn.disabled=true; btn.textContent='Enviando enlace…';
+          try { await window.__AUTHFB.resetPassword(email); }
+          catch(e){
+            btn.disabled=false; btn.textContent='Enviarme el enlace';
+            // No revelamos si el correo existe (anti-enumeración); solo errores de formato/red.
+            if(e && e.code==='auth/invalid-email') return err('Correo no válido.');
+            if(e && e.code==='auth/network-request-failed') return err('Sin conexión. Inténtalo de nuevo.');
+          }
+          btn.disabled=false; btn.textContent='Enviarme el enlace';
+          show('login');
+          ok('Si existe una cuenta con ese correo, te enviamos un enlace para cambiar la contraseña. Revisa tu correo (y Spam).');
         });
       }
-      let _pendingUid=null, _pendingToken=null;
-      let _pendingReg=null;
-      let _pendingRecover=null;
-      // Llama a la API del backend (POST JSON) y devuelve el JSON de respuesta.
-      async function apiPost(path, body){
-        try {
-          const r = await fetch(window.API_BASE+'/api/'+path, {
-            method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body||{}),
-            signal: (window.AbortSignal && AbortSignal.timeout) ? AbortSignal.timeout(15000) : undefined
-          });
-          return r.json().catch(()=>({ ok:false, reason:'neterror' }));
-        } catch(e){
-          return { ok:false, reason: (e && e.name === 'TimeoutError') ? 'timeout' : 'neterror' };
-        }
-      }
+      let _pendingReg=null;   // correo pendiente de verificar tras el registro/login
 
       // Inyecta chip de cuenta + cerrar sesión en la barra lateral (aditivo)
       function injectAccountChip(){
@@ -406,7 +351,9 @@
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
         import { getFirestore, doc, getDoc, setDoc, deleteDoc, onSnapshot, runTransaction, serverTimestamp }
             from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-        import { getAuth, signInWithCustomToken, onAuthStateChanged, signOut }
+        import { getAuth, onAuthStateChanged, signOut,
+                 createUserWithEmailAndPassword, signInWithEmailAndPassword,
+                 sendEmailVerification, sendPasswordResetEmail }
             from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 
         // 👇👇👇 PEGA AQUÍ TU CONFIGURACIÓN DE FIREBASE 👇👇👇
@@ -421,6 +368,7 @@
         // 👆👆👆 PEGA AQUÍ TU CONFIGURACIÓN DE FIREBASE 👆👆👆
 
         window.FB = { ready: false };
+        window.__AUTHFB = { ready: false };
 
         const isConfigured = firebaseConfig.apiKey && !firebaseConfig.apiKey.startsWith('PEGA_');
         if (isConfigured) {
@@ -429,19 +377,51 @@
                 const db = getFirestore(app);
                 const auth = getAuth(app);
 
-                // ===== Pase de seguridad (Firebase Auth) =====
-                // Con el login propio (email+contraseña) le pedimos al backend un "custom token"
-                // y entramos a Firebase Auth. Así request.auth.uid queda disponible y las reglas de
-                // Firestore pueden aislar los datos por usuario. BEST-EFFORT: si algo falla, NO rompe
-                // el login (la app sigue funcionando igual que antes). La sesión de Auth se persiste,
-                // así que en las próximas cargas se restaura sola sin pedir la contraseña de nuevo.
-                window.__fbAuthSignIn = async (token) => {
-                    try { if (token) { await signInWithCustomToken(auth, token); return true; } }
-                    catch (e) { console.warn('Firebase Auth (no crítico):', e && e.message); }
-                    return false;
-                };
+                // La sesión de Firebase Auth (email+contraseña) se persiste sola, así que en
+                // las próximas cargas se restaura sin pedir la contraseña de nuevo y
+                // request.auth.uid queda disponible para las reglas de Firestore.
                 onAuthStateChanged(auth, (u) => { try { window.__fbAuthUid = u ? u.uid : null; } catch (e) {} });
                 window.__fbSignOut = function () { try { return signOut(auth); } catch (e) { return Promise.resolve(); } };
+
+                // ===== Login / registro con Firebase Authentication =====
+                // Reemplaza al login propio (auth-token / auth-register / auth-recover).
+                // Firebase guarda las credenciales y ENVÍA los correos de verificación y
+                // de recuperación (enlaces) desde su propia infra, así el alta de cuentas
+                // ya no depende de SMTP/Resend.
+                window.__AUTHFB = {
+                    ready: true,
+                    async signup(email, password) {
+                        const cred = await createUserWithEmailAndPassword(auth, email, password);
+                        try { await sendEmailVerification(cred.user); } catch (e) {}
+                        return cred.user;
+                    },
+                    async login(email, password) {
+                        const cred = await signInWithEmailAndPassword(auth, email, password);
+                        return cred.user;
+                    },
+                    async resendVerification() {
+                        if (auth.currentUser) { await sendEmailVerification(auth.currentUser); return true; }
+                        return false;
+                    },
+                    async refreshVerified() {
+                        if (!auth.currentUser) return false;
+                        await auth.currentUser.reload();
+                        return !!auth.currentUser.emailVerified;
+                    },
+                    async resetPassword(email) { await sendPasswordResetEmail(auth, email); },
+                    uid() { return auth.currentUser ? auth.currentUser.uid : null; },
+                    // Custom claims del token (incluye owner=true si el backend lo fijó).
+                    // Se lee del token YA emitido por signInWithEmailAndPassword (recién
+                    // acuñado en el login, así que incluye claims actuales) — sin forzar
+                    // refresco para no depender de una segunda llamada de red que, al
+                    // fallar, degradaría al dueño a no-dueño. Si fijas el claim DESPUÉS de
+                    // un login activo, el dueño debe cerrar sesión y volver a entrar.
+                    async claims() {
+                        if (!auth.currentUser) return {};
+                        try { const r = await auth.currentUser.getIdTokenResult(); return r.claims || {}; }
+                        catch (e) { return {}; }
+                    }
+                };
 
                 // (El acceso a crm_accounts se movió 100% al backend: auth-token / auth-register /
                 //  auth-recover. El navegador ya NO lee ni escribe correos ni hashes.)

@@ -5,7 +5,6 @@
 // ============================================================================
 
 const crypto = require('crypto');
-const tls = require('tls');
 const dns = require('dns').promises;
 
 function getSvc() {
@@ -25,10 +24,10 @@ function signJwt(claims, privateKey) {
   const sig = s.sign(privateKey).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
   return input + '.' + sig;
 }
-async function getGoogleAccessToken(svc) {
+async function getGoogleAccessToken(svc, scope = 'https://www.googleapis.com/auth/datastore') {
   const now = Math.floor(Date.now() / 1000);
   const aud = svc.token_uri || 'https://oauth2.googleapis.com/token';
-  const assertion = signJwt({ iss: svc.client_email, scope: 'https://www.googleapis.com/auth/datastore', aud, iat: now, exp: now + 3600 }, svc.private_key);
+  const assertion = signJwt({ iss: svc.client_email, scope, aud, iat: now, exp: now + 3600 }, svc.private_key);
   const res = await fetch(aud, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion }) });
   const data = await res.json();
   if (!res.ok || !data.access_token) throw new Error('Google token: ' + JSON.stringify(data).slice(0, 200));
@@ -71,46 +70,28 @@ async function fsPatch(svc, token, path, obj) {
   if (!res.ok) throw new Error('fsPatch ' + res.status + ': ' + (await res.text()).slice(0, 160));
 }
 
-// ---- Envío SMTP por Gmail (mínimo, sin nodemailer) ----
-function gmailSmtpSend(user, pass, fromName, to, subject, html) {
-  return new Promise((resolve, reject) => {
-    const recipients = (Array.isArray(to) ? to : [to]).filter(Boolean);
-    if (!recipients.length) return resolve(false);
-    const socket = tls.connect({ host: 'smtp.gmail.com', port: 465, servername: 'smtp.gmail.com' });
-    socket.setEncoding('utf8');
-    let buffer = '', pending = null, settled = false;
-    const fail = (e) => { if (settled) return; settled = true; try { socket.destroy(); } catch (_) {} reject(e instanceof Error ? e : new Error(String(e))); };
-    socket.setTimeout(25000, () => fail(new Error('SMTP timeout')));
-    socket.on('error', fail);
-    socket.on('data', (chunk) => {
-      buffer += chunk;
-      if (pending && /(^|\n)\d{3} [^\n]*\r?\n$/.test(buffer)) {
-        const code = parseInt(buffer.match(/(?:^|\n)(\d{3}) [^\n]*\r?\n$/)[1], 10);
-        buffer = ''; const p = pending; pending = null; p(code);
-      }
-    });
-    const expect = () => new Promise((res) => { pending = res; });
-    const send = (line) => socket.write(line + '\r\n');
-    const b64 = (s) => Buffer.from(s, 'utf8').toString('base64');
-    const encH = (s) => /[^\x00-\x7F]/.test(s) ? '=?UTF-8?B?' + b64(s) + '?=' : s;
-    (async () => {
-      try {
-        let c = await expect(); if (c !== 220) throw new Error('greeting ' + c);
-        send('EHLO nexsell.netlify.app'); c = await expect(); if (c !== 250) throw new Error('EHLO ' + c);
-        send('AUTH LOGIN'); c = await expect(); if (c !== 334) throw new Error('AUTH ' + c);
-        send(b64(user)); c = await expect(); if (c !== 334) throw new Error('user ' + c);
-        send(b64(String(pass).replace(/\s+/g, ''))); c = await expect(); if (c !== 235) throw new Error('login rechazado ' + c);
-        send('MAIL FROM:<' + user + '>'); c = await expect(); if (c !== 250) throw new Error('MAIL FROM ' + c);
-        for (const r of recipients) { send('RCPT TO:<' + r + '>'); c = await expect(); if (c !== 250 && c !== 251) throw new Error('RCPT ' + c); }
-        send('DATA'); c = await expect(); if (c !== 354) throw new Error('DATA ' + c);
-        const bodyB64 = Buffer.from(String(html || ''), 'utf8').toString('base64').replace(/(.{76})/g, '$1\r\n');
-        const msg = ['From: ' + fromName + ' <' + user + '>', 'To: ' + recipients.join(', '), 'Subject: ' + encH(subject || ''), 'MIME-Version: 1.0', 'Content-Type: text/html; charset=UTF-8', 'Content-Transfer-Encoding: base64', '', bodyB64, '.'].join('\r\n');
-        socket.write(msg + '\r\n'); c = await expect(); if (c !== 250) throw new Error('envío ' + c);
-        send('QUIT'); settled = true; try { socket.end(); } catch (_) {}
-        resolve(true);
-      } catch (e) { fail(e); }
-    })();
+// ---- Envío de correo por Resend (HTTPS) ----
+// Render bloquea el SMTP saliente (puertos 25/465/587); por eso el envío es por
+// HTTPS vía Resend. El remitente sale de EMAIL_FROM y DEBE ser de un dominio verificado en Resend
+// para llegar a destinatarios externos; el de prueba 'onboarding@resend.dev'
+// solo entrega al propio correo de la cuenta de Resend. Lanza si falla (el
+// llamador lo captura y responde 500/502 + lo registra en logs).
+async function sendEmail(to, subject, html) {
+  if ((process.env.EMAIL_ENABLED || 'true') === 'false') return false;
+  const recipients = (Array.isArray(to) ? to : [to]).filter(Boolean);
+  if (!recipients.length) return false;
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) throw new Error('Falta RESEND_API_KEY.');
+  const fromName = process.env.EMAIL_FROM_NAME || 'NexSell';
+  const from = process.env.EMAIL_FROM || (fromName + ' <onboarding@resend.dev>');
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from, to: recipients, subject: subject || '', html: html || '' })
   });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error('Resend ' + res.status + ': ' + JSON.stringify(data).slice(0, 200));
+  return true;
 }
 
 // ---- Utilidades varias ----
@@ -213,4 +194,4 @@ function json(status, obj) {
   };
 }
 
-module.exports = { getSvc, getGoogleAccessToken, fsGet, fsPatch, gmailSmtpSend, sha256, emailKey, validEmail, domainHasMx, consumeCode, clientIp, checkRate, verifyFirebaseIdToken, json };
+module.exports = { getSvc, getGoogleAccessToken, fsGet, fsPatch, sendEmail, sha256, emailKey, validEmail, domainHasMx, consumeCode, clientIp, checkRate, verifyFirebaseIdToken, json };

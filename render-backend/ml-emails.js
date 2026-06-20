@@ -7,9 +7,8 @@
 //   - Reporte semanal (lunes) y mensual (día 1) al dueño.
 //   - Reporte semanal/mensual a CADA usuario (crm_users/{uid}).
 //
-// Envía por Gmail vía un cliente SMTP mínimo escrito con el módulo nativo 'tls'
-// (no usa nodemailer). El estado de envío (para no repetir) se guarda en
-// Firestore: crm_email_state/main.
+// Envía por Resend (HTTPS), porque Render bloquea el SMTP saliente. El estado de
+// envío (para no repetir) se guarda en Firestore: crm_email_state/main.
 //
 // De momento se dispara MANUALMENTE por URL para poder probar. Después se le
 // agrega el horario en netlify.toml (igual que ml-sync).
@@ -18,18 +17,18 @@
 //   FIREBASE_SERVICE_ACCOUNT (ya está)
 //   GMAIL_USER, GMAIL_APP_PASSWORD            (la cuenta que envía)
 //   EMAIL_FROM_NAME   (opcional, por defecto "NexSell")
-//   REPORT_EMAIL      (opcional, dueño; por defecto futuretech.cl.668@gmail.com)
-//   OWNER_EMAIL       (opcional)
+//   REPORT_EMAIL / OWNER_EMAIL  (correo del dueño para reportes; si faltan, se omiten)
 //   EMAIL_ENABLED / WELCOME_EMAIL_ENABLED / USER_REPORTS_ENABLED  (opcional, 'false' apaga)
 //   MAX_EMAILS_PER_RUN (opcional, por defecto 6)
 // ============================================================================
 
 const crypto = require('crypto');
-const tls = require('tls');
 const EMAIL_TEMPLATES = require('./lib/email-templates');
 
-const OWNER_EMAIL = (process.env.OWNER_EMAIL || process.env.REPORT_EMAIL || 'futuretech.cl.668@gmail.com').toLowerCase();
-const REPORT_EMAIL = process.env.REPORT_EMAIL || 'futuretech.cl.668@gmail.com';
+// Correo del dueño para reportes/alertas: SOLO desde entorno (sin correo hardcodeado).
+// Si no se configura, los envíos al dueño se omiten en vez de ir a una dirección fija.
+const OWNER_EMAIL = (process.env.OWNER_EMAIL || process.env.REPORT_EMAIL || '').toLowerCase();
+const REPORT_EMAIL = process.env.REPORT_EMAIL || process.env.OWNER_EMAIL || '';
 const FROM_NAME = process.env.EMAIL_FROM_NAME || 'NexSell';
 const MAX_EMAILS_PER_RUN = Number(process.env.MAX_EMAILS_PER_RUN || 6);
 
@@ -101,55 +100,23 @@ async function fsList(svc, token, collection) {
   return docs;
 }
 
-// ---------------- Enviador SMTP mínimo (Gmail, sin librerías) ----------------
-function gmailSmtpSend(user, pass, fromName, to, subject, html) {
-  return new Promise((resolve, reject) => {
-    const recipients = (Array.isArray(to) ? to : [to]).filter(Boolean);
-    if (!recipients.length) return resolve(false);
-    const socket = tls.connect({ host: 'smtp.gmail.com', port: 465, servername: 'smtp.gmail.com' });
-    socket.setEncoding('utf8');
-    let buffer = '', pending = null, settled = false;
-    const fail = (e) => { if (settled) return; settled = true; try { socket.destroy(); } catch (_) {} reject(e instanceof Error ? e : new Error(String(e))); };
-    socket.setTimeout(25000, () => fail(new Error('SMTP timeout')));
-    socket.on('error', fail);
-    socket.on('data', (chunk) => {
-      buffer += chunk;
-      if (pending && /(^|\n)\d{3} [^\n]*\r?\n$/.test(buffer)) {
-        const code = parseInt(buffer.match(/(?:^|\n)(\d{3}) [^\n]*\r?\n$/)[1], 10);
-        buffer = ''; const p = pending; pending = null; p(code);
-      }
-    });
-    const expect = () => new Promise((res) => { pending = res; });
-    const send = (line) => socket.write(line + '\r\n');
-    const b64 = (s) => Buffer.from(s, 'utf8').toString('base64');
-    const encH = (s) => /[^\x00-\x7F]/.test(s) ? '=?UTF-8?B?' + b64(s) + '?=' : s;
-
-    (async () => {
-      try {
-        let c = await expect(); if (c !== 220) throw new Error('greeting ' + c);
-        send('EHLO nexsell.netlify.app'); c = await expect(); if (c !== 250) throw new Error('EHLO ' + c);
-        send('AUTH LOGIN'); c = await expect(); if (c !== 334) throw new Error('AUTH ' + c);
-        send(b64(user)); c = await expect(); if (c !== 334) throw new Error('user ' + c);
-        send(b64(String(pass).replace(/\s+/g, ''))); c = await expect(); if (c !== 235) throw new Error('login rechazado ' + c);
-        send('MAIL FROM:<' + user + '>'); c = await expect(); if (c !== 250) throw new Error('MAIL FROM ' + c);
-        for (const r of recipients) { send('RCPT TO:<' + r + '>'); c = await expect(); if (c !== 250 && c !== 251) throw new Error('RCPT ' + c); }
-        send('DATA'); c = await expect(); if (c !== 354) throw new Error('DATA ' + c);
-        const bodyB64 = Buffer.from(String(html || ''), 'utf8').toString('base64').replace(/(.{76})/g, '$1\r\n');
-        const msg = [
-          'From: ' + fromName + ' <' + user + '>',
-          'To: ' + recipients.join(', '),
-          'Subject: ' + encH(subject || ''),
-          'MIME-Version: 1.0',
-          'Content-Type: text/html; charset=UTF-8',
-          'Content-Transfer-Encoding: base64',
-          '', bodyB64, '.'
-        ].join('\r\n');
-        socket.write(msg + '\r\n'); c = await expect(); if (c !== 250) throw new Error('envío ' + c);
-        send('QUIT'); settled = true; try { socket.end(); } catch (_) {}
-        resolve(true);
-      } catch (e) { fail(e); }
-    })();
+// ---------------- Enviador por Resend (HTTPS; Render bloquea SMTP) ----------------
+// Remitente vía EMAIL_FROM (dominio verificado en Resend para llegar a externos;
+// 'onboarding@resend.dev' solo llega al propio correo de la cuenta). Lanza si falla.
+async function resendSend(to, subject, html) {
+  const recipients = (Array.isArray(to) ? to : [to]).filter(Boolean);
+  if (!recipients.length) return false;
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) throw new Error('Falta RESEND_API_KEY.');
+  const from = process.env.EMAIL_FROM || (FROM_NAME + ' <onboarding@resend.dev>');
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from, to: recipients, subject: subject || '', html: html || '' })
   });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error('Resend ' + res.status + ': ' + JSON.stringify(data).slice(0, 200));
+  return true;
 }
 
 // ---------------- Utilidades de estadísticas (de sync-ml.js) ----------------
@@ -192,8 +159,7 @@ function computeGoalProgress(goals, sales, now) {
 // ---------------- Handler ----------------
 exports.handler = async () => {
   if ((process.env.EMAIL_ENABLED || 'true') === 'false') return { statusCode: 200, body: 'EMAIL_ENABLED=false (correos apagados).' };
-  const gUser = process.env.GMAIL_USER, gPass = process.env.GMAIL_APP_PASSWORD;
-  if (!gUser || !gPass) return { statusCode: 500, body: 'Faltan GMAIL_USER / GMAIL_APP_PASSWORD en Netlify.' };
+  if (!process.env.RESEND_API_KEY) return { statusCode: 500, body: 'Falta RESEND_API_KEY.' };
 
   let svc;
   try { svc = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT || '{}'); if (!svc.private_key) throw 0; }
@@ -203,7 +169,7 @@ exports.handler = async () => {
   const log = [];
   const send = async (to, subject, html) => {
     if (budget.sent >= budget.max) { log.push('(tope alcanzado, queda para próxima corrida)'); return false; }
-    try { const ok = await gmailSmtpSend(gUser, gPass, FROM_NAME, to, subject, html); if (ok) { budget.sent++; log.push('→ ' + to + ': ' + subject); } return ok; }
+    try { const ok = await resendSend(to, subject, html); if (ok) { budget.sent++; log.push('→ ' + to + ': ' + subject); } return ok; }
     catch (e) { log.push('✗ ' + to + ': ' + e.message); return false; }
   };
 

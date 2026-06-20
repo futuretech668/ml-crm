@@ -15,17 +15,24 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ---- Datos del DUEÑO (crm/state): solo el uid de la cuenta dueña ----
-    // El uid dueño se lee del registro de cuentas (correo de FutureTech).
+    // ---- Datos del DUEÑO (crm/state): solo la cuenta con el claim de dueño ----
+    // El dueño se marca con un CUSTOM CLAIM (owner=true) que SOLO puede fijar el
+    // backend de confianza (service account, vía set-owner-claim.js). El navegador
+    // no puede falsificarlo: viene firmado dentro del token de Firebase. Así no hay
+    // ningún correo ni identidad de dueño escrita en el cliente ni en estas reglas.
     match /crm/state {
       allow read, write: if request.auth != null
-        && request.auth.uid ==
-           get(/databases/$(database)/documents/crm_accounts/futuretech_cl_668_gmail_com).data.uid;
+        && request.auth.token.email_verified == true
+        && request.auth.token.owner == true;
     }
 
-    // ---- Datos de cada usuario: SOLO su propio documento ----
+    // ---- Datos de cada usuario: SOLO su propio documento Y con correo verificado ----
+    // La verificación de correo se EXIGE aquí (no solo en el cliente): una cuenta sin
+    // verificar no puede leer ni escribir sus datos aunque tenga sesión de Auth.
     match /crm_users/{uid} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
+      allow read, write: if request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.uid == uid;
     }
 
     // ---- Tokens de Mercado Libre: el usuario LEE el suyo; escribe solo el backend ----
