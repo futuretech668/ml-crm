@@ -27,8 +27,9 @@ const PORT = process.env.PORT || 3000;
 const SECRET = process.env.RUN_SECRET || '';
 
 // Origen permitido para CORS. Si se define APP_URL (URL del front en Vercel) se
-// restringe a ese origen; si no, se permite cualquiera ('*').
-const ALLOW_ORIGIN = process.env.APP_URL || '*';
+// restringe a ese origen; si no, se permite cualquiera ('*'). Se quita la barra
+// final: el navegador envía el Origin SIN '/' y debe coincidir exactamente.
+const ALLOW_ORIGIN = (process.env.APP_URL || '*').replace(/\/+$/, '');
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': ALLOW_ORIGIN,
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',

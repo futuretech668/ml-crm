@@ -106,7 +106,7 @@ exports.handler = async (event) => {
 
   const base = process.env.URL || ('https://' + (event.headers.host || ''));
   // El usuario vuelve a la APP (front en Vercel), no al backend. APP_URL = URL del front.
-  const appUrl = process.env.APP_URL || base;
+  const appUrl = (process.env.APP_URL || base).replace(/\/+$/, '');
   const backTo = (status) => ({ statusCode: 302, headers: { Location: appUrl + '/?ml=' + status }, body: '' });
 
   if (oauthError) { console.warn('OAuth ML cancelado/erróneo:', oauthError); return backTo('error'); }
