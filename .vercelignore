@@ -1,0 +1,28 @@
+# Vercel solo sirve el frontend estático (index.html). Ignora el backend y todo lo demás.
+render-backend/
+netlify/
+node_modules/
+backup-*/
+backup_visual_original/
+_subir-a-github/
+_subir-a-netlify/
+_otros/
+
+# Scripts de utilidad y backend suelto (no son del front)
+sync-ml.js
+import-ventas.js
+export-ventas.js
+email-templates.js
+build-min.js
+
+# Documentación y secretos
+*.md
+*.txt
+.env
+.env.example
+serviceAccountKey.json
+tokens.json
+.ml-sync-state.json
+firestore.rules
+package.json
+package-lock.json

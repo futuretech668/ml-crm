@@ -1,0 +1,21 @@
+node_modules/
+**/node_modules/
+
+# Secretos (en cualquier subcarpeta) — NUNCA subir al repo
+**/.env
+**/.env.local
+**/tokens.json
+**/.ml-sync-state.json
+**/serviceAccountKey.json
+
+# Backups y staging local (no van al repo)
+backup-*/
+backup_visual_original/
+_subir-a-github/
+_subir-a-netlify/
+_otros/
+
+# Sistema
+.DS_Store
+Thumbs.db
+*.log

@@ -1,0 +1,14 @@
+{
+  "name": "nexsell-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Backend de NexSell en Render: API /api/* (login ML, IA, auth, correos) + cron de sincronizacion de ventas.",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "sync": "node run-sync.js",
+    "emails": "node run-emails.js"
+  }
+}

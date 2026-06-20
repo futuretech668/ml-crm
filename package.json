@@ -1,0 +1,21 @@
+{
+  "name": "ml-crm-sync",
+  "version": "1.0.0",
+  "description": "Sincronización de ventas de Mercado Libre hacia Firebase para ML Manager",
+  "main": "sync-ml.js",
+  "type": "commonjs",
+  "scripts": {
+    "auth": "node sync-ml.js auth",
+    "start": "node sync-ml.js",
+    "once": "node sync-ml.js once"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "firebase-admin": "^12.7.0",
+    "fuse.js": "^7.0.0",
+    "nodemailer": "^9.0.0"
+  }
+}

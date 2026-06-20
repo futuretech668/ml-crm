@@ -1,0 +1,16 @@
+# Configuración de Netlify para NexSell
+# Funciones serverless que manejan la conexión con Mercado Libre por usuario.
+# Las funciones son autosuficientes (solo usan módulos nativos de Node), así
+# que se pueden subir arrastrando la carpeta, sin instalar nada.
+
+[build]
+  publish = "."
+  functions = "netlify/functions"
+
+[build.environment]
+  NODE_VERSION = "18"
+
+# NOTA: La sincronización de ventas (ml-sync) y el envío de correos (ml-emails)
+# YA NO corren en Netlify: se movieron a Render (carpeta render-backend/) para
+# no gastar los créditos de Netlify. Aquí solo quedan funciones livianas que se
+# usan cuando el usuario actúa (chat IA, verificación de correo, conectar ML).

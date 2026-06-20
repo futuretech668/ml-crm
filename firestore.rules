@@ -1,0 +1,52 @@
+rules_version = '2';
+
+// ============================================================================
+// Reglas de seguridad de Firestore para NexSell.
+// ----------------------------------------------------------------------------
+// ⚠️ APLICAR SOLO DESPUÉS de desplegar el nuevo login con "pase" de Firebase
+//    (función auth-token + signInWithCustomToken) y confirmar que los usuarios
+//    entran con sesión de Auth. Si las aplicas antes, los usuarios sin sesión
+//    de Auth no podrán leer/escribir su doc (la app caería a solo-localStorage).
+//
+// Qué logran: cada usuario solo puede tocar SUS datos. Aunque alguien tenga la
+// config pública de Firebase, la base rechaza el acceso a datos ajenos.
+// ============================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---- Datos del DUEÑO (crm/state): solo el uid de la cuenta dueña ----
+    // El uid dueño se lee del registro de cuentas (correo de FutureTech).
+    match /crm/state {
+      allow read, write: if request.auth != null
+        && request.auth.uid ==
+           get(/databases/$(database)/documents/crm_accounts/futuretech_cl_668_gmail_com).data.uid;
+    }
+
+    // ---- Datos de cada usuario: SOLO su propio documento ----
+    match /crm_users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // ---- Tokens de Mercado Libre: el usuario LEE el suyo; escribe solo el backend ----
+    match /crm_ml_tokens/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow delete: if request.auth != null && request.auth.uid == uid; // el usuario puede desconectar SU propio ML
+      allow create, update: if false; // crear/actualizar el token: solo el backend (service account, ignora reglas)
+    }
+
+    // ---- Registro de cuentas: CERRADO a los clientes ----
+    // login/registro/recuperación ahora se hacen 100% en el backend (auth-token /
+    // auth-register / auth-recover) con el service account, que ignora estas reglas.
+    // Desde el navegador, crm_accounts es invisible (no se pueden ver correos ni hashes).
+    match /crm_accounts/{email} {
+      allow read, write: if false;
+    }
+
+    // ---- Todo lo demás (códigos de correo, estado interno, etc.): SOLO backend ----
+    // El service account ignora estas reglas, así que el backend sigue funcionando.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
