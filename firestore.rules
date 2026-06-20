@@ -35,6 +35,15 @@ service cloud.firestore {
       allow create, update: if false; // crear/actualizar el token: solo el backend (service account, ignora reglas)
     }
 
+    // ---- Memoria e hilos del copiloto MIA: SOLO backend ----
+    // crm_ai/{uid} guarda perfil de negocio, memoria y transcripciones de chat.
+    // El cliente NUNCA los lee/escribe (los maneja el service account vía
+    // /api/ai-agent, que ignora estas reglas). Así el chat no se filtra ni
+    // engorda el stream realtime de onSnapshot.
+    match /crm_ai/{uid} {
+      allow read, write: if false;
+    }
+
     // ---- Registro de cuentas: CERRADO a los clientes ----
     // login/registro/recuperación ahora se hacen 100% en el backend (auth-token /
     // auth-register / auth-recover) con el service account, que ignora estas reglas.
