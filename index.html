@@ -3178,8 +3178,8 @@
         <!-- ============================================================= -->
         <div class="section" id="metas">
             <div class="page-head">
-                <h1><i data-lucide="target"></i> Metas</h1>
-                <p style="color:var(--text-secondary);margin-top:4px;">Define tu objetivo mensual y sigue tu progreso. Todo se calcula desde tus ventas y se guarda en este dispositivo.</p>
+                <div class="page-title"><i data-lucide="target"></i>Metas</div>
+                <div class="page-sub">Define tu objetivo mensual y sigue tu progreso. Todo se calcula desde tus ventas y se guarda en este dispositivo.</div>
             </div>
 
             <!-- Definir meta del mes -->
@@ -3228,8 +3228,8 @@
         <!-- ============================================================= -->
         <div class="section" id="logros">
             <div class="page-head">
-                <h1><i data-lucide="award"></i> Logros</h1>
-                <p style="color:var(--text-secondary);margin-top:4px;">Tus récords, medallas y estadísticas. Todo se calcula desde tus ventas; los logros desbloqueados se guardan en este dispositivo.</p>
+                <div class="page-title"><i data-lucide="award"></i>Logros</div>
+                <div class="page-sub">Tus récords, medallas y estadísticas. Todo se calcula desde tus ventas; los logros desbloqueados se guardan en este dispositivo.</div>
             </div>
 
             <!-- Estadísticas generales -->
@@ -3562,8 +3562,10 @@
             refreshIcons();
         }
 
-        // Secciones que se muestran apiladas dentro de la vista unificada "Rendimiento".
+        // Subsecciones (pestañas internas) de la vista unificada "Rendimiento".
         const GRUPO_RENDIMIENTO = ['analytics','finanzas','metas','logros','reportes','alerts'];
+        // Etiquetas visibles de cada pestaña de Rendimiento.
+        const RENDIMIENTO_LABELS = { analytics:'Análisis', finanzas:'Finanzas', metas:'Metas', logros:'Logros', reportes:'Reportes', alerts:'Alertas' };
         // Despachador de render por sección (reutilizado por irASeccion y por el sync de nube).
         const RENDER_SECCION = {
             analytics: () => renderAnalytics(),
@@ -3573,22 +3575,43 @@
             reportes:  () => { if (window.renderReportes) renderReportes(); },
             alerts:    () => renderAlerts(),
         };
-        // El reorden del DOM de la vista "Rendimiento" se hace una sola vez (no en cada navegación).
-        let _rendimientoApilado = false;
+        // Pestaña de Rendimiento actualmente activa (se recuerda entre navegaciones).
+        let _rendimientoTab = 'analytics';
+        // Pestaña de Rendimiento válida (con fallback a la primera si el estado se corrompe).
+        function tabRendimientoActiva() {
+            return GRUPO_RENDIMIENTO.includes(_rendimientoTab) ? _rendimientoTab : GRUPO_RENDIMIENTO[0];
+        }
+        // Marca como activa la pestaña cuyo data-<attr> coincide con value (las demás, inactivas).
+        function setActiveTab(attr, value) {
+            document.querySelectorAll('.pi-tab[data-' + attr + ']').forEach(t => t.classList.toggle('active', t.dataset[attr] === value));
+        }
+
+        // Cambia la subsección activa dentro de "Rendimiento" (navegación por pestañas).
+        function irASubseccionRendimiento(id) {
+            if (!GRUPO_RENDIMIENTO.includes(id)) return;
+            _rendimientoTab = id;
+            // Mostrar solo la subsección elegida.
+            GRUPO_RENDIMIENTO.forEach(s => { const el = document.getElementById(s); if (el) el.classList.toggle('active', s === id); });
+            // Sincronizar el estado activo de las pestañas (presentes en cada subsección).
+            setActiveTab('rtab', id);
+            // Renderizar solo la subsección visible.
+            try { RENDER_SECCION[id](); } catch (e) {}
+            const contentArea = document.getElementById('contentArea');
+            if (contentArea) contentArea.scrollTop = 0;
+            refreshIcons();
+        }
+        window.irASubseccionRendimiento = irASubseccionRendimiento;
 
         function irASeccion(seccion) {
             // Ocultar todas las secciones (remover clase active)
             document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
 
             if (seccion === 'rendimiento') {
-                // Apilar las 6 vistas una sola vez en el orden deseado; luego solo activarlas.
-                if (!_rendimientoApilado) {
-                    const first = document.getElementById(GRUPO_RENDIMIENTO[0]);
-                    const parent = first && first.parentNode;
-                    if (parent) GRUPO_RENDIMIENTO.forEach(id => { const el = document.getElementById(id); if (el) parent.appendChild(el); });
-                    _rendimientoApilado = true;
-                }
-                GRUPO_RENDIMIENTO.forEach(id => { const el = document.getElementById(id); if (el) el.classList.add('active'); });
+                // Mostrar solo la subsección (pestaña) activa de Rendimiento.
+                const tab = tabRendimientoActiva();
+                const el = document.getElementById(tab);
+                if (el) el.classList.add('active');
+                setActiveTab('rtab', tab);
             } else {
                 // Mostrar solo la sección elegida (añadir clase active)
                 const sectionEl = document.getElementById(seccion);
@@ -3611,7 +3634,7 @@
 
             // Sincronizar pestañas Productos / Inventario
             if (seccion === 'products' || seccion === 'inventory') {
-                document.querySelectorAll('.pi-tab').forEach(t => t.classList.toggle('active', t.dataset.pi === seccion));
+                setActiveTab('pi', seccion);
             }
 
             // Renderizar según sección
@@ -3623,7 +3646,7 @@
             if (seccion === 'products') renderProductsList();
             if (seccion === 'settings') { if (window.fillProfileInputs) fillProfileInputs(); if (window.fillBusinessInputs) fillBusinessInputs(); if (window.mlRefreshStatus) mlRefreshStatus(); }
             if (seccion === 'rendimiento') {
-                GRUPO_RENDIMIENTO.forEach(id => { try { RENDER_SECCION[id](); } catch (e) {} });
+                try { RENDER_SECCION[tabRendimientoActiva()](); } catch (e) {}
             }
             if (window.applyBusinessConfig) applyBusinessConfig();
 
@@ -3636,21 +3659,37 @@
             refreshIcons();
         }
 
-        // Inyecta la barra de pestañas Productos / Inventario al inicio de ambas secciones.
-        function injectProductTabs(){
-            [['products'], ['inventory']].forEach(([id]) => {
+        // Inyecta una barra de pestañas (.pi-tabs) al inicio de cada sección de targetIds.
+        // buttonsHtml: HTML de los .pi-tab; attr: nombre del data-attribute; onSelect(value): handler de click.
+        function injectTabBar(targetIds, buttonsHtml, attr, onSelect){
+            targetIds.forEach(id => {
                 const sec = document.getElementById(id);
                 if (!sec || sec.querySelector('.pi-tabs')) return;
                 const bar = document.createElement('div');
                 bar.className = 'pi-tabs';
-                bar.innerHTML = '<button type="button" class="pi-tab" data-pi="products">Productos</button>'
-                              + '<button type="button" class="pi-tab" data-pi="inventory">Inventario</button>';
+                bar.innerHTML = buttonsHtml;
                 bar.addEventListener('click', (e) => {
                     const t = e.target.closest('.pi-tab');
-                    if (t && window.irASeccion) window.irASeccion(t.dataset.pi);
+                    if (t) onSelect(t.dataset[attr]);
                 });
                 sec.insertBefore(bar, sec.firstChild);
             });
+        }
+
+        // Inyecta la barra de pestañas Productos / Inventario al inicio de ambas secciones.
+        function injectProductTabs(){
+            const botones = '<button type="button" class="pi-tab" data-pi="products">Productos</button>'
+                          + '<button type="button" class="pi-tab" data-pi="inventory">Inventario</button>';
+            injectTabBar(['products', 'inventory'], botones, 'pi', (id) => { if (window.irASeccion) window.irASeccion(id); });
+        }
+
+        // Inyecta la barra de pestañas de Rendimiento al inicio de cada subsección,
+        // de modo que las pestañas estén siempre visibles sin importar cuál esté activa.
+        function injectRendimientoTabs(){
+            const botones = GRUPO_RENDIMIENTO
+                .map(id => '<button type="button" class="pi-tab" data-rtab="' + id + '">' + RENDIMIENTO_LABELS[id] + '</button>')
+                .join('');
+            injectTabBar(GRUPO_RENDIMIENTO, botones, 'rtab', irASubseccionRendimiento);
         }
 
         document.addEventListener('DOMContentLoaded', () => {
@@ -3661,6 +3700,7 @@
             initializeDateFields();
             setupEventListeners();
             injectProductTabs();
+            injectRendimientoTabs();
             renderDashboard();
             // FIX: refrescar todas las secciones con los datos cargados desde el almacenamiento
             updateDropdowns();
@@ -4220,10 +4260,10 @@
             renderInventory();
             renderDashboard();
             renderAlerts();
-            // Refrescar la sección abierta. En la vista "Rendimiento" se refrescan las 6 apiladas.
+            // Refrescar la sección abierta. En "Rendimiento" se refresca solo la pestaña activa.
             const _sec = STATE.currentSection;
             if (_sec === 'rendimiento') {
-                GRUPO_RENDIMIENTO.forEach(id => { try { RENDER_SECCION[id](); } catch (e) {} });
+                try { RENDER_SECCION[tabRendimientoActiva()](); } catch (e) {}
             } else {
                 if (_sec === 'analytics') renderAnalytics();
                 if (_sec === 'finanzas' && window.renderFinanzas) renderFinanzas();
