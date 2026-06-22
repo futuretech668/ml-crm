@@ -2059,14 +2059,14 @@
             background: var(--bg-tertiary); color: var(--text-secondary); border: 1px solid var(--border-color);
             font-size: 11px; font-weight: 700; line-height: 1; cursor: help; vertical-align: middle; user-select: none; }
         .help-tip:hover, .help-tip:focus { background: var(--accent-primary); color: #fff; outline: none; }
-        .help-tip__bubble { position: absolute; bottom: 150%; left: 50%; transform: translateX(-50%);
+        /* Burbuja con posición FIJA (la coloca el JS) para que no la recorte ningún
+           contenedor con overflow:hidden (p.ej. las tarjetas del dashboard). */
+        .help-tip__bubble { position: fixed; left: 0; top: 0; transform: translate(-50%, -100%);
             width: 240px; max-width: 72vw; padding: 10px 12px; border-radius: 10px;
             background: var(--bg-elevated, #1e1e28); color: var(--text-primary); border: 1px solid var(--border-color);
             box-shadow: var(--shadow-lg, 0 12px 32px rgba(0,0,0,.4)); font-size: 12.5px; font-weight: 400; line-height: 1.45;
             text-align: left; white-space: normal; opacity: 0; visibility: hidden; transition: opacity .15s ease;
-            z-index: 200; pointer-events: none; }
-        .help-tip__bubble::after { content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
-            border: 6px solid transparent; border-top-color: var(--bg-elevated, #1e1e28); }
+            z-index: 9999; pointer-events: none; }
         .help-tip:hover .help-tip__bubble, .help-tip:focus .help-tip__bubble { opacity: 1; visibility: visible; }
         /* ---- Pestañas Productos / Inventario ---- */
         .pi-tabs { display: inline-flex; gap: 4px; padding: 4px; margin-bottom: 18px; background: var(--bg-secondary); border: 1px solid var(--border-soft); border-radius: 11px; }
@@ -2507,29 +2507,39 @@
                                 </div>
                                 <div id="salePriceCustomWrap" class="venta-opt-wrap"><input type="number" class="form-control" id="salePriceCustom" min="1" step="1" placeholder="Precio real al que vendiste"></div>
                             </div>
-                            <!-- Envío: no vs sí -->
+                            <!-- Envío: se respeta el del producto, con opción de ajustar/agregar -->
                             <div class="form-group" style="margin-bottom:16px;">
-                                <label class="form-label">¿Tuvo costo de envío?</label>
-                                <div style="display:flex;gap:20px;flex-wrap:wrap;margin:4px 0 6px;">
-                                    <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:14px;"><input type="radio" name="saleEnvioMode" value="no" checked onchange="if(window.ventaToggleEnvio)ventaToggleEnvio()"> No</label>
-                                    <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:14px;"><input type="radio" name="saleEnvioMode" value="si" onchange="if(window.ventaToggleEnvio)ventaToggleEnvio()"> Sí</label>
+                                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                                    <span id="saleEnvioResumen" style="font-size:14px;color:var(--text-secondary);">📦 Elige un producto para ver su envío.</span>
+                                    <button type="button" id="saleEnvioAjustarBtn" class="btn btn-secondary btn-small" onclick="if(window.ventaToggleAjuste)ventaToggleAjuste('envio')" style="display:none;"><i data-lucide="sliders-horizontal"></i> <span id="saleEnvioAjustarTxt">Ajustar</span></button>
                                 </div>
-                                <div id="saleEnvioCustomWrap" class="venta-opt-wrap"><input type="number" class="form-control" id="saleEnvioCustom" min="0" step="1" placeholder="Monto del envío"></div>
+                                <div id="saleEnvioAjuste" style="display:none;margin-top:10px;">
+                                    <div style="display:flex;gap:20px;flex-wrap:wrap;margin:4px 0 6px;">
+                                        <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:14px;"><input type="radio" name="saleEnvioMode" value="no" checked onchange="if(window.ventaToggleEnvio)ventaToggleEnvio();if(window.ventaSyncResumen)ventaSyncResumen();"> Sin envío</label>
+                                        <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:14px;"><input type="radio" name="saleEnvioMode" value="si" onchange="if(window.ventaToggleEnvio)ventaToggleEnvio();if(window.ventaSyncResumen)ventaSyncResumen();"> Con envío</label>
+                                    </div>
+                                    <div id="saleEnvioCustomWrap" class="venta-opt-wrap"><input type="number" class="form-control" id="saleEnvioCustom" min="0" step="1" placeholder="Monto del envío" oninput="if(window.ventaSyncResumen)ventaSyncResumen()"></div>
+                                </div>
                             </div>
-                            <!-- Comisión (Fase 2): toggle No/Sí con monto ($) o porcentaje (%). Se precarga para variantes/canales con comisión; editable. -->
+                            <!-- Comisión: se respeta la del producto, con opción de ajustar/agregar -->
                             <div class="form-group" style="margin-bottom:16px;">
-                                <label class="form-label">¿Tuvo comisión?</label>
-                                <div style="display:flex;gap:20px;flex-wrap:wrap;margin:4px 0 6px;">
-                                    <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:14px;"><input type="radio" name="saleComisionMode" value="no" checked onchange="if(window.ventaToggleComision)ventaToggleComision()"> No</label>
-                                    <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:14px;"><input type="radio" name="saleComisionMode" value="si" onchange="if(window.ventaToggleComision)ventaToggleComision()"> Sí</label>
+                                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                                    <span id="saleComisionResumen" style="font-size:14px;color:var(--text-secondary);">🏪 Elige un producto para ver su comisión.</span>
+                                    <button type="button" id="saleComisionAjustarBtn" class="btn btn-secondary btn-small" onclick="if(window.ventaToggleAjuste)ventaToggleAjuste('comision')" style="display:none;"><i data-lucide="sliders-horizontal"></i> <span id="saleComisionAjustarTxt">Ajustar</span></button>
                                 </div>
-                                <div id="saleComisionWrap" class="venta-opt-wrap">
-                                    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
-                                        <select class="form-control" id="saleComisionTipo" style="max-width:160px;" onchange="if(window.ventaToggleComision)ventaToggleComision()">
-                                            <option value="monto">Monto ($)</option>
-                                            <option value="percentage">Porcentaje (%)</option>
-                                        </select>
-                                        <input type="number" class="form-control" id="saleComisionCustom" min="0" step="1" placeholder="Comisión" style="flex:1;min-width:140px;">
+                                <div id="saleComisionAjuste" style="display:none;margin-top:10px;">
+                                    <div style="display:flex;gap:20px;flex-wrap:wrap;margin:4px 0 6px;">
+                                        <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:14px;"><input type="radio" name="saleComisionMode" value="no" checked onchange="if(window.ventaToggleComision)ventaToggleComision();if(window.ventaSyncResumen)ventaSyncResumen();"> Sin comisión</label>
+                                        <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:14px;"><input type="radio" name="saleComisionMode" value="si" onchange="if(window.ventaToggleComision)ventaToggleComision();if(window.ventaSyncResumen)ventaSyncResumen();"> Con comisión</label>
+                                    </div>
+                                    <div id="saleComisionWrap" class="venta-opt-wrap">
+                                        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+                                            <select class="form-control" id="saleComisionTipo" style="max-width:160px;" onchange="if(window.ventaToggleComision)ventaToggleComision();if(window.ventaSyncResumen)ventaSyncResumen();">
+                                                <option value="monto">Monto ($)</option>
+                                                <option value="percentage">Porcentaje (%)</option>
+                                            </select>
+                                            <input type="number" class="form-control" id="saleComisionCustom" min="0" step="1" placeholder="Comisión" style="flex:1;min-width:140px;" oninput="if(window.ventaSyncResumen)ventaSyncResumen()">
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -3722,6 +3732,16 @@
             var b = document.createElement('span');
             b.className = 'help-tip__bubble'; b.textContent = text;
             s.appendChild(b);
+            // La burbuja es position:fixed; la ubicamos sobre el ícono al mostrarla
+            // (así no la recorta ninguna tarjeta con overflow:hidden, p.ej. en el dashboard).
+            var ubicar = function(){
+                var r = s.getBoundingClientRect();
+                b.style.left = Math.round(r.left + r.width / 2) + 'px';
+                b.style.top = Math.round(r.top - 8) + 'px';
+            };
+            s.addEventListener('mouseenter', ubicar);
+            s.addEventListener('focus', ubicar);
+            s.addEventListener('touchstart', ubicar, { passive: true });
             return s;
         }
         // Agrega un (?) al final de un elemento (si no tiene ya uno).
@@ -3780,8 +3800,10 @@
             // --- Ventas ---
             helpOnField('saleChannel', "Por dónde se hizo la venta. 'Manual' es para ventas fuera de plataformas. Con 'Añadir canal…' creas los tuyos (Instagram, Marketplace, etc.). Mercado Libre aparece solo si conectaste tu cuenta.");
             helpOnLabelText('Precio de venta', 'Usa el precio guardado del producto, o elige "A otro precio" si esta vez vendiste a un valor distinto.');
-            helpOnLabelText('¿Tuvo costo de envío?', 'Marca Sí si pagaste el despacho de esta venta en particular.');
-            helpOnLabelText('¿Tuvo comisión?', 'Marca Sí si la plataforma te cobró comisión por esta venta. Puedes ponerla en monto ($) o porcentaje (%).');
+            var _envR = document.getElementById('saleEnvioResumen');
+            if (_envR) helpOnEl(_envR.parentElement, 'El envío se toma del producto. Pulsa "Ajustar" si esta venta tuvo un envío distinto, o para agregarlo si el producto no tenía.');
+            var _comR = document.getElementById('saleComisionResumen');
+            if (_comR) helpOnEl(_comR.parentElement, 'La comisión se toma del producto. Pulsa "Ajustar" si esta venta tuvo una comisión distinta, o para agregarla si el producto no tenía.');
             // --- Finanzas ---
             helpOnSection('finanzas', 'Tu dinero real del mes: ganancia neta, IVA, gastos y publicidad.');
             helpOnHeading('finanzas', 'IVA', 'El 19% se calcula automático sobre tus ventas. Si tienes el monto exacto del SII, puedes escribirlo a mano para ese mes.');
@@ -4729,12 +4751,8 @@
             // Canal/origen: si el canal cobra comisión (no es "manual"), activa el toggle "Sí".
             // Si vuelve a "manual", deja que la lógica de variante decida (variante con comisión).
             window.ventaToggleCanal = function(){
-                var canal = (document.getElementById('saleChannel') || {}).value || 'manual';
-                if (canal === 'mercadolibre') {
-                    // Mercado Libre siempre cobra comisión: activarla por defecto (editable).
-                    var si = document.querySelector('input[name="saleComisionMode"][value="si"]'); if (si) si.checked = true;
-                    if (window.ventaToggleComision) window.ventaToggleComision();
-                } else if (window.ventaPreloadVariant) { window.ventaPreloadVariant(); }
+                // El canal no cambia el envío/comisión: siempre se respeta lo del producto (editable con Ajustar).
+                if (window.ventaRespetarProducto) window.ventaRespetarProducto();
             };
             // AGENTE 4: al elegir producto con variantes, mostrar el selector con SOLO las que tienen stock.
             window.ventaSyncVariant = function(){
@@ -4757,7 +4775,80 @@
                     wrap.style.display = 'none';
                     sel.innerHTML = '<option value="">Elige variante</option>';
                 }
+                if (window.ventaRespetarProducto) window.ventaRespetarProducto();
                 if (window.ventaSyncSubmit) window.ventaSyncSubmit();
+            };
+
+            // Producto + variante seleccionados en el form de venta (o nulls).
+            window.ventaCtxProducto = function(){
+                var prodEl = document.getElementById('saleProduct');
+                var p = (prodEl && prodEl.value) ? STATE.products.find(function(x){ return x.id === parseInt(prodEl.value); }) : null;
+                var sel = document.getElementById('saleVariant');
+                var v = (p && p.hasVariants && sel && sel.value) ? p.variants.find(function(x){ return String(x.id) === String(sel.value); }) : null;
+                return { p: p || null, v: v || null };
+            };
+
+            // "Se respeta del producto": carga en el form el envío y la comisión configurados
+            // en el producto (o la variante elegida). El usuario puede luego Ajustar/Agregar.
+            window.ventaRespetarProducto = function(){
+                var ctx = window.ventaCtxProducto(); var p = ctx.p, v = ctx.v;
+                var envSi = document.querySelector('input[name="saleEnvioMode"][value="si"]');
+                var envNo = document.querySelector('input[name="saleEnvioMode"][value="no"]');
+                var envInp = document.getElementById('saleEnvioCustom');
+                var comSi = document.querySelector('input[name="saleComisionMode"][value="si"]');
+                var comNo = document.querySelector('input[name="saleComisionMode"][value="no"]');
+                var comTipo = document.getElementById('saleComisionTipo');
+                var comInp = document.getElementById('saleComisionCustom');
+                // Envío: variante manda; si no, el del producto.
+                var envio = v ? (v.tieneEnvio ? (Number(v.costoEnvio) || 0) : 0) : (p ? (Number(p.shipping) || 0) : 0);
+                if (envio > 0) { if (envSi) envSi.checked = true; if (envInp) envInp.value = Math.round(envio); }
+                else { if (envNo) envNo.checked = true; if (envInp) envInp.value = ''; }
+                // Comisión: variante (siempre monto) o producto (% o monto).
+                var comVal = 0, comTipoVal = 'monto';
+                if (v) { if (v.tieneComision) { comVal = Number(v.comisionMonto) || 0; comTipoVal = 'monto'; } }
+                else if (p) { comVal = Number(p.commission) || 0; comTipoVal = (p.commissionType === 'percentage') ? 'percentage' : 'monto'; }
+                if (comVal > 0) { if (comSi) comSi.checked = true; if (comTipo) comTipo.value = comTipoVal; if (comInp) comInp.value = comVal; }
+                else { if (comNo) comNo.checked = true; if (comInp) comInp.value = ''; }
+                if (window.ventaToggleEnvio) window.ventaToggleEnvio();
+                if (window.ventaToggleComision) window.ventaToggleComision();
+                window.ventaSyncResumen();
+            };
+
+            // Actualiza los textos "se respeta" según los valores actuales y muestra los botones Ajustar.
+            window.ventaSyncResumen = function(){
+                var hayProd = !!window.ventaCtxProducto().p;
+                var envResumen = document.getElementById('saleEnvioResumen');
+                var comResumen = document.getElementById('saleComisionResumen');
+                var envBtn = document.getElementById('saleEnvioAjustarBtn');
+                var comBtn = document.getElementById('saleComisionAjustarBtn');
+                if (envBtn) envBtn.style.display = hayProd ? '' : 'none';
+                if (comBtn) comBtn.style.display = hayProd ? '' : 'none';
+                if (!hayProd) {
+                    if (envResumen) envResumen.textContent = '📦 Elige un producto para ver su envío.';
+                    if (comResumen) comResumen.textContent = '🏪 Elige un producto para ver su comisión.';
+                    return;
+                }
+                var envSiOn = ((document.querySelector('input[name="saleEnvioMode"]:checked')||{}).value) === 'si';
+                var envMonto = envSiOn ? (parseFloat((document.getElementById('saleEnvioCustom')||{}).value) || 0) : 0;
+                if (envResumen) envResumen.textContent = envMonto > 0 ? ('📦 Envío: ' + formatCurrency(envMonto) + ' — se respeta del producto') : '📦 Sin envío';
+                var comSiOn = ((document.querySelector('input[name="saleComisionMode"]:checked')||{}).value) === 'si';
+                var comTipo = (document.getElementById('saleComisionTipo')||{}).value;
+                var comV = comSiOn ? (parseFloat((document.getElementById('saleComisionCustom')||{}).value) || 0) : 0;
+                if (comResumen) comResumen.textContent = (comV > 0)
+                    ? ('🏪 Comisión: ' + (comTipo === 'percentage' ? (comV + '%') : formatCurrency(comV)) + ' — se respeta del producto')
+                    : '🏪 Sin comisión';
+            };
+
+            // Muestra/oculta el panel de ajuste manual de envío o comisión.
+            window.ventaToggleAjuste = function(tipo){
+                var panel = document.getElementById(tipo === 'envio' ? 'saleEnvioAjuste' : 'saleComisionAjuste');
+                var txt = document.getElementById(tipo === 'envio' ? 'saleEnvioAjustarTxt' : 'saleComisionAjustarTxt');
+                if (!panel) return;
+                var abrir = (panel.style.display === 'none' || !panel.style.display);
+                panel.style.display = abrir ? '' : 'none';
+                if (txt) txt.textContent = abrir ? 'Listo' : 'Ajustar';
+                if (abrir){ if (tipo === 'envio' && window.ventaToggleEnvio) ventaToggleEnvio(); if (tipo === 'comision' && window.ventaToggleComision) ventaToggleComision(); }
+                try { if (window.lucide && lucide.createIcons) lucide.createIcons(); } catch(e){}
             };
 
             // Botón "Registrar venta": deshabilitado hasta que haya producto + cantidad >= 1 (+ variante si aplica).
@@ -4789,29 +4880,9 @@
                 }
             };
 
-            // AGENTE 4: al elegir una variante, precargar su envío y comisión (editables).
+            // Al elegir una variante (o producto), respetar su envío y comisión configurados.
             window.ventaPreloadVariant = function(){
-                var prodEl = document.getElementById('saleProduct');
-                var sel = document.getElementById('saleVariant');
-                var p = (prodEl && prodEl.value) ? STATE.products.find(function(x){ return x.id === parseInt(prodEl.value); }) : null;
-                var v = (p && p.hasVariants && sel && sel.value) ? p.variants.find(function(x){ return String(x.id) === String(sel.value); }) : null;
-                var comInput = document.getElementById('saleComisionCustom');
-                var comTipo = document.getElementById('saleComisionTipo');
-                var comSi = document.querySelector('input[name="saleComisionMode"][value="si"]');
-                var comNo = document.querySelector('input[name="saleComisionMode"][value="no"]');
-                if (v) {
-                    // Envío: usa los radios existentes (No / Sí + monto).
-                    var envSi = document.querySelector('input[name="saleEnvioMode"][value="si"]');
-                    var envNo = document.querySelector('input[name="saleEnvioMode"][value="no"]');
-                    if (v.tieneEnvio) { if (envSi) envSi.checked = true; var ec = document.getElementById('saleEnvioCustom'); if (ec) ec.value = Number(v.costoEnvio) || 0; }
-                    else { if (envNo) envNo.checked = true; }
-                    if (window.ventaToggleEnvio) window.ventaToggleEnvio();
-                    // Comisión: toggle Sí/No precargado desde la variante (como monto), editable.
-                    if (v.tieneComision) { if (comSi) comSi.checked = true; if (comTipo) comTipo.value = 'monto'; if (comInput) comInput.value = Math.round(Number(v.comisionMonto) || 0); }
-                    else { if (comNo) comNo.checked = true; if (comInput) comInput.value = ''; }
-                    if (window.ventaToggleComision) window.ventaToggleComision();
-                }
-                // Sin variante: se respeta lo que el usuario haya elegido en el toggle.
+                if (window.ventaRespetarProducto) window.ventaRespetarProducto();
                 if (window.ventaSyncSubmit) window.ventaSyncSubmit();
             };
 
@@ -4822,9 +4893,16 @@
                 var w1 = document.getElementById('salePriceCustomWrap'); if (w1) w1.classList.remove('abierto');
                 var w2 = document.getElementById('saleEnvioCustomWrap'); if (w2) w2.classList.remove('abierto');
                 var cw = document.getElementById('saleComisionWrap'); if (cw) cw.classList.remove('abierto');
+                // Colapsar los paneles de ajuste y restaurar etiqueta del botón.
+                var ea = document.getElementById('saleEnvioAjuste'); if (ea) ea.style.display = 'none';
+                var ca = document.getElementById('saleComisionAjuste'); if (ca) ca.style.display = 'none';
+                var et = document.getElementById('saleEnvioAjustarTxt'); if (et) et.textContent = 'Ajustar';
+                var ct = document.getElementById('saleComisionAjustarTxt'); if (ct) ct.textContent = 'Ajustar';
                 if (window.ventaSyncVariant) window.ventaSyncVariant(); else window.ventaSyncSubmit();
+                if (window.ventaSyncResumen) window.ventaSyncResumen();
             }, 0); });
             window.ventaSyncSubmit();
+            if (window.ventaSyncResumen) window.ventaSyncResumen();
 
             document.getElementById('exportBtn').addEventListener('click', () => {
                 const json = JSON.stringify(STATE, null, 2);
