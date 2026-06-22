@@ -63,11 +63,15 @@ FORMATO
 · Respuestas cortas; **negrita** para cifras clave; viñetas cuando ayuden.
 · Si una herramienta no devuelve datos, dilo claro ("No tienes ventas registradas esta semana").`;
 
-export function buildSystemPrompt({ nombre, meta, mlConectado, memoria, businessProfile }) {
+export function buildSystemPrompt({ nombre, meta, mlConectado, memoria, businessProfile, fechaHoy, hoyIso }) {
   const notas = (Array.isArray(memoria) && memoria.length) ? memoria.map(m => '  · ' + m).join('\n') : '  (sin notas todavía)';
   const perfil = (businessProfile && businessProfile.text) ? businessProfile.text : '(aún sin perfil; constrúyelo conociendo al usuario)';
   const ml = mlConectado === true ? 'conectado' : (mlConectado === false ? 'no conectado' : 'usa las herramientas ml_* para consultarlo (te avisan si no está conectado)');
   return PERSONA + `
+
+FECHA Y HORA ACTUAL (REAL — úsala SIEMPRE; NUNCA inventes la fecha ni uses la de tu entrenamiento)
+· Ahora es ${fechaHoy || hoyIso || '(desconocida)'} (hora de Chile).${hoyIso ? ' Hoy en ISO: ' + hoyIso + '.' : ''}
+· "Hoy", "ayer", "esta semana" y "este mes" SIEMPRE se calculan a partir de esta fecha real, no de otra.
 
 PERFIL DEL NEGOCIO (durable)
 · ${perfil}
@@ -321,11 +325,18 @@ async function opSend({ svc, gtoken, uid, email, statePath, state, aiDoc, body, 
   const tools = [...buildCrmTools(ctx), ...buildMlTools(ctx)];
   // No probamos ML aquí: el cliente se construye perezosamente solo si una
   // herramienta ml_* lo usa (las herramientas avisan si no hay conexión).
+  const _ahora = deps.now();
+  let _fechaHoy = '';
+  try { _fechaHoy = _ahora.toLocaleString('es-CL', { timeZone: 'America/Santiago', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch (e) { _fechaHoy = _ahora.toISOString(); }
+  let _hoyIso = '';
+  try { _hoyIso = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Santiago' }).format(_ahora); } catch (e) { _hoyIso = _ahora.toISOString().slice(0, 10); }
   const systemPrompt = buildSystemPrompt({
     nombre: (email && email.split('@')[0]) || 'vendedor',
     meta: domain.metaText(state && state.goals),
     memoria: aiDoc.memory,
-    businessProfile: aiDoc.businessProfile
+    businessProfile: aiDoc.businessProfile,
+    fechaHoy: _fechaHoy,
+    hoyIso: _hoyIso
   });
 
   const agent = await deps.makeAgent(systemPrompt, tools);
