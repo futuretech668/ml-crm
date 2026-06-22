@@ -364,7 +364,6 @@
         wrap.className='acct-wrap';
         wrap.innerHTML=`
           <div class="acct-menu" id="accountMenu" role="menu" hidden>
-            <button class="acct-item" type="button" role="menuitem" data-acct="settings">Configuración</button>
             <button class="acct-item acct-item-danger" type="button" role="menuitem" data-acct="logout"><i data-lucide="log-out"></i> Cerrar sesión</button>
           </div>
           <button class="acct" id="accountBtn" type="button" aria-haspopup="menu" aria-expanded="false">
@@ -2078,6 +2077,36 @@
         .pi-tab:hover { color: var(--text-primary); }
         .pi-tab.active { background: var(--accent-primary); color: #fff; }
 
+        /* ---- Submenú desplegable del rail (acordeón) ---- */
+        .rail-caret { margin-left: auto; display: inline-flex; align-items: center; opacity: .6; transition: transform var(--transition-fast); }
+        .rail-caret svg, .rail-caret [data-lucide] { width: 15px !important; height: 15px !important; }
+        .rail-parent.expanded .rail-caret { transform: rotate(180deg); }
+        .rail-sub { display: none; flex-direction: column; gap: 2px; margin: 1px 0 4px; }
+        .rail-sub.open { display: flex; }
+        .rail-subitem {
+            display: flex; align-items: center; gap: 9px;
+            padding: 7px 12px 7px 40px; border-radius: 9px; cursor: pointer;
+            color: var(--text-secondary); font-size: 13px; user-select: none;
+            transition: background var(--transition-fast), color var(--transition-fast);
+        }
+        .rail-subitem::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor; opacity: .5; flex: none; }
+        .rail-subitem:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+        .rail-subitem.active { color: var(--text-primary); font-weight: 600; }
+        .rail-subitem.active::before { background: var(--accent-primary); opacity: 1; }
+        .rail-foot-item { margin-top: auto; }
+        body.rail-collapsed .rail-sub { display: none !important; }
+        body.rail-collapsed .rail-caret { display: none; }
+
+        /* ---- Miga de pan (breadcrumb) ---- */
+        .crumbs { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--text-muted); margin: 2px 0 18px; flex-wrap: wrap; }
+        .crumbs:empty { display: none; }
+        .crumbs .crumb-sep { opacity: .45; }
+        .crumbs .crumb-cur { color: var(--text-primary); font-weight: 600; }
+
+        /* ---- Paneles de Configuración (una pestaña a la vez) ---- */
+        #settings .set-panel { display: none; }
+        #settings .set-panel.active { display: block; }
+
         /* ---- Mobile top bar ---- */
         .topbar {
             display: none;
@@ -2328,10 +2357,11 @@
             <div class="rail-cap">General</div>
             <div class="rail-item" data-sec="dashboard" onclick="irASeccion('dashboard')"><i data-lucide="layout-dashboard"></i>Dashboard</div>
             <div class="rail-item" data-sec="sales" onclick="irASeccion('sales')"><i data-lucide="shopping-cart"></i>Ventas</div>
-            <div class="rail-item" data-sec="products" onclick="irASeccion('products')"><i data-lucide="package"></i>Productos</div>
+            <div class="rail-item rail-parent" data-sec="products" data-group="productos" onclick="irASeccion('products')"><i data-lucide="package"></i>Productos<span class="rail-caret"><i data-lucide="chevron-down"></i></span></div>
             <div class="rail-item" data-sec="finanzas" onclick="irASeccion('finanzas')"><i data-lucide="wallet"></i>Finanzas</div>
-            <div class="rail-item" data-sec="rendimiento" onclick="irASeccion('rendimiento')"><i data-lucide="bar-chart-3"></i>Rendimiento</div>
+            <div class="rail-item rail-parent" data-sec="rendimiento" data-group="rendimiento" onclick="irASeccion('rendimiento')"><i data-lucide="bar-chart-3"></i>Rendimiento<span class="rail-caret"><i data-lucide="chevron-down"></i></span></div>
             <div class="rail-item" data-sec="agenda" onclick="irASeccion('agenda'); if(window.renderAgenda) renderAgenda();"><i data-lucide="calendar-check"></i>Agenda</div>
+            <div class="rail-item rail-foot-item" data-sec="settings" onclick="irASeccion('settings')"><i data-lucide="settings"></i>Configuración</div>
         </nav>
     </aside>
 
@@ -2759,15 +2789,19 @@
                 <div class="section" id="settings">
                     <div class="page-head">
                         <div class="page-title"><i data-lucide="settings"></i>Configuración</div>
-                        <div class="page-sub">Perfil de la empresa, importación, respaldo y gestión de datos</div>
+                        <div class="page-sub">Elige una pestaña para ajustar cada parte de tu cuenta</div>
+                    </div>
+                    <div class="pi-tabs" id="settingsTabs">
+                        <button type="button" class="pi-tab active" data-set="perfil">Perfil</button>
+                        <button type="button" class="pi-tab" data-set="negocio">Mi negocio</button>
+                        <button type="button" class="pi-tab" data-set="notif">Notificaciones</button>
+                        <button type="button" class="pi-tab" data-set="ml">Mercado Libre</button>
+                        <button type="button" class="pi-tab" data-set="datos">Datos</button>
                     </div>
 
                     <!-- 1) PERFIL DE LA EMPRESA (identidad) -->
-                    <div class="card">
-                        <h2 style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:10px;user-select:none;margin:0;" onclick="if(window.toggleSettingsCard)toggleSettingsCard('bodyPerfil')">
-                            <span style="display:flex;align-items:center;gap:8px;"><i data-lucide="building-2"></i>Perfil de la empresa</span>
-                            <i data-lucide="chevron-down" id="bodyPerfil-chev"></i>
-                        </h2>
+                    <div class="card set-panel active" data-set="perfil">
+                        <h2 style="display:flex;align-items:center;gap:8px;margin:0;"><i data-lucide="building-2"></i>Perfil de la empresa</h2>
                         <div id="bodyPerfil" style="margin-top:16px;">
                             <p style="color:var(--text-secondary);font-size:13px;margin-bottom:16px;">El nombre y el logo aparecen en la app. La <strong>moneda</strong> afecta todos los montos.</p>
                             <div class="form-row">
@@ -2784,12 +2818,9 @@
                     </div>
 
                     <!-- 2) MI NEGOCIO (4 preguntas que ajustan la app) -->
-                    <div class="card">
-                        <h2 style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:10px;user-select:none;margin:0;" onclick="if(window.toggleSettingsCard)toggleSettingsCard('bodyNegocio')">
-                            <span style="display:flex;align-items:center;gap:8px;"><i data-lucide="briefcase"></i>Mi negocio</span>
-                            <i data-lucide="chevron-down" id="bodyNegocio-chev" style="transform:rotate(-90deg);"></i>
-                        </h2>
-                        <div id="bodyNegocio" style="margin-top:16px;display:none;">
+                    <div class="card set-panel" data-set="negocio">
+                        <h2 style="display:flex;align-items:center;gap:8px;margin:0;"><i data-lucide="briefcase"></i>Mi negocio</h2>
+                        <div id="bodyNegocio" style="margin-top:16px;">
                             <p style="color:var(--text-secondary);font-size:13px;margin-bottom:16px;">Estas respuestas ajustan la app a tu negocio (envío, comisiones e IVA). Puedes <strong>omitir</strong> cualquiera y cambiarlas cuando quieras; los cambios se aplican al instante.</p>
                             <style>
                                 .biz-q { margin-bottom: 22px; }
@@ -2810,12 +2841,9 @@
                     </div>
 
                     <!-- 3) NOTIFICACIONES Y REPORTES -->
-                    <div class="card">
-                        <h2 style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:10px;user-select:none;margin:0;" onclick="if(window.toggleSettingsCard)toggleSettingsCard('bodyNotif')">
-                            <span style="display:flex;align-items:center;gap:8px;"><i data-lucide="bell"></i>Notificaciones y reportes</span>
-                            <i data-lucide="chevron-down" id="bodyNotif-chev" style="transform:rotate(-90deg);"></i>
-                        </h2>
-                        <div id="bodyNotif" style="margin-top:16px;display:none;">
+                    <div class="card set-panel" data-set="notif">
+                        <h2 style="display:flex;align-items:center;gap:8px;margin:0;"><i data-lucide="bell"></i>Notificaciones y reportes</h2>
+                        <div id="bodyNotif" style="margin-top:16px;">
                             <p style="color:var(--text-secondary);font-size:13px;margin-bottom:16px;">Define a qué correo llegan tus reportes y si quieres recibir avisos por email.</p>
                             <div class="form-row">
                                 <div class="form-group"><label class="form-label">Correo para los reportes <span style="color:var(--text-muted);font-weight:400;">(resumen diario, stock bajo). Si lo dejas vacío, se usa el de tu cuenta.</span></label><input type="email" class="form-control" id="profReportEmail" placeholder="tucorreo@ejemplo.com"></div>
@@ -2827,31 +2855,20 @@
                         </div>
                     </div>
 
-                    <!-- 4) MERCADO LIBRE (conexión + importar ventas) -->
-                    <div class="card">
-                        <h2 style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:10px;user-select:none;margin:0;" onclick="if(window.toggleSettingsCard)toggleSettingsCard('bodyML')">
-                            <span style="display:flex;align-items:center;gap:8px;"><i data-lucide="link"></i>Mercado Libre</span>
-                            <i data-lucide="chevron-down" id="bodyML-chev" style="transform:rotate(-90deg);"></i>
-                        </h2>
-                        <div id="bodyML" style="margin-top:16px;display:none;">
+                    <!-- 4) MERCADO LIBRE (conexión) -->
+                    <div class="card set-panel" data-set="ml">
+                        <h2 style="display:flex;align-items:center;gap:8px;margin:0;"><i data-lucide="link"></i>Mercado Libre</h2>
+                        <div id="bodyML" style="margin-top:16px;">
                             <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 12px;">Conecta tu propia cuenta de Mercado Libre para que tus ventas se registren automáticamente.</p>
                             <div id="mlConnStatus" style="font-size: 13px; margin-bottom: 12px; color: var(--text-secondary);">Verificando…</div>
                             <button class="btn btn-primary" id="mlConnectBtn"><i data-lucide="link"></i>Conectar con Mercado Libre</button>
-
-                            <h3 style="margin-top: 32px; margin-bottom: 16px;"><i data-lucide="download-cloud"></i>Importar ventas (manual)</h3>
-                            <input type="file" id="mlImportFile" accept=".csv,.json" class="form-control" style="margin-bottom: 12px;">
-                            <button class="btn btn-secondary" id="importMLBtn"><i data-lucide="upload"></i>Importar ventas</button>
-                            <small style="display: block; margin-top: 12px; color: var(--text-secondary);">Formatos soportados: CSV o JSON con columnas: producto, precio, cantidad</small>
                         </div>
                     </div>
 
                     <!-- 5) DATOS Y RESPALDO -->
-                    <div class="card">
-                        <h2 style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:10px;user-select:none;margin:0;" onclick="if(window.toggleSettingsCard)toggleSettingsCard('bodyDatos')">
-                            <span style="display:flex;align-items:center;gap:8px;"><i data-lucide="database"></i>Datos y respaldo</span>
-                            <i data-lucide="chevron-down" id="bodyDatos-chev" style="transform:rotate(-90deg);"></i>
-                        </h2>
-                        <div id="bodyDatos" style="margin-top:16px;display:none;">
+                    <div class="card set-panel" data-set="datos">
+                        <h2 style="display:flex;align-items:center;gap:8px;margin:0;"><i data-lucide="database"></i>Datos y respaldo</h2>
+                        <div id="bodyDatos" style="margin-top:16px;">
                             <p style="color:var(--text-secondary);font-size:13px;margin-bottom:14px;">Haz un respaldo de tus datos o restáuralo. Guarda el archivo en un lugar seguro.</p>
                             <div style="display: flex; gap: 12px; flex-wrap: wrap;">
                                 <button class="btn btn-primary" id="exportBtn"><i data-lucide="download"></i>Exportar datos</button>
@@ -3595,6 +3612,11 @@
         const GRUPO_RENDIMIENTO = ['analytics','metas','logros','reportes','alerts'];
         // Etiquetas visibles de cada pestaña de Rendimiento.
         const RENDIMIENTO_LABELS = { analytics:'Análisis', metas:'Metas', logros:'Logros', reportes:'Reportes', alerts:'Alertas' };
+        // Subsecciones (pestañas internas) de "Productos".
+        const GRUPO_PRODUCTOS = ['products','inventory'];
+        const PRODUCTOS_LABELS = { products:'Catálogo', inventory:'Inventario' };
+        // Etiqueta para la miga de pan de cada sección de primer nivel.
+        const SECCION_LABELS = { dashboard:'Dashboard', sales:'Ventas', finanzas:'Finanzas', agenda:'Agenda', settings:'Configuración', products:'Productos', inventory:'Productos', rendimiento:'Rendimiento' };
         // Despachador de render por sección (reutilizado por irASeccion y por el sync de nube).
         const RENDER_SECCION = {
             analytics: () => renderAnalytics(),
@@ -3627,6 +3649,7 @@
             try { RENDER_SECCION[id](); } catch (e) {}
             const contentArea = document.getElementById('contentArea');
             if (contentArea) contentArea.scrollTop = 0;
+            if (window.syncRail) syncRail();
             refreshIcons();
         }
         window.irASubseccionRendimiento = irASubseccionRendimiento;
@@ -3686,6 +3709,7 @@
 
             // Cerrar panel (solo afecta al drawer en móvil)
             cerrarPanel();
+            if (window.syncRail) syncRail();
             refreshIcons();
         }
 
@@ -3708,7 +3732,7 @@
 
         // Inyecta la barra de pestañas Productos / Inventario al inicio de ambas secciones.
         function injectProductTabs(){
-            const botones = '<button type="button" class="pi-tab" data-pi="products">Productos</button>'
+            const botones = '<button type="button" class="pi-tab" data-pi="products">Catálogo</button>'
                           + '<button type="button" class="pi-tab" data-pi="inventory">Inventario</button>';
             injectTabBar(['products', 'inventory'], botones, 'pi', (id) => { if (window.irASeccion) window.irASeccion(id); });
         }
@@ -3721,6 +3745,71 @@
                 .join('');
             injectTabBar(GRUPO_RENDIMIENTO, botones, 'rtab', irASubseccionRendimiento);
         }
+
+        // Inyecta las subsecciones desplegables (acordeón) bajo Productos y Rendimiento en el rail.
+        function injectRailSubmenus(){
+            const mk = (group, ids, labels, onSelect) => {
+                const parent = document.querySelector('.rail-parent[data-group="' + group + '"]');
+                if (!parent) return;
+                const next = parent.nextElementSibling;
+                if (next && next.classList && next.classList.contains('rail-sub')) return;
+                const box = document.createElement('div');
+                box.className = 'rail-sub'; box.dataset.group = group;
+                box.innerHTML = ids.map(id => '<div class="rail-subitem" data-sub="' + id + '">' + labels[id] + '</div>').join('');
+                box.addEventListener('click', (e) => {
+                    const it = e.target.closest('.rail-subitem'); if (!it) return;
+                    e.stopPropagation(); onSelect(it.dataset.sub);
+                });
+                parent.insertAdjacentElement('afterend', box);
+            };
+            mk('productos', GRUPO_PRODUCTOS, PRODUCTOS_LABELS, (id) => { if (window.irASeccion) irASeccion(id); });
+            mk('rendimiento', GRUPO_RENDIMIENTO, RENDIMIENTO_LABELS, (id) => { _rendimientoTab = id; if (window.irASeccion) irASeccion('rendimiento'); });
+        }
+
+        // Asegura el contenedor de la miga de pan al inicio del área de contenido.
+        function ensureCrumbs(){
+            const area = document.getElementById('contentArea');
+            if (!area || document.getElementById('crumbs')) return;
+            const c = document.createElement('div');
+            c.className = 'crumbs'; c.id = 'crumbs';
+            area.insertBefore(c, area.firstChild);
+        }
+
+        // Actualiza la miga de pan según la sección/subsección activa.
+        function updateCrumbs(sec){
+            const el = document.getElementById('crumbs'); if (!el) return;
+            let parts;
+            if (sec === 'products' || sec === 'inventory') parts = ['Productos', PRODUCTOS_LABELS[sec]];
+            else if (sec === 'rendimiento') parts = ['Rendimiento', RENDIMIENTO_LABELS[tabRendimientoActiva()]];
+            else parts = [SECCION_LABELS[sec] || sec];
+            el.innerHTML = parts.filter(Boolean).map((p, i, arr) =>
+                (i === arr.length - 1)
+                    ? '<span class="crumb-cur">' + p + '</span>'
+                    : '<span>' + p + '</span><span class="crumb-sep">›</span>'
+            ).join('');
+        }
+
+        // Sincroniza el estado del rail (grupo abierto, subítem activo, caret) con la navegación actual.
+        function syncRail(){
+            const sec = seccionActiva;
+            let group = null, sub = null;
+            if (sec === 'products' || sec === 'inventory') { group = 'productos'; sub = sec; }
+            else if (sec === 'rendimiento') { group = 'rendimiento'; sub = tabRendimientoActiva(); }
+            document.querySelectorAll('.rail-sub').forEach(box => box.classList.toggle('open', box.dataset.group === group));
+            document.querySelectorAll('.rail-parent').forEach(p => p.classList.toggle('expanded', p.dataset.group === group));
+            document.querySelectorAll('.rail-subitem').forEach(si => si.classList.toggle('active', !!sub && si.dataset.sub === sub));
+            updateCrumbs(sec);
+        }
+
+        // Cambia la pestaña activa dentro de Configuración (Perfil / Mi negocio / Notificaciones / Mercado Libre / Datos).
+        function irASubseccionSettings(id){
+            document.querySelectorAll('#settings .set-panel').forEach(p => p.classList.toggle('active', p.dataset.set === id));
+            document.querySelectorAll('#settingsTabs .pi-tab').forEach(t => t.classList.toggle('active', t.dataset.set === id));
+            const area = document.getElementById('contentArea');
+            if (area) area.scrollTop = 0;
+            refreshIcons();
+        }
+        window.irASubseccionSettings = irASubseccionSettings;
 
         // ===== AYUDA CONTEXTUAL: íconos (?) con tooltip por toda la app =====
         // Crea el span del ícono de ayuda con su burbuja (texto ya escapado por textContent).
@@ -3827,6 +3916,13 @@
             setupEventListeners();
             injectProductTabs();
             injectRendimientoTabs();
+            injectRailSubmenus();
+            ensureCrumbs();
+            const _setTabs = document.getElementById('settingsTabs');
+            if (_setTabs) _setTabs.addEventListener('click', (e) => {
+                const t = e.target.closest('.pi-tab');
+                if (t) irASubseccionSettings(t.dataset.set);
+            });
             if (window.ventaPoblarCanales) ventaPoblarCanales();
             if (window.initHelpTips) try { initHelpTips(); } catch(e){}
             renderDashboard();
@@ -3844,6 +3940,8 @@
             refreshIcons();
             const navActivo = document.querySelector('.rail-item[data-sec="dashboard"]');
             if (navActivo) navActivo.classList.add('active');
+            seccionActiva = 'dashboard';
+            if (window.syncRail) syncRail();
 
             // Configurar botón del menú
             const menuBtn = document.getElementById('menu-btn');
@@ -4048,8 +4146,7 @@
         };
         window.openProfile = function(){
             try { if (window.irASeccion) irASeccion('settings'); } catch (e) {}
-            var b = document.getElementById('bodyPerfil'); if (b) b.style.display = '';
-            var ch = document.getElementById('bodyPerfil-chev'); if (ch) ch.style.transform = '';
+            try { if (window.irASubseccionSettings) irASubseccionSettings('perfil'); } catch (e) {}
             setTimeout(function(){
                 var el = document.getElementById('profCompany');
                 if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -4944,76 +5041,7 @@
                 reader.readAsText(file);
             });
 
-            document.getElementById('importMLBtn').addEventListener('click', () => {
-                document.getElementById('mlImportFile').click();
-            });
-
-            document.getElementById('mlImportFile').addEventListener('change', (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
-                
-                const reader = new FileReader();
-                reader.onload = (ev) => {
-                    try {
-                        let ventas = [];
-                        
-                        if (file.name.endsWith('.csv')) {
-                            const lines = ev.target.result.split('\n').slice(1);
-                            ventas = lines.filter(l => l.trim()).map(line => {
-                                const [producto, precio, cantidad] = line.split(',');
-                                return {
-                                    producto: producto.trim(),
-                                    precio: parseFloat(precio) || 0,
-                                    cantidad: parseInt(cantidad) || 1
-                                };
-                            });
-                        } else {
-                            ventas = JSON.parse(ev.target.result);
-                        }
-
-                        const productMap = {};
-                        ventas.forEach(v => {
-                            const key = v.producto.toLowerCase().trim();
-                            if (!productMap[key]) {
-                                productMap[key] = {
-                                    name: v.producto,
-                                    quantity: 0,
-                                    salePrice: v.precio || 0
-                                };
-                            }
-                            productMap[key].quantity += v.cantidad || 1;
-                        });
-
-                        Object.values(productMap).forEach((p, idx) => {
-                            const existing = STATE.products.find(prod => prod.name.toLowerCase() === p.name.toLowerCase());
-                            if (!existing) {
-                                STATE.products.push({
-                                    id: Date.now() + idx,
-                                    name: p.name,
-                                    costPrice: p.salePrice * 0.6,
-                                    salePrice: p.salePrice,
-                                    stock: 100,
-                                    stockInit: 100,
-                                    stockMin: 5,
-                                    shipping: 1000,
-                                    commission: 13,
-                                    commissionType: 'percentage',
-                                    archived: false,
-                                    createdDate: new Date().toISOString()
-                                });
-                            }
-                        });
-
-                        saveToLocalStorage();
-                        updateDropdowns();
-                        renderProductsList();
-                        showToast('✅ Ventas importadas');
-                    } catch (err) {
-                        showToast('❌ Error al importar');
-                    }
-                };
-                reader.readAsText(file);
-            });
+            // (Importación manual de ventas por CSV/JSON eliminada: las ventas entran solas vía Mercado Libre.)
 
             document.getElementById('clearBtn').addEventListener('click', () => {
                 if (confirm('⚠️ Esto borrará TODOS tus datos: productos, ventas, gastos, tareas/agenda, metas y logros.\nLa configuración (perfil, negocio, conexión Mercado Libre) se conserva.\n\nEsta acción NO se puede deshacer. ¿Seguro?')) {
