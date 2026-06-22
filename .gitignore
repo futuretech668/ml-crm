@@ -22,3 +22,5 @@ Thumbs.db
 .vercel
 token-nuevo.txt
 render-ENV-para-pegar.txt
+token-vercel.txt
+cron-urls.txt

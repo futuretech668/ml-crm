@@ -364,8 +364,8 @@
         wrap.className='acct-wrap';
         wrap.innerHTML=`
           <div class="acct-menu" id="accountMenu" role="menu" hidden>
-            <button class="acct-item" type="button" role="menuitem" data-acct="rendimiento">Rendimiento</button>
             <button class="acct-item" type="button" role="menuitem" data-acct="settings">Configuración</button>
+            <button class="acct-item acct-item-danger" type="button" role="menuitem" data-acct="logout"><i data-lucide="log-out"></i> Cerrar sesión</button>
           </div>
           <button class="acct" id="accountBtn" type="button" aria-haspopup="menu" aria-expanded="false">
             <span class="acct-name" id="accountName"></span>
@@ -381,6 +381,7 @@
         menu.addEventListener('click',(e)=>{
           const it=e.target.closest('.acct-item'); if(!it) return;
           closeMenu();
+          if(it.dataset.acct==='logout'){ if(window.__AUTH&&window.__AUTH.logout) window.__AUTH.logout(); return; }
           if(window.irASeccion) window.irASeccion(it.dataset.acct);
         });
         document.addEventListener('click',(e)=>{ if(!menu.hidden && !wrap.contains(e.target)) closeMenu(); });
@@ -2048,6 +2049,25 @@
             font-size: 13px; font-weight: 500; padding: 10px 12px; border-radius: 8px; cursor: pointer;
         }
         .acct-item:hover { background: var(--bg-tertiary); }
+        .acct-item { display: flex; align-items: center; gap: 8px; }
+        .acct-item i { width: 15px; height: 15px; }
+        .acct-item-danger { color: var(--accent-danger, #ef4444); }
+        .acct-item-danger:hover { background: rgba(239,68,68,0.12); }
+        /* ---- Ícono de ayuda (?) con tooltip (hover en escritorio, tap/focus en móvil) ---- */
+        .help-tip { position: relative; display: inline-flex; align-items: center; justify-content: center;
+            width: 16px; height: 16px; min-width: 16px; border-radius: 50%; margin-left: 6px;
+            background: var(--bg-tertiary); color: var(--text-secondary); border: 1px solid var(--border-color);
+            font-size: 11px; font-weight: 700; line-height: 1; cursor: help; vertical-align: middle; user-select: none; }
+        .help-tip:hover, .help-tip:focus { background: var(--accent-primary); color: #fff; outline: none; }
+        .help-tip__bubble { position: absolute; bottom: 150%; left: 50%; transform: translateX(-50%);
+            width: 240px; max-width: 72vw; padding: 10px 12px; border-radius: 10px;
+            background: var(--bg-elevated, #1e1e28); color: var(--text-primary); border: 1px solid var(--border-color);
+            box-shadow: var(--shadow-lg, 0 12px 32px rgba(0,0,0,.4)); font-size: 12.5px; font-weight: 400; line-height: 1.45;
+            text-align: left; white-space: normal; opacity: 0; visibility: hidden; transition: opacity .15s ease;
+            z-index: 200; pointer-events: none; }
+        .help-tip__bubble::after { content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+            border: 6px solid transparent; border-top-color: var(--bg-elevated, #1e1e28); }
+        .help-tip:hover .help-tip__bubble, .help-tip:focus .help-tip__bubble { opacity: 1; visibility: visible; }
         /* ---- Pestañas Productos / Inventario ---- */
         .pi-tabs { display: inline-flex; gap: 4px; padding: 4px; margin-bottom: 18px; background: var(--bg-secondary); border: 1px solid var(--border-soft); border-radius: 11px; }
         .pi-tab {
@@ -2309,6 +2329,8 @@
             <div class="rail-item" data-sec="dashboard" onclick="irASeccion('dashboard')"><i data-lucide="layout-dashboard"></i>Dashboard</div>
             <div class="rail-item" data-sec="sales" onclick="irASeccion('sales')"><i data-lucide="shopping-cart"></i>Ventas</div>
             <div class="rail-item" data-sec="products" onclick="irASeccion('products')"><i data-lucide="package"></i>Productos</div>
+            <div class="rail-item" data-sec="finanzas" onclick="irASeccion('finanzas')"><i data-lucide="wallet"></i>Finanzas</div>
+            <div class="rail-item" data-sec="rendimiento" onclick="irASeccion('rendimiento')"><i data-lucide="bar-chart-3"></i>Rendimiento</div>
             <div class="rail-item" data-sec="agenda" onclick="irASeccion('agenda'); if(window.renderAgenda) renderAgenda();"><i data-lucide="calendar-check"></i>Agenda</div>
         </nav>
     </aside>
@@ -2448,13 +2470,7 @@
                             .venta-opt-wrap { overflow:hidden; transition:max-height .25s ease, opacity .2s ease; max-height:0; opacity:0; }
                             .venta-opt-wrap.abierto { max-height:120px; opacity:1; }
                         </style>
-                        <!-- AGENTE 4 — selector de 3 modos -->
-                        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px;">
-                            <button type="button" id="modoManualBtn" class="venta-modo-btn activo" onclick="if(window.ventaSetModo)ventaSetModo('manual')"><i data-lucide="pencil"></i> Manual</button>
-                            <button type="button" id="modoMlBtn" class="venta-modo-btn" onclick="if(window.ventaSetModo)ventaSetModo('ml')"><i data-lucide="package"></i> Mercado Libre</button>
-                        </div>
-
-                        <!-- MODO MANUAL (AGENTE 1) -->
+                        <!-- Registro de venta (el canal se elige abajo en el formulario) -->
                         <form id="salesForm">
                             <div class="form-row">
                                 <div class="form-group">
@@ -2470,13 +2486,11 @@
                                     <input type="date" class="form-control" id="saleDate" required>
                                 </div>
                             </div>
-                            <!-- Canal / origen de la venta -->
+                            <!-- Canal de venta (dinámico: Manual + Mercado Libre si está conectado + canales propios) -->
                             <div class="form-group" style="margin-bottom:12px;">
-                                <label class="form-label">Canal / origen</label>
-                                <select class="form-control" id="saleChannel" onchange="if(window.ventaToggleCanal)ventaToggleCanal()">
-                                    <option value="manual">Venta manual</option>
-                                    <option value="mercadolibre">Mercado Libre</option>
-                                    <option value="otro">Otro</option>
+                                <label class="form-label">Canal de venta</label>
+                                <select class="form-control" id="saleChannel" onchange="if(window.ventaCanalChange)ventaCanalChange()">
+                                    <option value="manual">Manual</option>
                                 </select>
                             </div>
                             <!-- Variante (AGENTE 4): solo aparece si el producto tiene variantes -->
@@ -2524,15 +2538,8 @@
                                 <button type="submit" id="saleSubmitBtn" class="btn btn-primary" disabled><i data-lucide="check"></i>Registrar venta</button>
                                 <button type="reset" class="btn btn-secondary"><i data-lucide="eraser"></i>Limpiar</button>
                             </div>
+                            <p id="saleSubmitHint" style="color:var(--text-muted);font-size:13px;margin:8px 0 0;">Elige un producto y la cantidad para poder registrar la venta.</p>
                         </form>
-
-                        <!-- MODO MERCADO LIBRE (AGENTE 2) -->
-                        <div id="ventaModoMl" style="display:none;">
-                            <div style="padding:16px;border:1px solid var(--border-soft);border-radius:12px;background:var(--bg-tertiary);">
-                                <p style="color:var(--text-secondary);font-size:14px;margin:0 0 10px;display:flex;align-items:flex-start;gap:8px;"><i data-lucide="info" style="flex-shrink:0;color:var(--accent-primary);"></i> Las ventas de Mercado Libre se importan <strong>solas</strong> y aparecen abajo con la etiqueta <span class="badge" style="background:#FFE600;color:#2D3277;font-weight:700;">Mercado Libre</span>. No tienes que registrarlas a mano.</p>
-                                <p style="color:var(--text-muted);font-size:13px;margin:0;">¿No ves tus ventas? Conecta tu cuenta en <strong>Configuración → Conectar con Mercado Libre</strong>.</p>
-                            </div>
-                        </div>
 
                     </div>
 
@@ -2600,9 +2607,13 @@
                                 </div>
                             </div>
 
-                            <!-- Toggle: ¿tiene costo de envío? -->
-                            <div id="prodShippingToggleRow" style="margin:4px 0 6px;">
-                                <label class="switch" style="font-size:14px;"><input type="checkbox" class="switch-input" id="prodHasShipping" checked> ¿Tiene costo de envío?</label>
+                            <!-- ¿Pagas envío? (estilo pregunta No/Sí, igual que variantes) -->
+                            <div id="prodShippingToggleRow" style="margin:10px 0 6px;">
+                                <label class="form-label" style="display:block;margin-bottom:8px;">¿Pagas envío?</label>
+                                <div style="display:flex;gap:20px;flex-wrap:wrap;">
+                                    <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:14px;"><input type="radio" name="prodHasShipping" value="no" onchange="if(window.syncProductToggles)syncProductToggles()"> No</label>
+                                    <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:14px;"><input type="radio" name="prodHasShipping" value="si" checked onchange="if(window.syncProductToggles)syncProductToggles()"> Sí</label>
+                                </div>
                             </div>
                             <div id="prodShippingFields" class="form-row">
                                 <div class="form-group">
@@ -2611,9 +2622,13 @@
                                 </div>
                             </div>
 
-                            <!-- Toggle: ¿tiene comisión? -->
+                            <!-- ¿Pagas comisión? (estilo pregunta No/Sí, igual que variantes) -->
                             <div id="prodCommissionToggleRow" style="margin:10px 0 6px;">
-                                <label class="switch" style="font-size:14px;"><input type="checkbox" class="switch-input" id="prodHasCommission" checked> ¿Tiene comisión?</label>
+                                <label class="form-label" style="display:block;margin-bottom:8px;">¿Pagas comisión?</label>
+                                <div style="display:flex;gap:20px;flex-wrap:wrap;">
+                                    <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:14px;"><input type="radio" name="prodHasCommission" value="no" onchange="if(window.syncProductToggles)syncProductToggles()"> No</label>
+                                    <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:14px;"><input type="radio" name="prodHasCommission" value="si" checked onchange="if(window.syncProductToggles)syncProductToggles()"> Sí</label>
+                                </div>
                             </div>
                             <div id="prodCommissionFields" class="form-row">
                                 <div class="form-group">
@@ -2875,6 +2890,7 @@
                         var prov = false;
                         try { prov = (window.STATE && STATE.mlConnected === true) || localStorage.getItem(flagKey()) === '1'; } catch(e){}
                         pintar(prov, null);
+                        if (window.ventaPoblarCanales) try { ventaPoblarCanales(); } catch(e){}
                         // 2) Estado REAL desde la BASE DE DATOS (token compartido entre dispositivos).
                         try {
                             if (window.FB && typeof window.FB.mlStatus === 'function'){
@@ -2883,6 +2899,7 @@
                                     pintar(res.connected, res.mlUser);
                                     try { if (window.STATE){ STATE.mlConnected = !!res.connected; } } catch(e){}
                                     try { if (res.connected) localStorage.setItem(flagKey(), '1'); else localStorage.removeItem(flagKey()); } catch(e){}
+                                    if (window.ventaPoblarCanales) try { ventaPoblarCanales(); } catch(e){}
                                 });
                             }
                         } catch(e){}
@@ -3092,8 +3109,8 @@
         <!-- ============================================================= -->
         <div class="section" id="agenda">
             <div class="page-head">
-                <h1><i data-lucide="calendar-check"></i> Agenda</h1>
-                <p style="color:var(--text-secondary);margin-top:4px;">Gestiona tus despachos, recordatorios y tareas. Todo se calcula y guarda en este dispositivo.</p>
+                <div class="page-title"><i data-lucide="calendar-check"></i>Agenda</div>
+                <p class="page-sub" style="color:var(--text-secondary);margin-top:4px;">Gestiona tus despachos, recordatorios y tareas. Todo se calcula y guarda en este dispositivo.</p>
             </div>
 
             <!-- Resumen del día -->
@@ -3512,6 +3529,7 @@
             pendingMappings: [],   // PASO 4: publicaciones nuevas esperando confirmación
             dismissedPending: [],  // item_id de pendientes descartadas/cargadas (se guarda en BD → nunca reaparecen)
             notifications: [],     // PASO 5: notificaciones para el chat
+            customChannels: [],    // Canales de venta propios que agrega el usuario (además de Manual / Mercado Libre)
             theme: 'dark',
             currentSection: 'dashboard',
             currentPeriod: 'today',
@@ -3563,9 +3581,10 @@
         }
 
         // Subsecciones (pestañas internas) de la vista unificada "Rendimiento".
-        const GRUPO_RENDIMIENTO = ['analytics','finanzas','metas','logros','reportes','alerts'];
+        // Finanzas dejó de ser pestaña de Rendimiento: ahora es sección normal del menú lateral.
+        const GRUPO_RENDIMIENTO = ['analytics','metas','logros','reportes','alerts'];
         // Etiquetas visibles de cada pestaña de Rendimiento.
-        const RENDIMIENTO_LABELS = { analytics:'Análisis', finanzas:'Finanzas', metas:'Metas', logros:'Logros', reportes:'Reportes', alerts:'Alertas' };
+        const RENDIMIENTO_LABELS = { analytics:'Análisis', metas:'Metas', logros:'Logros', reportes:'Reportes', alerts:'Alertas' };
         // Despachador de render por sección (reutilizado por irASeccion y por el sync de nube).
         const RENDER_SECCION = {
             analytics: () => renderAnalytics(),
@@ -3628,9 +3647,9 @@
             document.querySelectorAll('.rail-item').forEach(el => {
                 el.classList.toggle('active', el.dataset.sec === railSec);
             });
-            // 'rendimiento' y 'settings' se abren desde el menú de cuenta: resaltar su botón.
+            // 'settings' se abre desde el menú de cuenta: resaltar su botón.
             const accountBtn = document.getElementById('accountBtn');
-            if (accountBtn) accountBtn.classList.toggle('acct-active', seccion === 'rendimiento' || seccion === 'settings');
+            if (accountBtn) accountBtn.classList.toggle('acct-active', seccion === 'settings');
 
             // Sincronizar pestañas Productos / Inventario
             if (seccion === 'products' || seccion === 'inventory') {
@@ -3642,8 +3661,9 @@
             if (seccion === 'alerts') renderAlerts();
             if (seccion === 'dashboard') renderDashboard();
             if (seccion === 'inventory') renderInventory();
-            if (seccion === 'sales') { updateDropdowns(); renderSalesList(); }
+            if (seccion === 'sales') { updateDropdowns(); renderSalesList(); if (window.ventaPoblarCanales) ventaPoblarCanales(); }
             if (seccion === 'products') renderProductsList();
+            if (seccion === 'finanzas') { if (window.renderFinanzas) renderFinanzas(); }
             if (seccion === 'settings') { if (window.fillProfileInputs) fillProfileInputs(); if (window.fillBusinessInputs) fillBusinessInputs(); if (window.mlRefreshStatus) mlRefreshStatus(); }
             if (seccion === 'rendimiento') {
                 try { RENDER_SECCION[tabRendimientoActiva()](); } catch (e) {}
@@ -3692,6 +3712,90 @@
             injectTabBar(GRUPO_RENDIMIENTO, botones, 'rtab', irASubseccionRendimiento);
         }
 
+        // ===== AYUDA CONTEXTUAL: íconos (?) con tooltip por toda la app =====
+        // Crea el span del ícono de ayuda con su burbuja (texto ya escapado por textContent).
+        function mkHelpTip(text){
+            var s = document.createElement('span');
+            s.className = 'help-tip'; s.tabIndex = 0; s.setAttribute('role', 'note');
+            s.setAttribute('aria-label', 'Ayuda: ' + text);
+            s.appendChild(document.createTextNode('?'));
+            var b = document.createElement('span');
+            b.className = 'help-tip__bubble'; b.textContent = text;
+            s.appendChild(b);
+            return s;
+        }
+        // Agrega un (?) al final de un elemento (si no tiene ya uno).
+        function helpOnEl(el, text){ if (el && !el.querySelector(':scope > .help-tip')) el.appendChild(mkHelpTip(text)); }
+        // (?) sobre el .form-label del grupo que contiene al input con ese id.
+        function helpOnField(inputId, text){
+            var el = document.getElementById(inputId); if (!el) return;
+            var grp = el.closest('.form-group') || el.parentElement;
+            var lab = grp ? grp.querySelector('.form-label') : null;
+            helpOnEl(lab, text);
+        }
+        // (?) sobre el primer .form-label (dentro de scope) cuyo texto contenga `frag`.
+        function helpOnLabelText(frag, text, scope){
+            var root = scope || document;
+            var labs = root.querySelectorAll('.form-label');
+            for (var i = 0; i < labs.length; i++){
+                if ((labs[i].textContent || '').toLowerCase().indexOf(frag.toLowerCase()) !== -1){ helpOnEl(labs[i], text); return; }
+            }
+        }
+        // (?) sobre los KPIs del dashboard cuyo .kpi-label coincida con el texto dado.
+        function helpOnKpi(labelText, text){
+            var labs = document.querySelectorAll('#dashboard .kpi-label');
+            for (var i = 0; i < labs.length; i++){
+                if ((labs[i].textContent || '').trim().toLowerCase() === labelText.toLowerCase()){ helpOnEl(labs[i], text); return; }
+            }
+        }
+        // (?) sobre el .page-title de una sección.
+        function helpOnSection(sectionId, text){
+            var sec = document.getElementById(sectionId); if (!sec) return;
+            helpOnEl(sec.querySelector('.page-title'), text);
+        }
+        // (?) sobre el primer h3 (dentro de scope) cuyo texto contenga `frag`.
+        function helpOnHeading(sectionId, frag, text){
+            var sec = document.getElementById(sectionId); if (!sec) return;
+            var hs = sec.querySelectorAll('h3');
+            for (var i = 0; i < hs.length; i++){
+                if ((hs[i].textContent || '').toLowerCase().indexOf(frag.toLowerCase()) !== -1){ helpOnEl(hs[i], text); return; }
+            }
+        }
+        window.initHelpTips = function(){
+            // --- Dashboard (KPIs con jerga) ---
+            helpOnKpi('Ingresos Totales', 'Todo el dinero que entró por ventas, antes de descontar costos, comisiones y envíos.');
+            helpOnKpi('Ganancia Neta', 'Lo que realmente te queda: ventas menos costo del producto, comisiones y envíos. Es tu ganancia real.');
+            helpOnKpi('Comisiones', 'Total que te cobraron las plataformas (ej. Mercado Libre) por tus ventas.');
+            helpOnKpi('Envíos', 'Lo que pagaste en despachos de tus ventas.');
+            helpOnKpi('IVA', 'Impuesto estimado (19%) sobre tus ventas. Puedes ajustarlo con el dato real del SII en Finanzas.');
+            helpOnKpi('Publicidad', 'Lo que gastaste en publicidad este mes (lo cargas en Finanzas).');
+            // --- Productos ---
+            helpOnField('prodCostPrice', 'Lo que te costó comprar o fabricar el producto.');
+            helpOnField('prodSalePrice', 'El precio al que se lo vendes a tu cliente.');
+            helpOnField('prodStock', 'Cuántas unidades tienes disponibles para vender ahora.');
+            helpOnField('prodStockMin', 'Cuando el stock baje a este número, la app te avisa para reponer.');
+            helpOnLabelText('¿Pagas envío?', 'Marca Sí si tú pagas el despacho de este producto. Si no, déjalo en No.');
+            helpOnLabelText('¿Pagas comisión?', 'Marca Sí si una plataforma te cobra comisión por venderlo. En % se calcula sobre el precio de venta; en $ es un monto fijo.');
+            helpOnLabelText('¿Este producto tiene variantes?', 'Úsalo solo si vendes el mismo producto en varios colores o tallas, cada uno con su stock.');
+            // --- Ventas ---
+            helpOnField('saleChannel', "Por dónde se hizo la venta. 'Manual' es para ventas fuera de plataformas. Con 'Añadir canal…' creas los tuyos (Instagram, Marketplace, etc.). Mercado Libre aparece solo si conectaste tu cuenta.");
+            helpOnLabelText('Precio de venta', 'Usa el precio guardado del producto, o elige "A otro precio" si esta vez vendiste a un valor distinto.');
+            helpOnLabelText('¿Tuvo costo de envío?', 'Marca Sí si pagaste el despacho de esta venta en particular.');
+            helpOnLabelText('¿Tuvo comisión?', 'Marca Sí si la plataforma te cobró comisión por esta venta. Puedes ponerla en monto ($) o porcentaje (%).');
+            // --- Finanzas ---
+            helpOnSection('finanzas', 'Tu dinero real del mes: ganancia neta, IVA, gastos y publicidad.');
+            helpOnHeading('finanzas', 'IVA', 'El 19% se calcula automático sobre tus ventas. Si tienes el monto exacto del SII, puedes escribirlo a mano para ese mes.');
+            helpOnHeading('finanzas', 'gasto', 'Gastos variables son los que cambian mes a mes (insumos, bolsas). Los gastos fijos se repiten siempre (arriendo, internet).');
+            // --- Rendimiento (subsecciones) ---
+            helpOnSection('analytics', 'Rentabilidad y margen de cada producto, para saber cuál te conviene vender más.');
+            helpOnSection('metas', 'Define cuánto quieres vender o ganar en el mes y sigue tu avance.');
+            helpOnSection('reportes', 'Tus productos más vendidos y los días y horarios en que más vendes.');
+            helpOnSection('alerts', 'Avisos de productos con stock bajo, según el Stock Mínimo que pusiste en cada producto.');
+            // --- Agenda ---
+            helpOnSection('agenda', 'Tus tareas y recordatorios. Los despachos de tus ventas pueden aparecer aquí automáticamente.');
+            try { if (window.lucide && lucide.createIcons) lucide.createIcons(); } catch(e){}
+        };
+
         document.addEventListener('DOMContentLoaded', () => {
             // Restaurar estado colapsado del sidebar (preferencia de UI por dispositivo)
             try { if (window.localStorage.getItem('nexsell_rail_collapsed') === '1') document.body.classList.add('rail-collapsed'); } catch (e) {}
@@ -3701,6 +3805,8 @@
             setupEventListeners();
             injectProductTabs();
             injectRendimientoTabs();
+            if (window.ventaPoblarCanales) ventaPoblarCanales();
+            if (window.initHelpTips) try { initHelpTips(); } catch(e){}
             renderDashboard();
             // FIX: refrescar todas las secciones con los datos cargados desde el almacenamiento
             updateDropdowns();
@@ -3754,12 +3860,24 @@
                 });
             }
 
-            // Toggles de Productos: ¿tiene comisión? / ¿tiene costo de envío?
+            // Lee si la pregunta No/Sí (radio) de Productos está en "Sí". Compat con checkbox antiguo.
+            window.prodToggleOn = function(name){
+                var r = document.querySelector('input[name="' + name + '"]:checked');
+                if (r) return r.value === 'si';
+                var c = document.getElementById(name); return c ? c.checked : true;
+            };
+            // Marca la pregunta No/Sí (radio) de Productos en "Sí"/"No". Compat con checkbox antiguo.
+            window.prodToggleSet = function(name, on){
+                var r = document.querySelector('input[name="' + name + '"][value="' + (on ? 'si' : 'no') + '"]');
+                if (r){ r.checked = true; return; }
+                var c = document.getElementById(name); if (c) c.checked = on;
+            };
+            // Toggles de Productos: ¿pagas comisión? / ¿pagas envío?
             window.syncProductToggles = function(){
-                var hc = document.getElementById('prodHasCommission'); var cf = document.getElementById('prodCommissionFields');
-                if (hc && cf) cf.style.display = hc.checked ? '' : 'none';
-                var hs = document.getElementById('prodHasShipping'); var sf = document.getElementById('prodShippingFields');
-                if (hs && sf) sf.style.display = hs.checked ? '' : 'none';
+                var cf = document.getElementById('prodCommissionFields');
+                if (cf) cf.style.display = window.prodToggleOn('prodHasCommission') ? '' : 'none';
+                var sf = document.getElementById('prodShippingFields');
+                if (sf) sf.style.display = window.prodToggleOn('prodHasShipping') ? '' : 'none';
                 if (window.syncProductProfit) window.syncProductProfit();
             };
             // Ganancia EN VIVO del producto SIN variantes (AGENTE 2): Venta − Costo − Envío − Comisión.
@@ -3770,19 +3888,17 @@
                 el.style.display = '';
                 var n = function(id){ var v = parseFloat((document.getElementById(id)||{}).value); return isNaN(v)?0:v; };
                 var costo = n('prodCostPrice'), venta = n('prodSalePrice');
-                var hs = document.getElementById('prodHasShipping'); var envio = (hs && hs.checked) ? n('prodShipping') : 0;
-                var hc = document.getElementById('prodHasCommission');
+                var envio = window.prodToggleOn('prodHasShipping') ? n('prodShipping') : 0;
                 var com = 0;
-                if (hc && hc.checked){ var tipo = (document.getElementById('prodCommissionType')||{}).value; var c = n('prodCommission'); com = (tipo === 'fixed') ? c : (venta * c / 100); }
+                if (window.prodToggleOn('prodHasCommission')){ var tipo = (document.getElementById('prodCommissionType')||{}).value; var c = n('prodCommission'); com = (tipo === 'fixed') ? c : (venta * c / 100); }
                 var g = venta - costo - envio - com;
                 el.innerHTML = 'Ganancia por unidad: <strong style="color:' + (g>=0?'var(--success)':'var(--accent-danger)') + ';">' + formatCurrency(g) + '</strong>';
             };
-            var _hcTgl = document.getElementById('prodHasCommission'); if (_hcTgl) _hcTgl.addEventListener('change', window.syncProductToggles);
-            var _hsTgl = document.getElementById('prodHasShipping'); if (_hsTgl) _hsTgl.addEventListener('change', window.syncProductToggles);
+            // Los radios No/Sí ya llaman a syncProductToggles vía onchange inline.
             // Recalcular la ganancia en vivo al escribir en cualquier campo relevante.
             ['prodCostPrice','prodSalePrice','prodShipping','prodCommission'].forEach(function(id){ var e = document.getElementById(id); if (e) e.addEventListener('input', window.syncProductProfit); });
             var _ctSel = document.getElementById('prodCommissionType'); if (_ctSel) _ctSel.addEventListener('change', window.syncProductProfit);
-            var _pfRst = document.getElementById('productForm'); if (_pfRst) _pfRst.addEventListener('reset', function(){ setTimeout(function(){ if(_hcTgl) _hcTgl.checked = true; if(_hsTgl) _hsTgl.checked = true; window.syncProductToggles(); if (window.applyBusinessConfig) window.applyBusinessConfig(); }, 0); });
+            var _pfRst = document.getElementById('productForm'); if (_pfRst) _pfRst.addEventListener('reset', function(){ setTimeout(function(){ window.prodToggleSet('prodHasCommission', true); window.prodToggleSet('prodHasShipping', true); window.syncProductToggles(); if (window.applyBusinessConfig) window.applyBusinessConfig(); }, 0); });
             window.syncProductToggles();
             if (window.applyBusinessConfig) window.applyBusinessConfig();
         });
@@ -4020,23 +4136,21 @@
 
             // --- ENVÍO (formulario de Productos) ---
             if (b.envio === 'no'){
-                show('prodShippingToggleRow', false); show('prodShippingFields', false); check('prodHasShipping', false);
+                show('prodShippingToggleRow', false); show('prodShippingFields', false); window.prodToggleSet('prodHasShipping', false);
             } else if (b.envio === 'si'){
-                show('prodShippingToggleRow', false); check('prodHasShipping', true); show('prodShippingFields', true);
-            } else { // aveces / omitir -> toggle visible
+                show('prodShippingToggleRow', false); window.prodToggleSet('prodHasShipping', true); show('prodShippingFields', true);
+            } else { // aveces / omitir -> pregunta visible
                 show('prodShippingToggleRow', true);
-                var hs = document.getElementById('prodHasShipping');
-                show('prodShippingFields', !hs || hs.checked);
+                show('prodShippingFields', window.prodToggleOn('prodHasShipping'));
             }
             // --- COMISIÓN (formulario de Productos) ---
             if (b.comision === 'no'){
-                show('prodCommissionToggleRow', false); show('prodCommissionFields', false); check('prodHasCommission', false);
+                show('prodCommissionToggleRow', false); show('prodCommissionFields', false); window.prodToggleSet('prodHasCommission', false);
             } else if (b.comision === 'si'){
-                show('prodCommissionToggleRow', false); check('prodHasCommission', true); show('prodCommissionFields', true);
+                show('prodCommissionToggleRow', false); window.prodToggleSet('prodHasCommission', true); show('prodCommissionFields', true);
             } else {
                 show('prodCommissionToggleRow', true);
-                var hc = document.getElementById('prodHasCommission');
-                show('prodCommissionFields', !hc || hc.checked);
+                show('prodCommissionFields', window.prodToggleOn('prodHasCommission'));
             }
             // --- IVA (sección Finanzas): ocultar la tarjeta si "No paga IVA" ---
             show('finIvaCard', b.iva !== 'no');
@@ -4204,7 +4318,8 @@
                 profile: STATE.profile || {},
                 gastosFijos: STATE.gastosFijos || [],
                 reportEmail: STATE.reportEmail || '',
-                mlConnected: STATE.mlConnected || false
+                mlConnected: STATE.mlConnected || false,
+                customChannels: STATE.customChannels || []
             }).catch(err => console.warn('⚠️ No se pudo guardar en la nube (queda en localStorage):', err.message));
         }
 
@@ -4249,6 +4364,8 @@
             if (Array.isArray(data.gastosFijos)) STATE.gastosFijos = data.gastosFijos;
             // Conexión de Mercado Libre: sincronizada entre dispositivos vía Firebase.
             if (typeof data.mlConnected === 'boolean') STATE.mlConnected = data.mlConnected;
+            if (Array.isArray(data.customChannels)) STATE.customChannels = data.customChannels;
+            if (window.ventaPoblarCanales) try { ventaPoblarCanales(); } catch(e){}
             if (window.mlRefreshStatus) try { mlRefreshStatus(); } catch(e){}
             // Guardar copia local como fallback offline
             try { localStorage.setItem('ml_final_app', JSON.stringify(STATE)); } catch (e) {}
@@ -4337,8 +4454,8 @@
                 // Precio/costo/comisión/envío de nivel-producto: SOLO se validan y aplican cuando NO hay variantes.
                 // Con variantes, cada variante define los suyos y aquí se usan valores representativos (más abajo).
                 let costPrice = 0, salePrice = 0, commission = 0, shipping = 0;
-                const hasCommission = (document.getElementById('prodHasCommission') || { checked: true }).checked;
-                const hasShipping = (document.getElementById('prodHasShipping') || { checked: true }).checked;
+                const hasCommission = window.prodToggleOn('prodHasCommission');
+                const hasShipping = window.prodToggleOn('prodHasShipping');
                 const commissionType = document.getElementById('prodCommissionType').value;
 
                 if (!variantsSel) {
@@ -4549,13 +4666,46 @@
                 showToast('✅ Venta registrada');
             });
 
-            // --- AGENTE 4: selector de modo (manual / ML / foto) + campos progresivos + botón habilitado ---
-            window.ventaSetModo = function(modo){
-                var bloques = { manual: 'salesForm', ml: 'ventaModoMl' };
-                Object.keys(bloques).forEach(function(k){ var el = document.getElementById(bloques[k]); if (el) el.style.display = (k === modo) ? '' : 'none'; });
-                var btns = { manual: 'modoManualBtn', ml: 'modoMlBtn' };
-                Object.keys(btns).forEach(function(k){ var b = document.getElementById(btns[k]); if (b) b.classList.toggle('activo', k === modo); });
-                try { refreshIcons(); } catch(e){}
+            // (Obsoleto) Antes alternaba entre modo Manual y modo Mercado Libre. Ahora el canal
+            // se elige en el propio formulario con #saleChannel. Se deja como no-op por compatibilidad.
+            window.ventaSetModo = function(){};
+
+            // Rellena el selector de canal: Manual (base) + Mercado Libre (solo si está conectado)
+            // + los canales propios del usuario (STATE.customChannels) + opción "Añadir canal…".
+            window.ventaPoblarCanales = function(){
+                var sel = document.getElementById('saleChannel'); if (!sel) return;
+                var actual = sel.value || 'manual';
+                var conectadoML = !!(window.STATE && STATE.mlConnected);
+                var propios = (window.STATE && Array.isArray(STATE.customChannels)) ? STATE.customChannels : [];
+                var html = '<option value="manual">Manual</option>';
+                if (conectadoML) html += '<option value="mercadolibre">Mercado Libre</option>';
+                propios.forEach(function(c){
+                    var v = String(c);
+                    html += '<option value="' + v.replace(/"/g, '&quot;') + '">' + (window.DOMPurify ? DOMPurify.sanitize(v) : v) + '</option>';
+                });
+                html += '<option value="__add__">＋ Añadir canal…</option>';
+                sel.innerHTML = html;
+                // Conservar la selección previa si sigue existiendo; si no, volver a "manual".
+                var existe = Array.prototype.some.call(sel.options, function(o){ return o.value === actual; });
+                sel.value = (existe && actual !== '__add__') ? actual : 'manual';
+            };
+
+            // Maneja el cambio del selector de canal: si eligen "Añadir canal…", pide el nombre,
+            // lo guarda en STATE.customChannels (sincroniza a la nube) y lo deja seleccionado.
+            window.ventaCanalChange = function(){
+                var sel = document.getElementById('saleChannel'); if (!sel) return;
+                if (sel.value === '__add__'){
+                    var nombre = (window.prompt('Nombre del nuevo canal (ej: Instagram, Marketplace, WhatsApp):') || '').trim();
+                    if (!nombre){ window.ventaPoblarCanales(); return; }
+                    if (!window.STATE) return;
+                    if (!Array.isArray(STATE.customChannels)) STATE.customChannels = [];
+                    var existe = STATE.customChannels.some(function(c){ return String(c).toLowerCase() === nombre.toLowerCase(); });
+                    if (!existe) STATE.customChannels.push(nombre);
+                    if (window.saveToLocalStorage) saveToLocalStorage();
+                    window.ventaPoblarCanales();
+                    sel.value = nombre;
+                }
+                if (window.ventaToggleCanal) window.ventaToggleCanal();
             };
             window.ventaTogglePrecio = function(){
                 var otro = ((document.querySelector('input[name="salePriceMode"]:checked') || {}).value) === 'otro';
@@ -4580,7 +4730,8 @@
             // Si vuelve a "manual", deja que la lógica de variante decida (variante con comisión).
             window.ventaToggleCanal = function(){
                 var canal = (document.getElementById('saleChannel') || {}).value || 'manual';
-                if (canal !== 'manual') {
+                if (canal === 'mercadolibre') {
+                    // Mercado Libre siempre cobra comisión: activarla por defecto (editable).
                     var si = document.querySelector('input[name="saleComisionMode"][value="si"]'); if (si) si.checked = true;
                     if (window.ventaToggleComision) window.ventaToggleComision();
                 } else if (window.ventaPreloadVariant) { window.ventaPreloadVariant(); }
@@ -4624,6 +4775,13 @@
                 }
                 var ok = !!(prod && prod.value && qty && parseInt(qty.value) >= 1 && variantOk);
                 if (btn) btn.disabled = !ok;
+                var hint = document.getElementById('saleSubmitHint');
+                if (hint){
+                    hint.style.display = ok ? 'none' : '';
+                    hint.textContent = (prod && prod.value && !variantOk)
+                        ? 'Elige el color/talla (variante) para continuar.'
+                        : 'Elige un producto y la cantidad para poder registrar la venta.';
+                }
                 var lbl = document.getElementById('salePrecioGuardadoLbl');
                 if (lbl){
                     var precioMostrar = variante ? (Number(variante.precioVenta != null ? variante.precioVenta : variante.precio) || (p ? p.salePrice : 0)) : (p ? p.salePrice : null);
@@ -4941,8 +5099,8 @@
             document.getElementById('prodCommissionType').value = product.commissionType || 'percentage';
 
             // Marcar los toggles según el producto tenga comisión / envío.
-            var _hcEdit = document.getElementById('prodHasCommission'); if (_hcEdit) _hcEdit.checked = (Number(product.commission) || 0) > 0;
-            var _hsEdit = document.getElementById('prodHasShipping'); if (_hsEdit) _hsEdit.checked = (Number(product.shipping) || 0) > 0;
+            window.prodToggleSet('prodHasCommission', (Number(product.commission) || 0) > 0);
+            window.prodToggleSet('prodHasShipping', (Number(product.shipping) || 0) > 0);
             if (window.syncProductToggles) window.syncProductToggles();
             if (window.applyBusinessConfig) window.applyBusinessConfig();
 
@@ -4999,7 +5157,7 @@
             const q = (V.search || '').trim().toLowerCase();
             if (q) {
                 base = base.filter(s => {
-                    const canal = (s.source === 'mercadolibre') ? 'mercado libre ml' : (s.source === 'otro' ? 'otro' : 'manual');
+                    const canal = (s.source === 'mercadolibre') ? 'mercado libre ml' : (s.source === 'otro' ? 'otro' : (!s.source || s.source === 'manual') ? 'manual' : String(s.source).toLowerCase());
                     return String(s.productName || '').toLowerCase().includes(q)
                         || String(s.variantLabel || '').toLowerCase().includes(q)
                         || String(s.date || '').toLowerCase().includes(q)
@@ -5032,11 +5190,14 @@
                 const envio = Number(s.shipping) || 0;
                 const totalNeto = totalVenta - comision - envio;          // Precio venta − Comisión − Envío
                 const ganancia = (s.profit != null) ? s.profit : (totalNeto - (Number(s.costPrice) || 0) * (Number(s.quantity) || 0));
+                // Badge de canal: ML con su color amarillo; cualquier otro canal muestra su nombre.
+                var _canalNombre = esML ? 'Mercado Libre'
+                    : (!s.source || s.source === 'manual') ? 'Manual'
+                    : (s.source === 'otro') ? 'Otro'
+                    : String(s.source);
                 const canalBadge = esML
                     ? '<span class="badge" style="background:#FFE600;color:#2D3277;font-weight:700;font-size:10px;">Mercado Libre</span>'
-                    : (s.source === 'otro'
-                        ? '<span class="badge" style="background:var(--bg-tertiary);color:var(--text-secondary);font-size:10px;">Otro</span>'
-                        : '<span class="badge" style="background:var(--bg-tertiary);color:var(--text-secondary);font-size:10px;">Manual</span>');
+                    : '<span class="badge" style="background:var(--bg-tertiary);color:var(--text-secondary);font-size:10px;">' + (window.DOMPurify ? DOMPurify.sanitize(_canalNombre) : _canalNombre) + '</span>';
                 html += `<tr>
                     <td>${s.date}</td>
                     <td>${DOMPurify.sanitize(s.productName)}${s.variantLabel ? ` <span style="color:var(--text-muted);font-size:11px;">(${DOMPurify.sanitize(s.variantLabel)})</span>` : ''}</td>
