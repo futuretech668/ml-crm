@@ -2437,11 +2437,6 @@
                     </div>
 
                     <div class="card" style="margin-bottom: 24px;">
-                        <h3><i data-lucide="receipt"></i>Gastos adicionales de la empresa (este mes)</h3>
-                        <div id="dashGastosAdicionales"></div>
-                    </div>
-
-                    <div class="card" style="margin-bottom: 24px;">
                         <h3><i data-lucide="package-x"></i>Alertas de stock</h3>
                         <div id="dashStockAlerts"></div>
                     </div>
@@ -2482,6 +2477,11 @@
                             <h3><i data-lucide="percent"></i>Mayor Margen</h3>
                             <div id="highestMargin"></div>
                         </div>
+                    </div>
+
+                    <div class="card">
+                        <h3><i data-lucide="receipt"></i>Gastos adicionales de la empresa (este mes)</h3>
+                        <div id="dashGastosAdicionales"></div>
                     </div>
                 </div>
 
@@ -2574,17 +2574,22 @@
                                 </div>
                             </div>
                             <input type="hidden" id="saleTime">
+                            <p id="saleSubmitHint" style="color:var(--text-muted);font-size:13px;margin:0 0 10px;">Elige un producto y la cantidad para poder registrar la venta.</p>
                             <div style="display: flex; gap: 12px; flex-wrap: wrap;">
                                 <button type="submit" id="saleSubmitBtn" class="btn btn-primary" disabled><i data-lucide="check"></i>Registrar venta</button>
                                 <button type="reset" class="btn btn-secondary"><i data-lucide="eraser"></i>Limpiar</button>
                             </div>
-                            <p id="saleSubmitHint" style="color:var(--text-muted);font-size:13px;margin:8px 0 0;">Elige un producto y la cantidad para poder registrar la venta.</p>
                         </form>
 
                     </div>
 
                     <div class="card">
                         <h3><i data-lucide="history"></i>Historial de ventas</h3>
+                        <!-- Buscador del historial (solo filtra cómo se muestra, no los totales) -->
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:4px 0 14px;">
+                            <input type="text" id="ventasBuscar" class="form-control" style="flex:1;min-width:220px;" placeholder="🔍 Buscar por producto, fecha (AAAA-MM-DD) o canal…" oninput="window.__ventasBuscarInput && window.__ventasBuscarInput()">
+                            <button type="button" class="btn btn-secondary btn-small" onclick="window.__ventasBuscarClear && window.__ventasBuscarClear()"><i data-lucide="x"></i> Limpiar</button>
+                        </div>
                         <!-- CAMBIO 2 — Desplegar (aditivo) -->
                         <div style="margin-bottom:14px;">
                             <button type="button" id="ventasDesplegarBtn" class="btn btn-secondary btn-small" onclick="window.__ventasToggle && window.__ventasToggle()">
@@ -2602,11 +2607,6 @@
                                 </div>
                                 <div id="ventasInfo" style="margin-top:10px;font-size:12px;color:var(--text-muted);"></div>
                             </div>
-                        </div>
-                        <!-- Buscador del historial (solo filtra cómo se muestra, no los totales) -->
-                        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:4px 0 14px;">
-                            <input type="text" id="ventasBuscar" class="form-control" style="flex:1;min-width:220px;" placeholder="🔍 Buscar por producto, fecha (AAAA-MM-DD) o canal…" oninput="window.__ventasBuscarInput && window.__ventasBuscarInput()">
-                            <button type="button" class="btn btn-secondary btn-small" onclick="window.__ventasBuscarClear && window.__ventasBuscarClear()"><i data-lucide="x"></i> Limpiar</button>
                         </div>
                         <div id="salesTable"></div>
                     </div>
@@ -2633,6 +2633,43 @@
                                 <div class="form-group" id="prodSaleGroup">
                                     <label class="form-label">Precio Venta</label>
                                     <input type="number" class="form-control" id="prodSalePrice" min="0" step="0.01" placeholder="$0.00">
+                                </div>
+                            </div>
+
+                            <!-- VARIANTES (AGENTE 1) -->
+                            <div id="prodVariantsBlock" style="margin:14px 0 6px;border-top:1px solid var(--border-color);padding-top:14px;">
+                                <label class="form-label" style="display:block;margin-bottom:8px;">¿Este producto tiene variantes? <span style="color:var(--text-muted);font-weight:400;">(colores / tallas)</span></label>
+                                <div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:6px;">
+                                    <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:14px;"><input type="radio" name="prodHasVariants" value="no" checked onchange="if(window.varToggle)varToggle()"> No</label>
+                                    <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:14px;"><input type="radio" name="prodHasVariants" value="si" onchange="if(window.varToggle)varToggle()"> Sí</label>
+                                </div>
+                                <div id="prodVariantsPanel" style="display:none;margin-top:10px;padding:16px;border:1px solid var(--border-soft);border-radius:12px;background:var(--bg-tertiary);">
+                                    <div style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:4px;">
+                                        <label class="switch" style="font-size:14px;"><input type="checkbox" class="switch-input" id="varUseColor" onchange="if(window.varRender)varRender()"> 🎨 Color</label>
+                                        <label class="switch" style="font-size:14px;"><input type="checkbox" class="switch-input" id="varUseTalla" onchange="if(window.varRender)varRender()"> 📏 Talla</label>
+                                    </div>
+                                    <!-- Colores -->
+                                    <div id="varColorSection" style="display:none;margin-top:14px;">
+                                        <div style="font-weight:600;font-size:13px;margin-bottom:8px;">🎨 Colores</div>
+                                        <div id="varColorPalette" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;"></div>
+                                        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
+                                            <input type="color" id="varColorPicker" value="#ef4444" style="width:42px;height:38px;border:none;background:none;cursor:pointer;padding:0;">
+                                            <input type="text" id="varColorName" class="form-control" placeholder="Color personalizado (ej: Turquesa)" style="max-width:220px;" onkeydown="if(event.key==='Enter'){event.preventDefault();if(window.varAddColor)varAddColor();}">
+                                            <button type="button" class="btn btn-secondary btn-small" onclick="if(window.varAddColor)varAddColor()"><i data-lucide="plus"></i> Agregar color</button>
+                                        </div>
+                                        <div id="varColorChips" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
+                                    </div>
+                                    <!-- Tallas -->
+                                    <div id="varTallaSection" style="display:none;margin-top:14px;">
+                                        <div style="font-weight:600;font-size:13px;margin-bottom:8px;">📏 Tallas</div>
+                                        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
+                                            <input type="text" id="varTallaName" class="form-control" placeholder="Ej: S, M, L, XL  o  38, 39, 40" style="max-width:220px;" onkeydown="if(event.key==='Enter'){event.preventDefault();if(window.varAddTalla)varAddTalla();}">
+                                            <button type="button" class="btn btn-secondary btn-small" onclick="if(window.varAddTalla)varAddTalla()"><i data-lucide="plus"></i> Agregar talla</button>
+                                        </div>
+                                        <div id="varTallaChips" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
+                                    </div>
+                                    <!-- Costo, venta, envío, comisión y stock por combinación -->
+                                    <div id="varCombosSection" style="margin-top:16px;"></div>
                                 </div>
                             </div>
 
@@ -2687,43 +2724,6 @@
 
                             <!-- Ganancia en vivo (producto sin variantes) — AGENTE 2 -->
                             <div id="prodProfitLive" style="margin:8px 0 4px;padding:12px 14px;border-radius:10px;background:linear-gradient(135deg, rgba(16,185,129,0.1), rgba(59,130,246,0.05));border:1px solid rgba(16,185,129,0.2);font-size:14px;">Ganancia por unidad: <strong style="color:var(--success);">$0</strong></div>
-
-                            <!-- VARIANTES (AGENTE 1) -->
-                            <div id="prodVariantsBlock" style="margin:14px 0 6px;border-top:1px solid var(--border-color);padding-top:14px;">
-                                <label class="form-label" style="display:block;margin-bottom:8px;">¿Este producto tiene variantes? <span style="color:var(--text-muted);font-weight:400;">(colores / tallas)</span></label>
-                                <div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:6px;">
-                                    <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:14px;"><input type="radio" name="prodHasVariants" value="no" checked onchange="if(window.varToggle)varToggle()"> No</label>
-                                    <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:14px;"><input type="radio" name="prodHasVariants" value="si" onchange="if(window.varToggle)varToggle()"> Sí</label>
-                                </div>
-                                <div id="prodVariantsPanel" style="display:none;margin-top:10px;padding:16px;border:1px solid var(--border-soft);border-radius:12px;background:var(--bg-tertiary);">
-                                    <div style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:4px;">
-                                        <label class="switch" style="font-size:14px;"><input type="checkbox" class="switch-input" id="varUseColor" onchange="if(window.varRender)varRender()"> 🎨 Color</label>
-                                        <label class="switch" style="font-size:14px;"><input type="checkbox" class="switch-input" id="varUseTalla" onchange="if(window.varRender)varRender()"> 📏 Talla</label>
-                                    </div>
-                                    <!-- Colores -->
-                                    <div id="varColorSection" style="display:none;margin-top:14px;">
-                                        <div style="font-weight:600;font-size:13px;margin-bottom:8px;">🎨 Colores</div>
-                                        <div id="varColorPalette" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;"></div>
-                                        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
-                                            <input type="color" id="varColorPicker" value="#ef4444" style="width:42px;height:38px;border:none;background:none;cursor:pointer;padding:0;">
-                                            <input type="text" id="varColorName" class="form-control" placeholder="Color personalizado (ej: Turquesa)" style="max-width:220px;" onkeydown="if(event.key==='Enter'){event.preventDefault();if(window.varAddColor)varAddColor();}">
-                                            <button type="button" class="btn btn-secondary btn-small" onclick="if(window.varAddColor)varAddColor()"><i data-lucide="plus"></i> Agregar color</button>
-                                        </div>
-                                        <div id="varColorChips" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
-                                    </div>
-                                    <!-- Tallas -->
-                                    <div id="varTallaSection" style="display:none;margin-top:14px;">
-                                        <div style="font-weight:600;font-size:13px;margin-bottom:8px;">📏 Tallas</div>
-                                        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
-                                            <input type="text" id="varTallaName" class="form-control" placeholder="Ej: S, M, L, XL  o  38, 39, 40" style="max-width:220px;" onkeydown="if(event.key==='Enter'){event.preventDefault();if(window.varAddTalla)varAddTalla();}">
-                                            <button type="button" class="btn btn-secondary btn-small" onclick="if(window.varAddTalla)varAddTalla()"><i data-lucide="plus"></i> Agregar talla</button>
-                                        </div>
-                                        <div id="varTallaChips" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
-                                    </div>
-                                    <!-- Costo, venta, envío, comisión y stock por combinación -->
-                                    <div id="varCombosSection" style="margin-top:16px;"></div>
-                                </div>
-                            </div>
 
                             <div style="display: flex; gap: 12px; flex-wrap: wrap;">
                                 <button type="submit" class="btn btn-primary"><i data-lucide="save"></i>Guardar producto</button>
@@ -2985,6 +2985,13 @@
                         <div id="finResumenMes"></div>
                     </div>
 
+                    <!-- Ganancia neta por producto -->
+                    <div class="card">
+                        <h2><i data-lucide="trending-up"></i>Ganancia neta por producto</h2>
+                        <p style="color:var(--text-secondary);font-size:13px;margin-bottom:14px;">Costo de compra (privado), ingresos y ganancia real por cada producto vendido.</p>
+                        <div id="finGananciaProductos"></div>
+                    </div>
+
                     <!-- IVA: % automático sobre la ganancia neta + override manual (SII) por mes -->
                     <div class="card" id="finIvaCard">
                         <h2><i data-lucide="landmark"></i>IVA</h2>
@@ -3020,39 +3027,6 @@
                         <div id="finConfigInfo" style="margin-top:12px;font-size:13px;color:var(--text-muted);"></div>
                     </div>
 
-                    <!-- Ganancia neta por producto -->
-                    <div class="card">
-                        <h2><i data-lucide="trending-up"></i>Ganancia neta por producto</h2>
-                        <p style="color:var(--text-secondary);font-size:13px;margin-bottom:14px;">Costo de compra (privado), ingresos y ganancia real por cada producto vendido.</p>
-                        <div id="finGananciaProductos"></div>
-                    </div>
-
-                    <!-- Registro de gastos -->
-                    <div class="card">
-                        <h2><i data-lucide="receipt"></i>Registro de gastos</h2>
-                        <p style="color:var(--text-secondary);font-size:13px;margin-bottom:14px;">Los gastos se descuentan de tu ganancia para mostrar la utilidad real. Se guardan solo en este dispositivo.</p>
-                        <form id="finGastoForm" onsubmit="return (window.addFinExpense ? window.addFinExpense(event) : false);">
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label class="form-label">Nombre del gasto</label>
-                                    <input type="text" class="form-control" id="finGastoNombre" placeholder="Ej: Bolsas de despacho" required>
-                                </div>
-                                <div class="form-group">
-                                    <label class="form-label">Monto</label>
-                                    <input type="number" class="form-control" id="finGastoMonto" min="0" step="0.01" placeholder="$0" required>
-                                </div>
-                                <div class="form-group">
-                                    <label class="form-label">Fecha</label>
-                                    <input type="date" class="form-control" id="finGastoFecha" required>
-                                </div>
-                            </div>
-                            <div style="display:flex;gap:12px;flex-wrap:wrap;">
-                                <button type="submit" class="btn btn-primary"><i data-lucide="plus-circle"></i>Agregar gasto</button>
-                            </div>
-                        </form>
-                        <div id="finGastosList" style="margin-top:18px;"></div>
-                    </div>
-
                     <!-- Gastos fijos (recurrentes) — se descuentan de la ganancia neta del mes -->
                     <div class="card">
                         <h2><i data-lucide="repeat"></i>Gastos fijos</h2>
@@ -3082,6 +3056,32 @@
                         </form>
                         <div id="finGastosFijosList" style="margin-top:18px;"></div>
                     </div>
+
+                    <!-- Registro de gastos -->
+                    <div class="card">
+                        <h2><i data-lucide="receipt"></i>Registro de gastos</h2>
+                        <p style="color:var(--text-secondary);font-size:13px;margin-bottom:14px;">Los gastos se descuentan de tu ganancia para mostrar la utilidad real. Se guardan solo en este dispositivo.</p>
+                        <form id="finGastoForm" onsubmit="return (window.addFinExpense ? window.addFinExpense(event) : false);">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label">Nombre del gasto</label>
+                                    <input type="text" class="form-control" id="finGastoNombre" placeholder="Ej: Bolsas de despacho" required>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Monto</label>
+                                    <input type="number" class="form-control" id="finGastoMonto" min="0" step="0.01" placeholder="$0" required>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Fecha</label>
+                                    <input type="date" class="form-control" id="finGastoFecha" required>
+                                </div>
+                            </div>
+                            <div style="display:flex;gap:12px;flex-wrap:wrap;">
+                                <button type="submit" class="btn btn-primary"><i data-lucide="plus-circle"></i>Agregar gasto</button>
+                            </div>
+                        </form>
+                        <div id="finGastosList" style="margin-top:18px;"></div>
+                    </div>
                 </div>
 
                 <!-- REPORTES (AGENTE 3 — aditivo) -->
@@ -3103,21 +3103,7 @@
                         </div>
                     </div>
 
-                    <!-- Días de la semana con más ventas -->
-                    <div class="card">
-                        <h2><i data-lucide="calendar-days"></i>Días con más ventas</h2>
-                        <p style="color:var(--text-secondary);font-size:13px;margin-bottom:14px;">Ranking por unidades vendidas según el día de la semana (histórico).</p>
-                        <div id="repDias"></div>
-                    </div>
-
-                    <!-- Horarios con más ventas -->
-                    <div class="card">
-                        <h2><i data-lucide="clock"></i>Horarios con más ventas</h2>
-                        <p style="color:var(--text-secondary);font-size:13px;margin-bottom:14px;">Franjas horarias del día con mayor volumen de ventas (según la hora de cada venta).</p>
-                        <div id="repHoras"></div>
-                    </div>
-
-                    <!-- Gráfico comparativo semana a semana / mes a mes -->
+                    <!-- Gráfico comparativo semana a semana / mes a mes (tendencia, arriba) -->
                     <div class="card">
                         <h2><i data-lucide="line-chart"></i>Comparativa de ventas</h2>
                         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
@@ -3126,6 +3112,20 @@
                         </div>
                         <div style="position:relative;height:320px;width:100%;">
                             <canvas id="repCompareChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Días y Horarios con más ventas (rankings hermanos, lado a lado) -->
+                    <div class="grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;">
+                        <div class="card" style="margin:0;">
+                            <h2><i data-lucide="calendar-days"></i>Días con más ventas</h2>
+                            <p style="color:var(--text-secondary);font-size:13px;margin-bottom:14px;">Ranking por unidades vendidas según el día de la semana (histórico).</p>
+                            <div id="repDias"></div>
+                        </div>
+                        <div class="card" style="margin:0;">
+                            <h2><i data-lucide="clock"></i>Horarios con más ventas</h2>
+                            <p style="color:var(--text-secondary);font-size:13px;margin-bottom:14px;">Franjas horarias del día con mayor volumen de ventas (según la hora de cada venta).</p>
+                            <div id="repHoras"></div>
                         </div>
                     </div>
                 </div>
@@ -3144,6 +3144,22 @@
             <div id="agSummary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:18px;"></div>
 
             <div style="display:grid;grid-template-columns:1fr;gap:18px;">
+                <!-- Acciones -->
+                <div class="card">
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                        <button type="button" class="btn btn-secondary btn-small" onclick="if(window.agendaGenDespachos)agendaGenDespachos(true)"><i data-lucide="truck"></i> Generar despachos</button>
+                        <button type="button" class="btn btn-secondary btn-small" onclick="if(window.agendaSetOrden)agendaSetOrden('prioridad')"><i data-lucide="flag"></i> Ordenar por prioridad</button>
+                        <button type="button" class="btn btn-secondary btn-small" onclick="if(window.agendaSetOrden)agendaSetOrden('fecha')"><i data-lucide="calendar"></i> Ordenar por fecha</button>
+                        <span id="agClearFiltro"></span>
+                    </div>
+                </div>
+
+                <!-- Lista de pendientes -->
+                <div class="card">
+                    <h3 style="margin:0 0 14px;"><i data-lucide="list-todo"></i> Tareas pendientes</h3>
+                    <div id="agPendientes"></div>
+                </div>
+
                 <!-- Form nueva tarea -->
                 <div class="card">
                     <h3 style="margin:0 0 14px;"><i data-lucide="plus-circle"></i> Nueva tarea</h3>
@@ -3183,16 +3199,6 @@
                     </form>
                 </div>
 
-                <!-- Acciones -->
-                <div class="card">
-                    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-                        <button type="button" class="btn btn-secondary btn-small" onclick="if(window.agendaGenDespachos)agendaGenDespachos(true)"><i data-lucide="truck"></i> Generar despachos</button>
-                        <button type="button" class="btn btn-secondary btn-small" onclick="if(window.agendaSetOrden)agendaSetOrden('prioridad')"><i data-lucide="flag"></i> Ordenar por prioridad</button>
-                        <button type="button" class="btn btn-secondary btn-small" onclick="if(window.agendaSetOrden)agendaSetOrden('fecha')"><i data-lucide="calendar"></i> Ordenar por fecha</button>
-                        <span id="agClearFiltro"></span>
-                    </div>
-                </div>
-
                 <!-- Calendario -->
                 <div class="card">
                     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
@@ -3201,12 +3207,6 @@
                         <button type="button" class="btn btn-secondary btn-small" onclick="if(window.agendaCalNav)agendaCalNav(1)"><i data-lucide="chevron-right"></i></button>
                     </div>
                     <div id="agCalGrid"></div>
-                </div>
-
-                <!-- Lista de pendientes -->
-                <div class="card">
-                    <h3 style="margin:0 0 14px;"><i data-lucide="list-todo"></i> Tareas pendientes</h3>
-                    <div id="agPendientes"></div>
                 </div>
 
                 <!-- Historial -->
@@ -3224,6 +3224,18 @@
             <div class="page-head">
                 <div class="page-title"><i data-lucide="target"></i>Metas</div>
                 <div class="page-sub">Define tu objetivo mensual y sigue tu progreso. Todo se calcula desde tus ventas y se guarda en este dispositivo.</div>
+            </div>
+
+            <!-- Progreso -->
+            <div class="card" style="margin-bottom:18px;">
+                <h3 style="margin:0 0 14px;"><i data-lucide="gauge"></i> Progreso del mes</h3>
+                <div id="metasProgreso"></div>
+            </div>
+
+            <!-- Alertas de progreso -->
+            <div class="card" style="margin-bottom:18px;">
+                <h3 style="margin:0 0 14px;"><i data-lucide="bell-ring"></i> Estado</h3>
+                <div id="metasAlertas"></div>
             </div>
 
             <!-- Definir meta del mes -->
@@ -3248,18 +3260,6 @@
                 </form>
             </div>
 
-            <!-- Progreso -->
-            <div class="card" style="margin-bottom:18px;">
-                <h3 style="margin:0 0 14px;"><i data-lucide="gauge"></i> Progreso del mes</h3>
-                <div id="metasProgreso"></div>
-            </div>
-
-            <!-- Alertas de progreso -->
-            <div class="card" style="margin-bottom:18px;">
-                <h3 style="margin:0 0 14px;"><i data-lucide="bell-ring"></i> Estado</h3>
-                <div id="metasAlertas"></div>
-            </div>
-
             <!-- Historial -->
             <div class="card">
                 <h3 style="margin:0 0 14px;"><i data-lucide="history"></i> Historial de metas</h3>
@@ -3276,10 +3276,10 @@
                 <div class="page-sub">Tus récords, medallas y estadísticas. Todo se calcula desde tus ventas; los logros desbloqueados se guardan en este dispositivo.</div>
             </div>
 
-            <!-- Estadísticas generales -->
+            <!-- Medallas / logros desbloqueables -->
             <div class="card" style="margin-bottom:18px;">
-                <h3 style="margin:0 0 14px;"><i data-lucide="bar-chart-3"></i> Estadísticas generales</h3>
-                <div id="logrosStats"></div>
+                <h3 style="margin:0 0 14px;"><i data-lucide="medal"></i> Medallas <span id="logrosResumen" style="color:var(--accent-primary);font-weight:600;font-size:14px;"></span></h3>
+                <div id="logrosGrid"></div>
             </div>
 
             <!-- Récords -->
@@ -3288,10 +3288,10 @@
                 <div id="logrosRecords"></div>
             </div>
 
-            <!-- Medallas / logros desbloqueables -->
+            <!-- Estadísticas generales -->
             <div class="card">
-                <h3 style="margin:0 0 14px;"><i data-lucide="medal"></i> Medallas <span id="logrosResumen" style="color:var(--accent-primary);font-weight:600;font-size:14px;"></span></h3>
-                <div id="logrosGrid"></div>
+                <h3 style="margin:0 0 14px;"><i data-lucide="bar-chart-3"></i> Estadísticas generales</h3>
+                <div id="logrosStats"></div>
             </div>
         </div>
         </div>
@@ -5525,18 +5525,8 @@
             // Valor del inventario (sobre TODOS los productos activos, no solo los visibles).
             const _valorCosto = activeProducts.reduce((a, p) => a + (Number(p.stock) || 0) * (Number(p.costPrice) || 0), 0);
             const _valorVenta = activeProducts.reduce((a, p) => a + (Number(p.stock) || 0) * (Number(p.salePrice) || 0), 0);
-            let html = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
-                <div style="flex:1;min-width:160px;background:var(--bg-tertiary);border:1px solid var(--border-color);border-radius:12px;padding:12px 14px;">
-                    <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">Valor en stock (a costo)</div>
-                    <div style="font-size:18px;font-weight:800;color:var(--text-primary);">${formatCurrency(_valorCosto)}</div>
-                </div>
-                <div style="flex:1;min-width:160px;background:var(--bg-tertiary);border:1px solid var(--border-color);border-radius:12px;padding:12px 14px;">
-                    <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">Valor potencial de venta</div>
-                    <div style="font-size:18px;font-weight:800;color:var(--accent-primary);">${formatCurrency(_valorVenta)}</div>
-                </div>
-            </div>`;
-            html += `<div class="table-container"><table><thead><tr>
-                <th>Producto</th><th>Stock Actual</th><th>Stock Inicial</th><th>Porcentaje</th><th>Estado</th>
+            let html = `<div class="table-container"><table><thead><tr>
+                <th>Producto</th><th>Estado</th><th>Stock Actual</th><th>Stock Inicial</th><th>Porcentaje</th>
             </tr></thead><tbody>`;
 
             visibles.forEach(p => {
@@ -5549,13 +5539,24 @@
 
                 html += `<tr>
                     <td><strong>${DOMPurify.sanitize(p.name)}</strong></td>
+                    <td><span class="badge ${lvl.badge}"${badgeStyle}>${status}</span></td>
                     <td data-product-id="${p.id}" class="editable-stock" style="cursor: pointer; padding: 14px 16px; user-select: none;">${p.stock}</td>
                     <td>${initialStock}</td>
                     <td>${Math.round(percent)}%</td>
-                    <td><span class="badge ${lvl.badge}"${badgeStyle}>${status}</span></td>
                 </tr>`;
             });
             html += `</tbody></table></div>`;
+            // Valor del inventario al pie (tarjetas de resumen, debajo de la tabla crítica).
+            html += `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:14px;">
+                <div style="flex:1;min-width:160px;background:var(--bg-tertiary);border:1px solid var(--border-color);border-radius:12px;padding:12px 14px;">
+                    <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">Valor en stock (a costo)</div>
+                    <div style="font-size:18px;font-weight:800;color:var(--text-primary);">${formatCurrency(_valorCosto)}</div>
+                </div>
+                <div style="flex:1;min-width:160px;background:var(--bg-tertiary);border:1px solid var(--border-color);border-radius:12px;padding:12px 14px;">
+                    <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">Valor potencial de venta</div>
+                    <div style="font-size:18px;font-weight:800;color:var(--accent-primary);">${formatCurrency(_valorVenta)}</div>
+                </div>
+            </div>`;
             container.innerHTML = html;
             refreshIcons();
 
@@ -6418,6 +6419,31 @@
                 </div>
             </div>`;
 
+            // Análisis de stock (junto a los KPIs financieros: todo el estado de salud arriba)
+            // Mismo criterio (por %) que Inventario y Alertas, vía stockLevel(): sin / crítico / riesgo / ok.
+            const _activos = STATE.products.filter(p => !p.archived);
+            const criticalStock = _activos.filter(p => stockLevel(p).key === 'sin');
+            const lowStock = _activos.filter(p => { const k = stockLevel(p).key; return k === 'critico' || k === 'riesgo'; });
+            const optimalStock = _activos.filter(p => stockLevel(p).key === 'ok');
+
+            html += `<div class="grid grid-3" style="gap: 10px; margin-bottom: 14px;">
+                <div class="kpi-card">
+                    <div class="kpi-label"><i data-lucide="package-check"></i>Stock Óptimo</div>
+                    <div class="kpi-value">${optimalStock.length}</div>
+                    <div class="kpi-sub">Disponibles</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label"><i data-lucide="alert-triangle"></i>Stock Bajo</div>
+                    <div class="kpi-value">${lowStock.length}</div>
+                    <div class="kpi-sub">Reorden</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label"><i data-lucide="x-circle"></i>Sin Stock</div>
+                    <div class="kpi-value">${criticalStock.length}</div>
+                    <div class="kpi-sub">Agotados</div>
+                </div>
+            </div>`;
+
             // Análisis por producto
             const productData = STATE.products.filter(p => !p.archived).map(p => {
                 const sales = STATE.sales.filter(s => s.productId === p.id);
@@ -6442,21 +6468,6 @@
                 };
             });
 
-            // Ranking por ingresos
-            const byIncome = [...productData].sort((a, b) => b.income - a.income).slice(0, 5);
-            html += `<div class="card" style="margin-bottom: 14px;">
-                <h3><i data-lucide="trophy"></i>Top 5 por Ingresos</h3>
-                <div class="table-container" style="max-width: 100%;"><table><thead><tr>
-                    <th>#</th><th>Producto</th><th>Ingresos</th><th>Vendidos</th><th>Margen %</th>
-                </tr></thead><tbody>`;
-            byIncome.forEach((p, i) => {
-                html += `<tr><td>${i+1}</td><td><strong style="font-size: 13px;">${DOMPurify.sanitize(p.name)}</strong></td>
-                    <td style="color: var(--accent-primary);">${formatCurrency(p.income)}</td>
-                    <td>${p.sales}</td>
-                    <td style="color: ${p.margin >= 0 ? 'var(--success)' : 'var(--accent-danger)'}; font-weight: 600;">${formatNumber(p.margin)}%</td></tr>`;
-            });
-            html += `</tbody></table></div></div>`;
-
             // Ranking por margen
             const byMargin = [...productData].filter(p => p.income > 0).sort((a, b) => b.margin - a.margin).slice(0, 5);
             html += `<div class="card" style="margin-bottom: 14px;">
@@ -6469,6 +6480,21 @@
                     <td style="color: var(--success); font-weight: 700;">${formatNumber(p.margin)}%</td>
                     <td style="color: var(--accent-primary);">${formatCurrency(p.gain)}</td>
                     <td>${formatCurrency(p.income)}</td></tr>`;
+            });
+            html += `</tbody></table></div></div>`;
+
+            // Ranking por ingresos
+            const byIncome = [...productData].sort((a, b) => b.income - a.income).slice(0, 5);
+            html += `<div class="card" style="margin-bottom: 14px;">
+                <h3><i data-lucide="trophy"></i>Top 5 por Ingresos</h3>
+                <div class="table-container" style="max-width: 100%;"><table><thead><tr>
+                    <th>#</th><th>Producto</th><th>Ingresos</th><th>Vendidos</th><th>Margen %</th>
+                </tr></thead><tbody>`;
+            byIncome.forEach((p, i) => {
+                html += `<tr><td>${i+1}</td><td><strong style="font-size: 13px;">${DOMPurify.sanitize(p.name)}</strong></td>
+                    <td style="color: var(--accent-primary);">${formatCurrency(p.income)}</td>
+                    <td>${p.sales}</td>
+                    <td style="color: ${p.margin >= 0 ? 'var(--success)' : 'var(--accent-danger)'}; font-weight: 600;">${formatNumber(p.margin)}%</td></tr>`;
             });
             html += `</tbody></table></div></div>`;
 
@@ -6486,50 +6512,6 @@
                     <td style="color: var(--success);">${formatCurrency(p.gain)}</td></tr>`;
             });
             html += `</tbody></table></div></div>`;
-
-            // Productos sin ventas
-            const noSales = productData.filter(p => p.sales === 0);
-            if (noSales.length > 0) {
-                html += `<div class="card" style="margin-bottom: 14px;">
-                    <h3><i data-lucide="alert-triangle"></i>Sin Ventas (Baja Rotación)</h3>
-                    <div class="table-container" style="max-width: 100%;"><table><thead><tr>
-                        <th>Producto</th><th>Stock Actual</th><th>Stock Inicial</th><th>Precio Venta</th>
-                    </tr></thead><tbody>`;
-                noSales.forEach(p => {
-                    const prod = STATE.products.find(pr => pr.id === p.id);
-                    if (prod) {
-                        const init = prod.stockInit || prod.stockMin || prod.stock || 1;
-                        html += `<tr><td><strong style="font-size: 13px;">${DOMPurify.sanitize(p.name)}</strong></td>
-                            <td>${prod.stock}</td><td>${init}</td><td>${formatCurrency(prod.salePrice)}</td></tr>`;
-                    }
-                });
-                html += `</tbody></table></div></div>`;
-            }
-
-            // Análisis de stock
-            // Mismo criterio (por %) que Inventario y Alertas, vía stockLevel(): sin / crítico / riesgo / ok.
-            const _activos = STATE.products.filter(p => !p.archived);
-            const criticalStock = _activos.filter(p => stockLevel(p).key === 'sin');
-            const lowStock = _activos.filter(p => { const k = stockLevel(p).key; return k === 'critico' || k === 'riesgo'; });
-            const optimalStock = _activos.filter(p => stockLevel(p).key === 'ok');
-
-            html += `<div class="grid grid-3" style="gap: 10px; margin-bottom: 14px;">
-                <div class="kpi-card">
-                    <div class="kpi-label"><i data-lucide="package-check"></i>Stock Óptimo</div>
-                    <div class="kpi-value">${optimalStock.length}</div>
-                    <div class="kpi-sub">Disponibles</div>
-                </div>
-                <div class="kpi-card">
-                    <div class="kpi-label"><i data-lucide="alert-triangle"></i>Stock Bajo</div>
-                    <div class="kpi-value">${lowStock.length}</div>
-                    <div class="kpi-sub">Reorden</div>
-                </div>
-                <div class="kpi-card">
-                    <div class="kpi-label"><i data-lucide="x-circle"></i>Sin Stock</div>
-                    <div class="kpi-value">${criticalStock.length}</div>
-                    <div class="kpi-sub">Agotados</div>
-                </div>
-            </div>`;
 
             // Tabla completa de análisis
             html += `<div class="card">
@@ -6569,6 +6551,25 @@
             if (_anaList.length > _anaVis.length) html += `<button type="button" class="btn btn-small" style="margin-top:10px;background:var(--bg-tertiary);" onclick="window.__anaShowAll=true; if(window.renderAnalytics) renderAnalytics();"><i data-lucide="list"></i> Ver todos (${_anaList.length})</button>`;
             html += `</div>`;
 
+            // Productos sin ventas (baja rotación) — al final, como zona de detalle/acción
+            const noSales = productData.filter(p => p.sales === 0);
+            if (noSales.length > 0) {
+                html += `<div class="card" style="margin-bottom: 14px;">
+                    <h3><i data-lucide="alert-triangle"></i>Sin Ventas (Baja Rotación)</h3>
+                    <div class="table-container" style="max-width: 100%;"><table><thead><tr>
+                        <th>Producto</th><th>Stock Actual</th><th>Stock Inicial</th><th>Precio Venta</th>
+                    </tr></thead><tbody>`;
+                noSales.forEach(p => {
+                    const prod = STATE.products.find(pr => pr.id === p.id);
+                    if (prod) {
+                        const init = prod.stockInit || prod.stockMin || prod.stock || 1;
+                        html += `<tr><td><strong style="font-size: 13px;">${DOMPurify.sanitize(p.name)}</strong></td>
+                            <td>${prod.stock}</td><td>${init}</td><td>${formatCurrency(prod.salePrice)}</td></tr>`;
+                    }
+                });
+                html += `</tbody></table></div></div>`;
+            }
+
             document.getElementById('analyticsTable').innerHTML = html;
             refreshIcons();
         }
@@ -6593,10 +6594,18 @@
             if (alerts.length === 0) {
                 container.innerHTML = '<div class="alert-box alert-success"><i data-lucide="check-circle-2"></i><span>Todos los stocks están en nivel óptimo</span></div>';
             } else {
+                const criticos = alerts.filter(a => a.type === 'danger');
+                const bajos = alerts.filter(a => a.type === 'warning');
                 const LIM = 10;
-                const vis = window.__alertsAll ? alerts : alerts.slice(0, LIM);
-                let h = vis.map(a => `<div class="alert-box alert-${a.type}"><i data-lucide="${a.icon}"></i><span>${a.msg}</span></div>`).join('');
-                if (alerts.length > LIM) {
+                const cupoBajos = Math.max(0, LIM - criticos.length); // los críticos nunca se ocultan
+                const hayMas = bajos.length > cupoBajos;
+                const visBajos = window.__alertsAll ? bajos : bajos.slice(0, cupoBajos);
+                const boxes = (arr) => arr.map(a => `<div class="alert-box alert-${a.type}"><i data-lucide="${a.icon}"></i><span>${a.msg}</span></div>`).join('');
+                const grpHead = (txt) => `<div style="font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);font-weight:700;margin:14px 0 8px;">${txt}</div>`;
+                let h = `<div style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;"><strong style="color:var(--accent-danger);">${criticos.length}</strong> ${criticos.length === 1 ? 'crítico' : 'críticos'} · <strong>${bajos.length}</strong> ${bajos.length === 1 ? 'bajo' : 'bajos'}</div>`;
+                if (criticos.length) h += grpHead('Críticos (≤25%)') + boxes(criticos);
+                if (visBajos.length) h += grpHead('Stock bajo (≤50%)') + boxes(visBajos);
+                if (hayMas) {
                     h += window.__alertsAll
                         ? `<button type="button" class="btn btn-small" style="margin-top:10px;background:var(--bg-tertiary);" onclick="window.__alertsAll=false; if(window.renderAlerts) renderAlerts();"><i data-lucide="chevron-up"></i> Ver menos</button>`
                         : `<button type="button" class="btn btn-small" style="margin-top:10px;background:var(--bg-tertiary);" onclick="window.__alertsAll=true; if(window.renderAlerts) renderAlerts();"><i data-lucide="list"></i> Ver todas (${alerts.length})</button>`;
