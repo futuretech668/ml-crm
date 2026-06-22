@@ -101,8 +101,26 @@ async function fsList(svc, token, collection) {
   return docs;
 }
 
+// ---------------- Envío de correo (relay HTTP en Vercel o SMTP directo) -------
+// Render bloquea el SMTP saliente: si MAIL_RELAY_URL está definido, se delega el
+// envío a una función en Vercel por HTTP. Si no, SMTP directo (Netlify).
+async function gmailSmtpSend(user, pass, fromName, to, subject, html) {
+  const relay = process.env.MAIL_RELAY_URL;
+  if (relay) {
+    const recipients = (Array.isArray(to) ? to : [to]).filter(Boolean);
+    const r = await fetch(relay, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to: recipients, subject, html, fromName, secret: process.env.MAIL_SECRET || '' })
+    });
+    let j = {}; try { j = await r.json(); } catch (_) {}
+    if (!r.ok || !j.ok) throw new Error('relay ' + r.status + ' ' + (j.reason || ''));
+    return true;
+  }
+  return smtpDirect(user, pass, fromName, to, subject, html);
+}
+
 // ---------------- Enviador SMTP mínimo (Gmail, sin librerías) ----------------
-function gmailSmtpSend(user, pass, fromName, to, subject, html) {
+function smtpDirect(user, pass, fromName, to, subject, html) {
   return new Promise((resolve, reject) => {
     const recipients = (Array.isArray(to) ? to : [to]).filter(Boolean);
     if (!recipients.length) return resolve(false);
