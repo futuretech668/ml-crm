@@ -3209,11 +3209,7 @@
                     <div id="agCalGrid"></div>
                 </div>
 
-                <!-- Historial -->
-                <div class="card">
-                    <h3 style="margin:0 0 14px;"><i data-lucide="history"></i> Historial (completadas)</h3>
-                    <div id="agHistorial"></div>
-                </div>
+                <!-- Historial de completadas eliminado: al marcar una tarea como hecha se elimina. -->
             </div>
         </div>
 
@@ -3766,6 +3762,15 @@
             mk('rendimiento', GRUPO_RENDIMIENTO, RENDIMIENTO_LABELS, (id) => { _rendimientoTab = id; if (window.irASeccion) irASeccion('rendimiento'); });
         }
 
+        // Abre/cierra manualmente un grupo del rail al hacer clic en la flechita (caret).
+        function toggleRailGroup(group){
+            const box = document.querySelector('.rail-sub[data-group="' + group + '"]');
+            const parent = document.querySelector('.rail-parent[data-group="' + group + '"]');
+            if (!box) return;
+            const open = box.classList.toggle('open');
+            if (parent) parent.classList.toggle('expanded', open);
+        }
+
         // Asegura el contenedor de la miga de pan al inicio del área de contenido.
         function ensureCrumbs(){
             const area = document.getElementById('contentArea');
@@ -3917,6 +3922,13 @@
             injectProductTabs();
             injectRendimientoTabs();
             injectRailSubmenus();
+            document.querySelectorAll('.rail-parent .rail-caret').forEach(c => {
+                c.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const p = c.closest('.rail-parent');
+                    if (p) toggleRailGroup(p.dataset.group);
+                });
+            });
             ensureCrumbs();
             const _setTabs = document.getElementById('settingsTabs');
             if (_setTabs) _setTabs.addEventListener('click', (e) => {
@@ -9002,8 +9014,7 @@
             el.innerHTML =
                 card(pend, 'Pendientes', 'var(--text-primary)') +
                 card(hoyPend, 'Para hoy', 'var(--accent-primary)') +
-                card(atras, 'Atrasadas', 'var(--danger)') +
-                card(hechasHoy, 'Hechas hoy', 'var(--success)');
+                card(atras, 'Atrasadas', 'var(--danger)');
         }
 
         // ---- Orden ----
@@ -9216,29 +9227,31 @@
             ensureState();
             var t = STATE.tasks.filter(function(x){ return x.id === id; })[0];
             if (!t) return;
-            if (t.estado === 'pendiente'){
-                t.estado = 'hecha';
-                t.completada = new Date().toISOString();
-                // Generar la siguiente ocurrencia SOLO una vez (evita duplicar si se reabre y se recompleta).
-                if (t.recurrente && !t._nextGen){
-                    var base = parseDate(t.fecha) || new Date();
-                    var next = (t.recurrente === 'diaria') ? addDays(base,1) :
-                               (t.recurrente === 'semanal') ? addDays(base,7) :
-                               (t.recurrente === 'mensual') ? addMonths(base,1) : null;
-                    if (next){
-                        t._nextGen = true;
-                        STATE.tasks.push({
-                            id: uid(), titulo: t.titulo, tipo: t.tipo, prioridad: t.prioridad,
-                            fecha: fmtDate(next), hora: t.hora || '', estado: 'pendiente',
-                            recurrente: t.recurrente, creada: new Date().toISOString()
-                        });
-                    }
+            // Marcar como hecha = ELIMINAR la tarea (ya no se guarda como "completada"/historial).
+            // Si es recurrente, generar la siguiente ocurrencia ANTES de borrar.
+            if (t.recurrente){
+                var base = parseDate(t.fecha) || new Date();
+                var next = (t.recurrente === 'diaria') ? addDays(base,1) :
+                           (t.recurrente === 'semanal') ? addDays(base,7) :
+                           (t.recurrente === 'mensual') ? addMonths(base,1) : null;
+                if (next){
+                    STATE.tasks.push({
+                        id: uid(), titulo: t.titulo, tipo: t.tipo, prioridad: t.prioridad,
+                        fecha: fmtDate(next), hora: t.hora || '', estado: 'pendiente',
+                        recurrente: t.recurrente, creada: new Date().toISOString()
+                    });
                 }
-            } else {
-                t.estado = 'pendiente';
-                delete t.completada;
             }
+            // Tombstones (igual que agendaDelete) para que no reaparezca al recargar ni al sincronizar.
+            if (t.tipo === 'despacho' && t.ventaId != null){
+                if (!Array.isArray(STATE.despachosBorrados)) STATE.despachosBorrados = [];
+                if (STATE.despachosBorrados.indexOf(String(t.ventaId)) < 0) STATE.despachosBorrados.push(String(t.ventaId));
+            }
+            if (!Array.isArray(STATE.tasksBorradas)) STATE.tasksBorradas = [];
+            if (STATE.tasksBorradas.indexOf(String(id)) < 0) STATE.tasksBorradas.push(String(id));
+            STATE.tasks = STATE.tasks.filter(function(x){ return x.id !== id; });
             save();
+            if (window.toast) toast('✅ Tarea completada');
             window.renderAgenda();
         };
 
