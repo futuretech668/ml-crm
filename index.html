@@ -4156,24 +4156,13 @@
             var show = function(id, on){ var el = document.getElementById(id); if (el) el.style.display = on ? '' : 'none'; };
             var check = function(id, val){ var el = document.getElementById(id); if (el) el.checked = val; };
 
-            // --- ENVÍO (formulario de Productos) ---
-            if (b.envio === 'no'){
-                show('prodShippingToggleRow', false); show('prodShippingFields', false); window.prodToggleSet('prodHasShipping', false);
-            } else if (b.envio === 'si'){
-                show('prodShippingToggleRow', false); window.prodToggleSet('prodHasShipping', true); show('prodShippingFields', true);
-            } else { // aveces / omitir -> pregunta visible
-                show('prodShippingToggleRow', true);
-                show('prodShippingFields', window.prodToggleOn('prodHasShipping'));
-            }
-            // --- COMISIÓN (formulario de Productos) ---
-            if (b.comision === 'no'){
-                show('prodCommissionToggleRow', false); show('prodCommissionFields', false); window.prodToggleSet('prodHasCommission', false);
-            } else if (b.comision === 'si'){
-                show('prodCommissionToggleRow', false); window.prodToggleSet('prodHasCommission', true); show('prodCommissionFields', true);
-            } else {
-                show('prodCommissionToggleRow', true);
-                show('prodCommissionFields', window.prodToggleOn('prodHasCommission'));
-            }
+            // --- ENVÍO / COMISIÓN (formulario de Productos) ---
+            // La pregunta ¿Pagas envío? / ¿Pagas comisión? SIEMPRE se muestra: se decide por
+            // producto, NO por la config del negocio. Solo se ocultan los campos según el radio.
+            show('prodShippingToggleRow', true);
+            show('prodShippingFields', window.prodToggleOn('prodHasShipping'));
+            show('prodCommissionToggleRow', true);
+            show('prodCommissionFields', window.prodToggleOn('prodHasCommission'));
             // --- IVA (sección Finanzas): ocultar la tarjeta si "No paga IVA" ---
             show('finIvaCard', b.iva !== 'no');
             // --- Dashboard: ocultar la tarjeta de Comisiones (lo de ML) si "No paga comisiones" ---
