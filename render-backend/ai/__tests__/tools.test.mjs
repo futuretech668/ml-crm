@@ -296,6 +296,67 @@ test('ml_register_order — exige crear el producto si no existe', async () => {
   assert.equal(state.sales.length, 3);
 });
 
+// ---- Ventas de ML en espera (producto no existía al vender) ----
+
+// Una publicación pendiente con una venta retenida de AYER (fecha real + comisión real).
+function pendingState() {
+  const s = goldenState();
+  s.pendingMappings = [{
+    item_id: 'MLC9001', title: 'Lámpara LED escritorio', price: 15000, quantity: 1,
+    commissionPerUnit: 2025, suggestedProductId: null, suggestedName: null,
+    heldSales: [{ saleId: 88800001, price: 15000, quantity: 1, commissionPerUnit: 2025, shippingTotal: 2990, feeSource: 'sale_fee', date: '2026-06-19', time: '17:30' }],
+    createdAt: '2026-06-19T17:30:00.000Z'
+  }];
+  s.dismissedPending = [];
+  return s;
+}
+
+test('list_pending_ml_sales — muestra las ventas en espera con su fecha real', async () => {
+  const state = pendingState();
+  const ctx = makeCtx(state);
+  const t = toolsByName(buildCrmTools(ctx));
+  const r = JSON.parse(await t.list_pending_ml_sales.invoke({}));
+  assert.equal(r.length, 1);
+  assert.equal(r[0].item_id, 'MLC9001');
+  assert.equal(r[0].ventasRetenidas, 1);
+  assert.deepEqual(r[0].fechas, ['2026-06-19']);
+});
+
+test('register_pending_ml_sale — registra con datos reales, mapea y limpia pendientes', async () => {
+  const state = pendingState();
+  const ctx = makeCtx(state);
+  const t = toolsByName(buildCrmTools(ctx));
+  // El usuario recién creó el producto faltante.
+  const prod = JSON.parse(await t.add_product.invoke({ name: 'Lámpara LED escritorio', costPrice: 6000, salePrice: 15000, stock: 10 }));
+  const r = JSON.parse(await t.register_pending_ml_sale.invoke({ itemId: 'MLC9001', productId: prod.product.id }));
+  assert.equal(r.ok, true);
+  assert.equal(r.registradas, 1);
+  const sale = r.ventas[0];
+  assert.equal(sale.date, '2026-06-19');        // FECHA REAL de ayer, no hoy
+  assert.equal(sale.source, 'mercadolibre');
+  assert.equal(sale.feeSource, 'sale_fee');      // comisión real
+  assert.equal(sale.commission, 2025);
+  assert.equal(sale.shipping, 2990);             // envío real de ML
+  assert.equal(sale.profit, 15000 - 6000 - 2025 - 2990);
+  // Stock descontado y pendiente limpiada.
+  assert.equal(state.products.find(p => p.id === prod.product.id).stock, 9);
+  assert.equal(state.pendingMappings.length, 0);
+  assert.equal(state.mappings['MLC9001'].productId, prod.product.id);
+  assert.ok(state.dismissedPending.map(String).includes('MLC9001'));
+  // Anti-duplicado: registrarla de nuevo no agrega (ya no está en pendientes).
+  const again = JSON.parse(await t.register_pending_ml_sale.invoke({ itemId: 'MLC9001', productId: prod.product.id }));
+  assert.ok(again.error);
+});
+
+test('register_pending_ml_sale — pide crear el producto si no existe', async () => {
+  const state = pendingState();
+  const ctx = makeCtx(state);
+  const t = toolsByName(buildCrmTools(ctx));
+  const r = JSON.parse(await t.register_pending_ml_sale.invoke({ itemId: 'MLC9001', productId: 7777 }));
+  assert.ok(r.error);
+  assert.equal(state.pendingMappings.length, 1); // no tocó la pendiente
+});
+
 test('add_product — acepta variants[] y deriva stock total', async () => {
   const state = goldenState();
   const ctx = makeCtx(state);

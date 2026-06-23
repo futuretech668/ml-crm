@@ -364,7 +364,7 @@ export function buildCrmTools(ctx) {
     },
     {
       name: 'ml_register_order',
-      description: 'Registra en el CRM una venta de Mercado Libre que NO se sincronizó (p. ej. el producto no existía al momento). Toma los datos del pedido leído con ml_orders. Usa la comisión REAL (saleFee) si la entrega ML, o la estima por tipo de publicación. Es anti-duplicado: usa el mismo id que el cron y crea el mapeo item_id→producto para que la próxima sincronización no la duplique. Si el producto aún no existe, primero créalo con add_product.',
+      description: 'Registra en el CRM una venta de Mercado Libre EN VIVO leída con ml_orders que NO está en pendientes (p. ej. ocurrió después del último sync). Para ventas que quedaron EN ESPERA porque el producto no existía, usa antes list_pending_ml_sales + register_pending_ml_sale (traen los datos reales). Usa la comisión REAL (saleFee) si la entrega ML, o la estima por tipo de publicación. Es anti-duplicado: usa el mismo id que el cron y crea el mapeo item_id→producto. Si el producto aún no existe, primero créalo con add_product.',
       schema: z.object({
         orderId: z.union([z.string(), z.number()]).describe('id del pedido de Mercado Libre (order_id).'),
         itemId: z.union([z.string(), z.number()]).describe('id de la publicación (item_id, ej. MLC123...).'),
@@ -378,6 +378,68 @@ export function buildCrmTools(ctx) {
         date: z.string().optional().describe('YYYY-MM-DD del pedido; por defecto hoy.'),
         time: z.string().optional(),
         title: z.string().optional().describe('título de la publicación (respaldo para el nombre).')
+      })
+    }
+  );
+
+  const list_pending_ml_sales = tool(
+    async () => {
+      const dism = new Set((state.dismissedPending || []).map(String));
+      const pend = (state.pendingMappings || []).filter(p => !dism.has(String(p.item_id)));
+      return j(pend.map(p => ({
+        item_id: p.item_id,
+        title: p.title,
+        price: p.price,
+        quantity: p.quantity,
+        suggestedProductId: p.suggestedProductId || null,
+        suggestedName: p.suggestedName || null,
+        ventasRetenidas: (p.heldSales || []).length || 1,
+        fechas: (p.heldSales || []).map(h => h.date).filter(Boolean)
+      })));
+    },
+    {
+      name: 'list_pending_ml_sales',
+      description: 'Lista las ventas de Mercado Libre que quedaron EN ESPERA porque su publicación aún no estaba mapeada a un producto del CRM (p. ej. el producto no existía cuando se vendió). Trae el título de la publicación, precio, cantidad, la sugerencia de producto y las fechas reales de las ventas retenidas. Úsala cuando el usuario diga que falta una venta de ML o que vendió algo que no estaba en su catálogo.',
+      schema: z.object({})
+    }
+  );
+
+  const register_pending_ml_sale = tool(
+    async (args) => {
+      const itemId = String(args.itemId);
+      const pending = (state.pendingMappings || []).find(p => String(p.item_id) === itemId);
+      if (!pending) return j({ error: 'No hay una venta de ML en espera con ese item_id. Usa list_pending_ml_sales para ver las pendientes.' });
+      const product = findProduct(args.productId);
+      if (!product) return j({ error: 'No existe ese producto. Créalo con add_product (ponle el COSTO real) y vuelve a llamar register_pending_ml_sale.' });
+      state.sales = state.sales || [];
+      const built = domain.buildMlSalesFromPending(pending, product, {
+        baseId: ctx.nextId(), nowIso: ctx.nowIso(), today: ctx.today(), time: ctx.time()
+      });
+      const nuevas = [];
+      for (const sale of built) {
+        // Dedupe igual que la app (index.html:7086): no duplicar ventas de ML por id.
+        if (state.sales.some(s => s.source === 'mercadolibre' && s.id === sale.id)) continue;
+        state.sales.push(sale);
+        domain.applyStockDelta(product, null, -sale.quantity);
+        nuevas.push(sale);
+      }
+      product.lastModified = ctx.nowIso();
+      // Mapea la publicación y la saca de pendientes (+ dismissedPending), como la app.
+      state.mappings = state.mappings || {};
+      state.mappings[itemId] = { productId: product.id, productName: product.name, title: pending.title };
+      state.pendingMappings = (state.pendingMappings || []).filter(p => String(p.item_id) !== itemId);
+      state.dismissedPending = Array.isArray(state.dismissedPending) ? state.dismissedPending : [];
+      if (!state.dismissedPending.map(String).includes(itemId)) state.dismissedPending.push(itemId);
+      mark('sales'); mark('products'); mark('mappings'); mark('pendingMappings'); mark('dismissedPending');
+      ctx.did.push({ action: 'register_pending_ml_sale', itemId, productName: product.name, registradas: nuevas.length });
+      return j({ ok: true, registradas: nuevas.length, ventas: nuevas, mapeado: { itemId, productId: product.id } });
+    },
+    {
+      name: 'register_pending_ml_sale',
+      description: 'Registra en el CRM una venta de ML que estaba EN ESPERA (de list_pending_ml_sales), asociándola a un producto. Usa los datos REALES capturados por la sync: fecha real del pedido (aunque sea de días atrás), comisión real (sale_fee) y envío real. Descuenta stock, crea el mapeo y la saca de pendientes. Si el producto no existe aún, primero créalo con add_product (con su costo) y luego llama esto con su id.',
+      schema: z.object({
+        itemId: z.union([z.string(), z.number()]).describe('item_id de la publicación pendiente (de list_pending_ml_sales).'),
+        productId: z.number().describe('id del producto del CRM al que corresponde (créalo antes si no existe).')
       })
     }
   );
@@ -460,8 +522,8 @@ export function buildCrmTools(ctx) {
   return [
     query_sales, list_products, get_goal_progress, get_finance_summary,
     add_sale, delete_sale, add_product, edit_product, delete_product,
-    manage_variant, ml_register_order, manage_task,
-    save_memory, send_report
+    manage_variant, ml_register_order, list_pending_ml_sales, register_pending_ml_sale,
+    manage_task, save_memory, send_report
   ];
 }
 

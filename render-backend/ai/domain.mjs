@@ -547,6 +547,51 @@ export function unitCommissionFor(it) {
 // El id determinista de venta de ML (mismos dígitos que el cron, para el dedupe
 // order_id+item_id) ya existe arriba como saleIdFor(order, itemId) — se reutiliza.
 
+// Construye las ventas de ML RETENIDAS de una publicación pendiente al mapearla a un
+// producto — port VERBATIM de registerMLSale (index.html:7064-7113). Usa la comisión
+// y el envío REALES capturados por la sync (commissionPerUnit/shippingTotal) y la
+// FECHA REAL del pedido (h.date). NO muta estado: devuelve las ventas listas para que
+// el llamador haga dedupe/push y descuente stock.
+export function buildMlSalesFromPending(pending, product, opts) {
+  opts = opts || {};
+  const held = (pending.heldSales && pending.heldSales.length)
+    ? pending.heldSales
+    : [{ saleId: pending.saleId, price: pending.price, quantity: pending.quantity, commissionRate: pending.commissionRate, date: pending.date, time: pending.time }];
+  return held.map((h, i) => {
+    const qty = h.quantity || 1;
+    const unitPrice = h.price || product.salePrice;
+    const rate = (h.commissionRate != null) ? h.commissionRate : ((product.commission || 0) / 100);
+    const commissionAmount = (h.commissionPerUnit != null) ? h.commissionPerUnit * qty : unitPrice * qty * rate;
+    const shipping = (h.shippingTotal != null) ? h.shippingTotal : (product.shipping || 0) * qty;
+    const totalPrice = unitPrice * qty;
+    const profit = totalPrice - (product.costPrice * qty) - commissionAmount - shipping;
+    const saleId = h.saleId || ((opts.baseId || 0) + i);
+    return {
+      id: saleId,
+      date: h.date || opts.today,
+      time: h.time || opts.time || '00:00',
+      productId: product.id,
+      productName: product.name,
+      quantity: qty,
+      salePrice: unitPrice,
+      costPrice: product.costPrice,
+      commission: commissionAmount,
+      commissionType: 'percentage',
+      commissionValue: unitPrice > 0 ? +((commissionAmount / qty / unitPrice) * 100).toFixed(2) : +(rate * 100).toFixed(2),
+      shipping,
+      totalPrice,
+      profit,
+      createdAt: opts.nowIso,
+      source: 'mercadolibre',
+      item_id: pending.item_id,
+      feeSource: (h.commissionPerUnit != null) ? 'sale_fee' : 'estimado',
+      shippingSource: (h.shippingTotal != null) ? 'ml' : 'local',
+      variantId: null,
+      variantLabel: ''
+    };
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Sistema de Briefing (la inyección de contexto en 3 capas).
 // ---------------------------------------------------------------------------
