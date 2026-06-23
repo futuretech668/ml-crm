@@ -5175,6 +5175,7 @@
             if (_vt) _vt.style.display = (!prodShowAll && !_hayBusqueda && _totalVisibles > PROD_LIMIT) ? '' : 'none';
             if (_va) _va.style.display = (prodShowAll && !_hayBusqueda) ? '' : 'none';
             refreshIcons();
+            setupVariantStockEditing();
         }
 
         function updateProdListInfo(mostrados, total, hayBusqueda) {
@@ -5677,7 +5678,7 @@
                 var sw = v.colorHex ? '<span style="display:inline-block;width:13px;height:13px;border-radius:50%;background:' + v.colorHex + ';border:1px solid var(--border-color);vertical-align:middle;margin-right:7px;"></span>' : '';
                 return '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12.5px;padding:8px 2px;border-bottom:1px solid var(--border-soft);">' +
                     '<span style="flex:1;min-width:110px;font-weight:600;">' + sw + DOMPurify.sanitize(variantLabelOf(v) || '—') + (ago ? ' <span style="color:var(--accent-danger);font-weight:700;">· Agotada</span>' : '') + '</span>' +
-                    '<span style="color:var(--text-muted);">Stock: <strong style="color:' + (ago?'var(--accent-danger)':'var(--text-primary)') + ';">' + (Number(v.stock)||0) + '</strong></span>' +
+                    '<span class="editable-variant-stock" data-product-id="' + p.id + '" data-variant-id="' + DOMPurify.sanitize(String(v.id)) + '" title="Click para editar el stock de esta variante" style="color:var(--text-muted);cursor:pointer;">Stock: <strong style="color:' + (ago?'var(--accent-danger)':'var(--text-primary)') + ';text-decoration:underline dotted;">' + (Number(v.stock)||0) + '</strong></span>' +
                     '<span style="color:var(--text-muted);">Costo: <strong style="color:var(--text-primary);">' + formatCurrency(costo) + '</strong></span>' +
                     '<span style="color:var(--text-muted);">Venta: <strong style="color:var(--text-primary);">' + formatCurrency(venta) + '</strong></span>' +
                     '<span style="color:var(--text-muted);">Ganancia: <strong style="color:' + (g>=0?'var(--success)':'var(--accent-danger)') + ';">' + formatCurrency(g) + '</strong></span>' +
@@ -5696,6 +5697,50 @@
             panel.style.maxHeight = open ? (panel.scrollHeight + 20) + 'px' : '0';
             if (chev) chev.style.transform = open ? 'rotate(180deg)' : '';
         };
+
+        // Edición INLINE del stock de cada variante (click → input), reusando el patrón
+        // de setupStockEditing pero guardando en v.stock + recalcVariantStock(p).
+        function setupVariantStockEditing(){
+            document.querySelectorAll('.editable-variant-stock').forEach(function(cell){
+                cell.addEventListener('click', function(e){
+                    e.stopPropagation();
+                    if (this.querySelector('input')) return; // ya en edición
+                    var productId = parseInt(this.dataset.productId);
+                    var variantId = this.dataset.variantId;
+                    var product = STATE.products.find(function(p){ return p.id === productId; });
+                    if (!product || !Array.isArray(product.variants)) return;
+                    var variante = product.variants.find(function(v){ return String(v.id) === String(variantId); });
+                    if (!variante) return;
+                    var cellEl = this;
+                    var input = document.createElement('input');
+                    input.type = 'number'; input.min = 0; input.max = 1000000;
+                    input.value = Number(variante.stock) || 0;
+                    input.style.cssText = 'width:72px;padding:5px 7px;border:2px solid var(--accent-primary);border-radius:6px;font-size:13px;font-weight:600;background:var(--bg-primary);color:var(--text-primary);';
+                    cellEl.textContent = ''; cellEl.appendChild(input);
+                    input.focus(); input.select();
+                    var saved = false;
+                    var saveVarStock = function(){
+                        if (saved) return; saved = true;
+                        var nv = parseInt(input.value);
+                        if (isNaN(nv) || nv < 0 || nv > 1000000) { showToast('❌ Stock inválido (0 a 1.000.000)'); renderProductsList(); return; }
+                        variante.stock = nv;
+                        variante.agotada = nv <= 0;
+                        recalcVariantStock(product);
+                        product.lastModified = new Date().toISOString();
+                        saveToLocalStorage();
+                        showToast('✅ Stock de variante actualizado');
+                        renderProductsList();
+                        renderInventory();
+                        renderDashboard();
+                        updateDropdowns();
+                        renderAlerts();
+                    };
+                    input.addEventListener('blur', saveVarStock);
+                    input.addEventListener('keypress', function(ev){ if (ev.key === 'Enter') saveVarStock(); });
+                });
+            });
+        }
+        window.setupVariantStockEditing = setupVariantStockEditing;
 
         // ===== VARIANTES: módulo del formulario de producto (AGENTE 1) =====
         // Cada variante guarda su propio COSTO, VENTA, ENVÍO y COMISIÓN; la ganancia se calcula en vivo.

@@ -117,7 +117,7 @@ export function buildCrmTools(ctx) {
         commissionType: z.enum(['fixed', 'percentage']).optional(),
         shipping: z.number().optional(),
         date: z.string().optional().describe('YYYY-MM-DD; por defecto hoy.'),
-        source: z.enum(['manual', 'mercadolibre', 'otro']).optional()
+        source: z.string().optional().describe('Canal: "manual" (default), "mercadolibre", "otro", o el nombre de un canal propio del usuario (ver list_channels).')
       })
     }
   );
@@ -519,11 +519,271 @@ export function buildCrmTools(ctx) {
     }
   );
 
+  // ===========================================================================
+  // LECTURA (puras, no marcan ctx.changed) — para que MIA "vea" TODO el estado.
+  // ===========================================================================
+
+  const list_tasks = tool(
+    async (args) => {
+      const tasks = Array.isArray(state.tasks) ? state.tasks : [];
+      let out = tasks;
+      if (args.estado) out = out.filter(t => (t.estado || 'pendiente') === args.estado);
+      if (args.from) out = out.filter(t => (t.fecha || '') >= args.from);
+      if (args.to) out = out.filter(t => (t.fecha || '') <= args.to);
+      return j(out.map(t => ({ id: t.id, titulo: t.titulo, fecha: t.fecha, prioridad: t.prioridad, estado: t.estado || 'pendiente' })));
+    },
+    {
+      name: 'list_tasks',
+      description: 'Lista las tareas del usuario (id, título, fecha, prioridad, estado). Filtra por estado (pendiente/hecha) y/o rango de fechas. Úsala ANTES de completar o borrar una tarea para conocer su id.',
+      schema: z.object({
+        estado: z.enum(['pendiente', 'hecha']).optional(),
+        from: z.string().optional().describe('YYYY-MM-DD inclusive'),
+        to: z.string().optional().describe('YYYY-MM-DD inclusive')
+      })
+    }
+  );
+
+  const list_expenses = tool(
+    async (args) => {
+      const all = Array.isArray(state.expenses) ? state.expenses : [];
+      const ym = args.month || null;
+      const out = ym ? all.filter(e => String(e.fecha || '').slice(0, 7) === ym) : all;
+      const total = out.reduce((a, e) => a + (Number(e.monto) || 0), 0);
+      return j({ total, count: out.length, expenses: out.map(e => ({ id: e.id, nombre: e.nombre, monto: e.monto, fecha: e.fecha })) });
+    },
+    {
+      name: 'list_expenses',
+      description: 'Lista los gastos variables del usuario con su total. month opcional (YYYY-MM) para filtrar por mes.',
+      schema: z.object({ month: z.string().optional().describe('YYYY-MM') })
+    }
+  );
+
+  const list_fixed_expenses = tool(
+    async () => {
+      const all = Array.isArray(state.gastosFijos) ? state.gastosFijos : [];
+      const mensual = all.reduce((a, g) => a + domain.gastoFijoMensual(g), 0);
+      return j({ equivalenteMensual: mensual, count: all.length, gastosFijos: all.map(g => ({ id: g.id, nombre: g.nombre, monto: g.monto, frecuencia: g.frecuencia || 'mensual', desde: g.desde })) });
+    },
+    {
+      name: 'list_fixed_expenses',
+      description: 'Lista los gastos fijos del usuario (arriendo, servicios, etc.) y su equivalente mensual total.',
+      schema: z.object({})
+    }
+  );
+
+  const get_finance_config = tool(
+    async () => {
+      const fc = state.finConfig || {};
+      return j({
+        ivaEnabled: !!fc.ivaEnabled,
+        ivaPct: Number(fc.ivaPct) || 0,
+        publicidadMensual: fc.publicidadMensual || {},
+        ivaMensual: fc.ivaMensual || {}
+      });
+    },
+    {
+      name: 'get_finance_config',
+      description: 'Configuración financiera del usuario: si cobra IVA, el % de IVA y la publicidad/IVA por mes (YYYY-MM).',
+      schema: z.object({})
+    }
+  );
+
+  const list_channels = tool(
+    async () => {
+      const propios = Array.isArray(state.customChannels) ? state.customChannels : [];
+      return j({ base: ['manual', 'mercadolibre'], propios });
+    },
+    {
+      name: 'list_channels',
+      description: 'Lista los canales de venta: los base (manual, mercadolibre) y los canales propios del usuario (customChannels).',
+      schema: z.object({})
+    }
+  );
+
+  const list_notifications = tool(
+    async () => {
+      const n = Array.isArray(state.notifications) ? state.notifications : [];
+      return j(n.map(x => ({ id: x.id, type: x.type, text: x.text, read: !!x.read, createdAt: x.createdAt })));
+    },
+    {
+      name: 'list_notifications',
+      description: 'Lista las notificaciones/avisos del chat del usuario (id, tipo, texto, leída).',
+      schema: z.object({})
+    }
+  );
+
+  // ===========================================================================
+  // ESCRITURA del resto del estado — para que MIA pueda EDITAR TODA la app.
+  // ===========================================================================
+
+  const manage_expense = tool(
+    async (args) => {
+      state.expenses = Array.isArray(state.expenses) ? state.expenses : [];
+      if (args.action === 'add') {
+        const e = { id: ctx.nextId(), nombre: args.nombre || 'Gasto', monto: Number(args.monto) || 0, fecha: args.fecha || ctx.today() };
+        state.expenses.push(e); mark('expenses');
+        ctx.did.push({ action: 'expense_add', id: e.id, nombre: e.nombre, monto: e.monto });
+        return j({ ok: true, expense: e });
+      }
+      const idx = state.expenses.findIndex(e => e.id === args.id);
+      if (idx < 0) return j({ error: 'No encontré un gasto con ese id. Usa list_expenses.' });
+      if (args.action === 'edit') {
+        const e = state.expenses[idx];
+        if (args.nombre !== undefined) e.nombre = args.nombre;
+        if (args.monto !== undefined) e.monto = Number(args.monto) || 0;
+        if (args.fecha !== undefined) e.fecha = args.fecha;
+        mark('expenses');
+        ctx.did.push({ action: 'expense_edit', id: e.id });
+        return j({ ok: true, expense: e });
+      }
+      if (args.action === 'delete') {
+        const [removed] = state.expenses.splice(idx, 1);
+        mark('expenses');
+        ctx.did.push({ action: 'expense_delete', id: removed.id });
+        return j({ ok: true, removed });
+      }
+      return j({ error: 'Acción no válida.' });
+    },
+    {
+      name: 'manage_expense',
+      description: 'Gestiona gastos variables del usuario. action add (crea), edit (cambia campos provistos) o delete (elimina). Para edit/delete pasa el id (de list_expenses).',
+      schema: z.object({
+        action: z.enum(['add', 'edit', 'delete']),
+        id: z.number().optional(),
+        nombre: z.string().optional(),
+        monto: z.number().optional(),
+        fecha: z.string().optional().describe('YYYY-MM-DD; por defecto hoy.')
+      })
+    }
+  );
+
+  const manage_fixed_expense = tool(
+    async (args) => {
+      state.gastosFijos = Array.isArray(state.gastosFijos) ? state.gastosFijos : [];
+      if (args.action === 'add') {
+        const g = { id: ctx.nextId(), nombre: args.nombre || 'Gasto fijo', monto: Number(args.monto) || 0, frecuencia: args.frecuencia || 'mensual', desde: args.desde || ctx.today().slice(0, 7) };
+        state.gastosFijos.push(g); mark('gastosFijos');
+        ctx.did.push({ action: 'fixed_expense_add', id: g.id, nombre: g.nombre });
+        return j({ ok: true, gastoFijo: g });
+      }
+      const idx = state.gastosFijos.findIndex(g => g.id === args.id);
+      if (idx < 0) return j({ error: 'No encontré un gasto fijo con ese id. Usa list_fixed_expenses.' });
+      if (args.action === 'edit') {
+        const g = state.gastosFijos[idx];
+        if (args.nombre !== undefined) g.nombre = args.nombre;
+        if (args.monto !== undefined) g.monto = Number(args.monto) || 0;
+        if (args.frecuencia !== undefined) g.frecuencia = args.frecuencia;
+        if (args.desde !== undefined) g.desde = args.desde;
+        mark('gastosFijos');
+        ctx.did.push({ action: 'fixed_expense_edit', id: g.id });
+        return j({ ok: true, gastoFijo: g });
+      }
+      if (args.action === 'delete') {
+        const [removed] = state.gastosFijos.splice(idx, 1);
+        mark('gastosFijos');
+        ctx.did.push({ action: 'fixed_expense_delete', id: removed.id });
+        return j({ ok: true, removed });
+      }
+      return j({ error: 'Acción no válida.' });
+    },
+    {
+      name: 'manage_fixed_expense',
+      description: 'Gestiona gastos fijos del usuario (arriendo, servicios...). action add/edit/delete. frecuencia: mensual/semanal/anual. desde: YYYY-MM. Para edit/delete pasa el id.',
+      schema: z.object({
+        action: z.enum(['add', 'edit', 'delete']),
+        id: z.number().optional(),
+        nombre: z.string().optional(),
+        monto: z.number().optional(),
+        frecuencia: z.enum(['mensual', 'semanal', 'anual']).optional(),
+        desde: z.string().optional().describe('YYYY-MM')
+      })
+    }
+  );
+
+  const set_goal = tool(
+    async (args) => {
+      state.goals = state.goals || {};
+      const mes = args.mes || ctx.today().slice(0, 7);
+      state.goals.mensual = {
+        objetivo: Number(args.objetivo) || 0,
+        mes,
+        tipoMeta: args.tipoMeta || (state.goals.mensual && state.goals.mensual.tipoMeta) || 'ganancia'
+      };
+      mark('goals');
+      ctx.did.push({ action: 'set_goal', objetivo: state.goals.mensual.objetivo, tipoMeta: state.goals.mensual.tipoMeta });
+      return j({ ok: true, goal: state.goals.mensual });
+    },
+    {
+      name: 'set_goal',
+      description: 'Fija o cambia la meta mensual del usuario. objetivo = monto. tipoMeta: "ganancia" (default) o "ventas". mes opcional (YYYY-MM; por defecto el mes en curso).',
+      schema: z.object({
+        objetivo: z.number(),
+        tipoMeta: z.enum(['ganancia', 'ventas']).optional(),
+        mes: z.string().optional().describe('YYYY-MM')
+      })
+    }
+  );
+
+  const set_finance_config = tool(
+    async (args) => {
+      state.finConfig = state.finConfig || {};
+      const fc = state.finConfig;
+      if (args.ivaEnabled !== undefined) fc.ivaEnabled = !!args.ivaEnabled;
+      if (args.ivaPct !== undefined) fc.ivaPct = Number(args.ivaPct) || 0;
+      if (args.publicidadMonto !== undefined) {
+        fc.publicidadMensual = fc.publicidadMensual || {};
+        const mes = args.publicidadMes || ctx.today().slice(0, 7);
+        fc.publicidadMensual[mes] = Number(args.publicidadMonto) || 0;
+      }
+      mark('finConfig');
+      ctx.did.push({ action: 'set_finance_config' });
+      return j({ ok: true, finConfig: { ivaEnabled: !!fc.ivaEnabled, ivaPct: Number(fc.ivaPct) || 0, publicidadMensual: fc.publicidadMensual || {} } });
+    },
+    {
+      name: 'set_finance_config',
+      description: 'Ajusta la configuración financiera: ivaEnabled (cobra IVA o no), ivaPct (% de IVA), y la publicidad de un mes (publicidadMonto + publicidadMes YYYY-MM, por defecto el mes en curso). Solo cambia lo provisto.',
+      schema: z.object({
+        ivaEnabled: z.boolean().optional(),
+        ivaPct: z.number().optional(),
+        publicidadMonto: z.number().optional(),
+        publicidadMes: z.string().optional().describe('YYYY-MM')
+      })
+    }
+  );
+
+  const manage_channel = tool(
+    async (args) => {
+      state.customChannels = Array.isArray(state.customChannels) ? state.customChannels : [];
+      const nombre = String(args.nombre || '').trim();
+      if (!nombre) return j({ error: 'Indica el nombre del canal.' });
+      if (args.action === 'add') {
+        if (!state.customChannels.includes(nombre)) state.customChannels.push(nombre);
+        mark('customChannels');
+        ctx.did.push({ action: 'channel_add', nombre });
+        return j({ ok: true, canales: state.customChannels });
+      }
+      if (args.action === 'delete') {
+        state.customChannels = state.customChannels.filter(c => c !== nombre);
+        mark('customChannels');
+        ctx.did.push({ action: 'channel_delete', nombre });
+        return j({ ok: true, canales: state.customChannels });
+      }
+      return j({ error: 'Acción no válida.' });
+    },
+    {
+      name: 'manage_channel',
+      description: 'Gestiona los canales de venta propios del usuario. action add (crea un canal con ese nombre) o delete. Luego puedes usar ese nombre como source en add_sale.',
+      schema: z.object({ action: z.enum(['add', 'delete']), nombre: z.string() })
+    }
+  );
+
   return [
     query_sales, list_products, get_goal_progress, get_finance_summary,
     add_sale, delete_sale, add_product, edit_product, delete_product,
     manage_variant, ml_register_order, list_pending_ml_sales, register_pending_ml_sale,
-    manage_task, save_memory, send_report
+    manage_task, save_memory, send_report,
+    list_tasks, list_expenses, list_fixed_expenses, get_finance_config, list_channels, list_notifications,
+    manage_expense, manage_fixed_expense, set_goal, set_finance_config, manage_channel
   ];
 }
 

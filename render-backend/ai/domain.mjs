@@ -547,6 +547,29 @@ export function unitCommissionFor(it) {
 // El id determinista de venta de ML (mismos dígitos que el cron, para el dedupe
 // order_id+item_id) ya existe arriba como saleIdFor(order, itemId) — se reutiliza.
 
+// Conectores en español que NO aportan a la comparación (ml-sync.js:259).
+const STOPWORDS = new Set(['de', 'la', 'el', 'los', 'las', 'con', 'para', 'por', 'y', 'a', 'en', 'un', 'una', 'del', 'al', 'o']);
+
+// Compara el nombre de una publicación de ML con los productos registrados y
+// devuelve el mejor match si supera minScore (VERBATIM de ml-sync.js:262-277).
+// minScore 0.4 = sugerencia; 0.8 = auto-mapeo confiable.
+export function suggestProduct(products, title, minScore) {
+  minScore = (typeof minScore === 'number') ? minScore : 0.4;
+  const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter((w) => w && !STOPWORDS.has(w));
+  const tWords = new Set(norm(title));
+  let best = null, bestScore = 0;
+  for (const p of (products || [])) {
+    if (p.archived) continue;
+    const pWords = norm(p.name);
+    if (!pWords.length) continue;
+    let m = 0; for (const w of pWords) if (tWords.has(w)) m++;
+    const score = m / pWords.length;
+    if (score > bestScore) { bestScore = score; best = p; }
+  }
+  return bestScore >= minScore ? best : null;
+}
+
 // Construye las ventas de ML RETENIDAS de una publicación pendiente al mapearla a un
 // producto — port VERBATIM de registerMLSale (index.html:7064-7113). Usa la comisión
 // y el envío REALES capturados por la sync (commissionPerUnit/shippingTotal) y la

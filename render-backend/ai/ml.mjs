@@ -15,9 +15,22 @@
 
 import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
+import * as domain from './domain.mjs';
 
 const j = (o) => JSON.stringify(o);
 const NOT_CONNECTED = j({ error: 'no_conectado', msg: 'No estás conectado a Mercado Libre. Conecta tu cuenta para ver pedidos, preguntas y publicaciones.' });
+
+// Costo de envío REAL de un envío de ML (port de ml-sync.js:232-241).
+async function getShip(c, shippingId) {
+  if (!shippingId) return null;
+  try {
+    const costs = await c.get('/shipments/' + shippingId + '/costs', { allow404: true, headers: { 'x-format-new': 'true' } });
+    if (!costs) return null;
+    if (Array.isArray(costs.senders) && costs.senders.length && typeof costs.senders[0].cost === 'number') return costs.senders[0].cost;
+    if (typeof costs.gross_amount === 'number') return costs.gross_amount;
+    return null;
+  } catch (e) { return null; }
+}
 
 // ---- Normalizadores (respuestas crudas de ML → forma estable) ----
 function normOrder(o) {
@@ -113,6 +126,98 @@ export function buildMlTools(ctx) {
         from: z.string().optional(),
         limit: z.number().optional()
       })
+    }
+  );
+
+  const ml_register_order_by_id = tool(
+    async (args) => {
+      const c = await client(); if (!c) return NOT_CONNECTED;
+      const state = ctx.state || {};
+      const mark = (f) => ctx.changed.add(f);
+      const findProduct = (id) => (state.products || []).find(p => p.id === id);
+      const orderId = String(args.orderId);
+      const order = await c.get('/orders/' + encodeURIComponent(orderId), { allow404: true });
+      if (!order || !order.id) return j({ error: 'no_encontrado', msg: 'No encontré el pedido ' + orderId + ' en tu cuenta de Mercado Libre.' });
+      const items = order.order_items || [];
+      if (!items.length) return j({ error: 'sin_items', msg: 'El pedido ' + orderId + ' no tiene ítems.' });
+      const totalQty = items.reduce((s, it) => s + (it.quantity || 1), 0) || 1;
+      const iso = order.date_created || ctx.nowIso();
+      const date = iso.slice(0, 10);
+      const time = (iso.split('T')[1] || '00:00').slice(0, 5);
+      const realShip = await getShip(c, order.shipping && order.shipping.id);
+
+      state.sales = state.sales || [];
+      state.products = state.products || [];
+      state.mappings = state.mappings || {};
+      const registradas = [], pendingItems = [], yaRegistradas = [];
+
+      for (const it of items) {
+        const itemId = String((it.item && it.item.id) || '');
+        const title = (it.item && it.item.title) || itemId;
+        const qty = it.quantity || 1;
+        const unitPrice = it.unit_price || 0;
+        const saleFee = (typeof it.sale_fee === 'number') ? it.sale_fee : undefined;
+        const listingTypeId = it.listing_type_id;
+
+        // Resolver producto: mapeo previo → auto-mapeo por nombre (>80%).
+        let mapping = state.mappings[itemId];
+        let product = mapping ? findProduct(mapping.productId) : null;
+        if (!product) {
+          const auto = domain.suggestProduct(state.products, title, 0.8);
+          if (auto) { product = auto; state.mappings[itemId] = { productId: auto.id, productName: auto.name }; mark('mappings'); }
+        }
+        if (!product) {
+          const sug = domain.suggestProduct(state.products, title, 0.4);
+          pendingItems.push({ itemId, title, unitPrice, saleFee: saleFee != null ? saleFee : null, quantity: qty, sugerencia: sug ? { productId: sug.id, name: sug.name } : null });
+          continue;
+        }
+
+        const saleId = domain.saleIdFor({ id: orderId }, itemId);
+        if (state.sales.some(s => s.source === 'mercadolibre' && String(s.item_id) === itemId && s.id === saleId)) {
+          yaRegistradas.push({ itemId, saleId });
+          continue;
+        }
+        const comm = domain.unitCommissionFor({ sale_fee: saleFee, unit_price: unitPrice, listing_type_id: listingTypeId });
+        const commissionPerUnit = +comm.perUnit.toFixed(2);
+        const commission = +(commissionPerUnit * qty).toFixed(2);
+        const lineShip = realShip != null ? +(realShip * (qty / totalQty)).toFixed(2) : (Number(product.shipping) || 0) * qty;
+        const totalPrice = unitPrice * qty;
+        const costPrice = Number(product.costPrice) || 0;
+        const profit = totalPrice - costPrice * qty - commission - lineShip;
+        const sale = {
+          id: saleId, date, time,
+          productId: product.id, productName: product.name,
+          quantity: qty, salePrice: unitPrice, costPrice, commission,
+          commissionType: 'percentage',
+          commissionValue: unitPrice > 0 ? +((commissionPerUnit / unitPrice) * 100).toFixed(2) : 0,
+          shipping: lineShip, totalPrice, profit, createdAt: ctx.nowIso(),
+          source: 'mercadolibre', item_id: itemId, order_id: orderId,
+          feeSource: comm.source, shippingSource: realShip != null ? 'ml' : 'local',
+          variantId: null, variantLabel: ''
+        };
+        state.sales.push(sale);
+        domain.applyStockDelta(product, null, -qty);
+        product.lastModified = ctx.nowIso();
+        state.mappings[itemId] = { productId: product.id, productName: product.name };
+        if (Array.isArray(state.pendingMappings)) state.pendingMappings = state.pendingMappings.filter(p => String(p.item_id) !== itemId);
+        if (Array.isArray(state.dismissedPending)) state.dismissedPending = state.dismissedPending.filter(x => String(x) !== itemId);
+        registradas.push(sale);
+      }
+
+      if (registradas.length) { mark('sales'); mark('products'); mark('mappings'); mark('pendingMappings'); if (state.dismissedPending) mark('dismissedPending'); }
+      ctx.did.push({ action: 'ml_register_order_by_id', orderId, registradas: registradas.length, pendientes: pendingItems.length });
+      return j({
+        ok: true, orderId, registradas: registradas.length, ventas: registradas,
+        pendingItems, yaRegistradas,
+        msg: pendingItems.length
+          ? 'Hay ítems sin producto en el CRM. Pídele al usuario el COSTO de cada uno, créalos con add_product y vuelve a llamar ml_register_order_by_id.'
+          : undefined
+      });
+    },
+    {
+      name: 'ml_register_order_by_id',
+      description: 'Registra en el CRM una venta de Mercado Libre indicando SOLO el número de pedido (order_id). Trae automáticamente de ML la comisión REAL (sale_fee) y el envío REAL, descuenta stock, mapea la publicación y evita duplicados (mismo id que el cron). Úsala cuando el usuario diga "agrega/registra la venta de ML <número>". Si devuelve pendingItems (productos que no existen en el CRM), pídele el COSTO al usuario, créalos con add_product y vuelve a llamarla.',
+      schema: z.object({ orderId: z.union([z.string(), z.number()]).describe('Número/ID del pedido de Mercado Libre.') })
     }
   );
 
@@ -252,7 +357,7 @@ export function buildMlTools(ctx) {
   );
 
   return [
-    ml_orders, ml_shipment, ml_questions, ml_listing, ml_messages,
+    ml_orders, ml_register_order_by_id, ml_shipment, ml_questions, ml_listing, ml_messages,
     ml_answer_question, ml_update_listing, ml_send_message
   ];
 }

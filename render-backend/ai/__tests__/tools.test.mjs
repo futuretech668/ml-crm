@@ -373,3 +373,87 @@ test('add_product — acepta variants[] y deriva stock total', async () => {
   assert.equal(r.product.variants.length, 2);
   assert.equal(r.product.stock, 5);
 });
+
+// ---- Lectura de TODO el estado (A) ----
+
+test('list_tasks — lista y filtra por estado', async () => {
+  const state = goldenState();
+  const t = toolsByName(buildCrmTools(makeCtx(state)));
+  const all = JSON.parse(await t.list_tasks.invoke({}));
+  assert.equal(all.length, 1);
+  assert.equal(all[0].titulo, 'Reponer cargadores');
+  const hechas = JSON.parse(await t.list_tasks.invoke({ estado: 'hecha' }));
+  assert.equal(hechas.length, 0);
+});
+
+test('list_expenses / list_fixed_expenses / get_finance_config / list_channels', async () => {
+  const state = goldenState();
+  state.customChannels = ['Instagram'];
+  const t = toolsByName(buildCrmTools(makeCtx(state)));
+  const ex = JSON.parse(await t.list_expenses.invoke({}));
+  assert.equal(ex.total, 3000);
+  assert.equal(ex.count, 1);
+  const fx = JSON.parse(await t.list_fixed_expenses.invoke({}));
+  assert.equal(fx.equivalenteMensual, 12000);
+  const fc = JSON.parse(await t.get_finance_config.invoke({}));
+  assert.equal(fc.ivaEnabled, true);
+  assert.equal(fc.ivaPct, 19);
+  const ch = JSON.parse(await t.list_channels.invoke({}));
+  assert.deepEqual(ch.propios, ['Instagram']);
+});
+
+// ---- Escritura de TODO el estado (B) ----
+
+test('manage_expense — add/edit/delete', async () => {
+  const state = goldenState();
+  const ctx = makeCtx(state);
+  const t = toolsByName(buildCrmTools(ctx));
+  const a = JSON.parse(await t.manage_expense.invoke({ action: 'add', nombre: 'Bencina', monto: 5000 }));
+  assert.equal(a.ok, true);
+  assert.equal(state.expenses.length, 2);
+  assert.ok(ctx.changed.has('expenses'));
+  const e = JSON.parse(await t.manage_expense.invoke({ action: 'edit', id: a.expense.id, monto: 7000 }));
+  assert.equal(e.expense.monto, 7000);
+  const d = JSON.parse(await t.manage_expense.invoke({ action: 'delete', id: a.expense.id }));
+  assert.equal(d.ok, true);
+  assert.equal(state.expenses.length, 1);
+});
+
+test('manage_fixed_expense — add con frecuencia', async () => {
+  const state = goldenState();
+  const t = toolsByName(buildCrmTools(makeCtx(state)));
+  const a = JSON.parse(await t.manage_fixed_expense.invoke({ action: 'add', nombre: 'Internet', monto: 20000, frecuencia: 'mensual' }));
+  assert.equal(a.ok, true);
+  assert.equal(state.gastosFijos.length, 2);
+});
+
+test('set_goal — fija la meta del mes', async () => {
+  const state = goldenState();
+  const ctx = makeCtx(state);
+  const t = toolsByName(buildCrmTools(ctx));
+  const r = JSON.parse(await t.set_goal.invoke({ objetivo: 800000, tipoMeta: 'ganancia' }));
+  assert.equal(r.ok, true);
+  assert.equal(state.goals.mensual.objetivo, 800000);
+  assert.equal(state.goals.mensual.tipoMeta, 'ganancia');
+  assert.ok(ctx.changed.has('goals'));
+});
+
+test('set_finance_config — IVA y publicidad del mes', async () => {
+  const state = goldenState();
+  const ctx = makeCtx(state);
+  const t = toolsByName(buildCrmTools(ctx));
+  const r = JSON.parse(await t.set_finance_config.invoke({ ivaPct: 19, ivaEnabled: true, publicidadMonto: 8000, publicidadMes: '2026-06' }));
+  assert.equal(r.ok, true);
+  assert.equal(state.finConfig.ivaPct, 19);
+  assert.equal(state.finConfig.publicidadMensual['2026-06'], 8000);
+});
+
+test('manage_channel — add y uso en add_sale.source', async () => {
+  const state = goldenState();
+  const ctx = makeCtx(state);
+  const t = toolsByName(buildCrmTools(ctx));
+  const c = JSON.parse(await t.manage_channel.invoke({ action: 'add', nombre: 'Instagram' }));
+  assert.ok(c.canales.includes('Instagram'));
+  const venta = JSON.parse(await t.add_sale.invoke({ productId: 2, quantity: 1, source: 'Instagram' }));
+  assert.equal(venta.sale.source, 'Instagram');
+});

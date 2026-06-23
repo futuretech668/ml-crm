@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { buildMlTools } from '../ml.mjs';
 import { installFetch } from './fsmock.mjs';
+import { goldenState } from './fixtures.mjs';
 
 const require = createRequire(import.meta.url);
 const { makeMlClient } = require('../../ml-sync.js');
@@ -132,6 +133,83 @@ test('confirm-gate — firma cambiada entre propuesta y ejecución re-propone', 
   const r = JSON.parse(await t.ml_update_listing.invoke({ itemId: 'MLC1', price: 99999, confirmToken: 'TOK1' }));
   assert.equal(r.proposed, true);
   assert.equal(client._calls.filter(c => c.m === 'PUT').length, 0);
+});
+
+// ctx enriquecido para ml_register_order_by_id (necesita state/changed/nextId/fechas).
+function mlCtxFull(client, state) {
+  let id = 7000;
+  return {
+    thread: { pendingConfirms: [] }, did: [], proposed: [], currentTurn: 1,
+    mintToken: () => 'T', getClient: async () => client,
+    state, changed: new Set(),
+    nextId: () => ++id,
+    nowIso: () => '2026-06-20T12:00:00.000Z',
+    today: () => '2026-06-20', time: () => '12:00'
+  };
+}
+
+test('ml_register_order_by_id — comisión y envío reales, auto-mapeo, dedupe', async () => {
+  const state = goldenState();
+  const client = fakeClient({
+    get: (ep) => {
+      if (ep.startsWith('/orders/302')) return {
+        id: 302, date_created: '2026-06-18T10:00:00Z', status: 'paid',
+        shipping: { id: 9001 },
+        order_items: [{ item: { id: 'MLC1', title: 'Audífonos Pro' }, quantity: 1, unit_price: 25000, sale_fee: 3375, listing_type_id: 'gold_special' }]
+      };
+      if (ep.startsWith('/shipments/9001/costs')) return { senders: [{ cost: 2990 }] };
+      return null;
+    }
+  });
+  const ctx = mlCtxFull(client, state);
+  const t = toolMap(ctx);
+  const before = state.products.find(p => p.id === 1).stock; // 8
+  const r = JSON.parse(await t.ml_register_order_by_id.invoke({ orderId: 302 }));
+  assert.equal(r.ok, true);
+  assert.equal(r.registradas, 1);
+  assert.equal(r.pendingItems.length, 0);
+  const sale = r.ventas[0];
+  assert.equal(sale.date, '2026-06-18');        // fecha real del pedido
+  assert.equal(sale.feeSource, 'sale_fee');
+  assert.equal(sale.commission, 3375);          // comisión real
+  assert.equal(sale.shipping, 2990);            // envío real
+  assert.equal(sale.shippingSource, 'ml');
+  assert.equal(sale.source, 'mercadolibre');
+  assert.equal(sale.item_id, 'MLC1');
+  assert.equal(sale.order_id, '302');
+  assert.equal(state.products.find(p => p.id === 1).stock, before - 1);
+  assert.equal(state.mappings['MLC1'].productId, 1); // auto-mapeo por nombre
+  // Dedupe: registrar el mismo pedido de nuevo no agrega.
+  const again = JSON.parse(await t.ml_register_order_by_id.invoke({ orderId: 302 }));
+  assert.equal(again.registradas, 0);
+  assert.equal(again.yaRegistradas.length, 1);
+});
+
+test('ml_register_order_by_id — producto inexistente → pendingItems con sugerencia', async () => {
+  const state = goldenState();
+  const client = fakeClient({
+    get: (ep) => ep.startsWith('/orders/500') ? {
+      id: 500, date_created: '2026-06-18T10:00:00Z', status: 'paid', shipping: { id: null },
+      order_items: [{ item: { id: 'MLC9', title: 'Producto Totalmente Nuevo XYZ' }, quantity: 1, unit_price: 9000, sale_fee: 1200 }]
+    } : null
+  });
+  const ctx = mlCtxFull(client, state);
+  const t = toolMap(ctx);
+  const r = JSON.parse(await t.ml_register_order_by_id.invoke({ orderId: 500 }));
+  assert.equal(r.registradas, 0);
+  assert.equal(r.pendingItems.length, 1);
+  assert.equal(r.pendingItems[0].itemId, 'MLC9');
+  assert.equal(r.pendingItems[0].unitPrice, 9000);
+  assert.equal(r.pendingItems[0].saleFee, 1200);
+  assert.equal(state.sales.length, 3); // no registró nada
+});
+
+test('ml_register_order_by_id — pedido no encontrado', async () => {
+  const state = goldenState();
+  const client = fakeClient({ get: () => null });
+  const t = toolMap(mlCtxFull(client, state));
+  const r = JSON.parse(await t.ml_register_order_by_id.invoke({ orderId: 999 }));
+  assert.equal(r.error, 'no_encontrado');
 });
 
 test('makeMlClient — refresca el token al expirar', async () => {
