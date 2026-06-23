@@ -384,19 +384,31 @@ export function financeSummary(state, args) {
 // Construye una venta con la MISMA forma que index.html:4172-4191.
 // `nowIso`/`saleId`/`time` se inyectan para que el resultado sea determinista
 // (la app usa Date.now()/toLocaleTimeString; aquí el llamador los provee).
+// Si `opts.variant` viene, precio/costo/envío/comisión se derivan de la variante
+// (con override por `args`) y se sella variantId/variantLabel — igual que la app
+// cuando se vende una variante (index.html:4747-4775, variantGain 5659-5667).
 export function buildSalePayload(product, args, opts) {
   opts = opts || {};
+  const v = opts.variant || null;
   const quantity = Number(args.quantity);
-  const precioUnit = (args.salePrice != null) ? Number(args.salePrice) : Number(product.salePrice);
-  const costoUnit = (args.costPrice != null) ? Number(args.costPrice) : Number(product.costPrice);
-  const envioTotal = (args.shipping != null) ? Number(args.shipping) : 0;
+  const precioUnit = (args.salePrice != null) ? Number(args.salePrice)
+    : (v ? Number(v.precioVenta != null ? v.precioVenta : (v.precio || 0)) : Number(product.salePrice));
+  const costoUnit = (args.costPrice != null) ? Number(args.costPrice)
+    : (v ? Number(v.precioCosto || 0) : Number(product.costPrice));
+  const envioTotal = (args.shipping != null) ? Number(args.shipping)
+    : (v && v.tieneEnvio ? (Number(v.costoEnvio) || 0) * quantity : 0);
   const totalPrice = precioUnit * quantity;
 
   // Comisión: 'fixed' (monto) o 'percentage' (% sobre el total) — igual que index.html:4156.
+  // Default desde la variante si ésta cobra comisión y no se pasó override.
   let commissionAmount = 0, comisionTipo = 'fixed', comisionValor = 0;
-  if (args.commission != null) {
-    comisionValor = Number(args.commission) || 0;
-    if (args.commissionType === 'percentage') { comisionTipo = 'percentage'; commissionAmount = totalPrice * comisionValor / 100; }
+  let cVal = (args.commission != null) ? Number(args.commission)
+    : (v && v.tieneComision ? Number(v.comision || 0) : null);
+  let cTipo = (args.commission != null) ? args.commissionType
+    : (v && v.tieneComision ? v.comisionTipo : null);
+  if (cVal != null) {
+    comisionValor = cVal || 0;
+    if (cTipo === 'percentage') { comisionTipo = 'percentage'; commissionAmount = totalPrice * comisionValor / 100; }
     else { comisionTipo = 'fixed'; commissionAmount = comisionValor; }
   }
   const totalProfit = totalPrice - (costoUnit * quantity) - commissionAmount - envioTotal;
@@ -417,16 +429,23 @@ export function buildSalePayload(product, args, opts) {
     totalPrice,
     profit: totalProfit,
     source: args.source || 'manual',
-    variantId: null,
-    variantLabel: '',
+    variantId: v ? v.id : null,
+    variantLabel: v ? variantLabelOf(v) : '',
     createdAt: opts.nowIso
   };
 }
 
 // Construye un producto con la MISMA forma que index.html:4050-4094.
+// Si `args.variants` viene, el producto maneja stock POR VARIANTE: hasVariants=true
+// y stock = Σ variants.stock (campo derivado, igual que index.html).
 export function buildProductPayload(args, opts) {
   opts = opts || {};
-  const stock = Number(args.stock) || 0;
+  const rawVariants = Array.isArray(args.variants) ? args.variants : [];
+  const variants = rawVariants.map((v, i) => buildVariantPayload(v, { id: (opts.id || 0) * 1000 + i + 1 }));
+  const hasVariants = variants.length > 0;
+  const stock = hasVariants
+    ? variants.reduce((a, v) => a + (Number(v.stock) || 0), 0)
+    : (Number(args.stock) || 0);
   return {
     id: opts.id,
     name: args.name,
@@ -438,13 +457,95 @@ export function buildProductPayload(args, opts) {
     shipping: Number(args.shipping) || 0,
     commission: Number(args.commission) || 0,
     commissionType: args.commissionType || 'percentage',
-    hasVariants: false,
-    variants: [],
+    hasVariants,
+    variants,
     archived: false,
     createdDate: opts.nowIso,
     lastModified: opts.nowIso
   };
 }
+
+// ---------------------------------------------------------------------------
+// Variantes y stock (lógica PORTADA de index.html para ser byte-idéntica).
+// ---------------------------------------------------------------------------
+
+// Etiqueta legible de una variante: "color / talla" (index.html:5640-5645).
+export function variantLabelOf(v) {
+  const parts = [];
+  if (v && v.color) parts.push(v.color);
+  if (v && v.talla) parts.push(v.talla);
+  return parts.join(' / ');
+}
+
+// Construye una variante con la forma de la app (index.html:5874, 5904-5911).
+export function buildVariantPayload(args, opts) {
+  opts = opts || {};
+  const stock = Number(args.stock) || 0;
+  return {
+    id: opts.id,
+    color: args.color || '',
+    colorHex: args.colorHex || '',
+    talla: args.talla || '',
+    precioVenta: Number(args.precioVenta != null ? args.precioVenta : (args.salePrice || 0)) || 0,
+    precioCosto: Number(args.precioCosto != null ? args.precioCosto : (args.costPrice || 0)) || 0,
+    tieneEnvio: !!args.tieneEnvio,
+    costoEnvio: Number(args.costoEnvio) || 0,
+    tieneComision: !!args.tieneComision,
+    comisionTipo: args.comisionTipo || 'percentage',
+    comision: Number(args.comision) || 0,
+    stock,
+    agotada: stock <= 0
+  };
+}
+
+// Busca una variante por id (comparación como string, igual que index.html:5349).
+export function findVariant(product, variantId) {
+  if (!product || !Array.isArray(product.variants)) return null;
+  return product.variants.find(v => String(v.id) === String(variantId)) || null;
+}
+
+// stock_total = suma de las variantes; marca agotada la que llega a 0 (index.html:5649-5655).
+export function recalcVariantStock(product) {
+  if (product && product.hasVariants && Array.isArray(product.variants)) {
+    product.variants.forEach(v => { v.agotada = (Number(v.stock) || 0) <= 0; });
+    product.stock = product.variants.reduce((a, v) => a + (Number(v.stock) || 0), 0);
+  }
+  return product ? product.stock : 0;
+}
+
+// Aplica un delta de stock (negativo = venta, positivo = devolución). Si el producto
+// maneja variantes y se indica variantId, ajusta la variante y recalcula el total;
+// si no, ajusta el stock simple. Replica index.html:4769-4775 / 5347-5353.
+export function applyStockDelta(product, variantId, delta) {
+  if (!product) return;
+  if (product.hasVariants && variantId != null) {
+    const v = findVariant(product, variantId);
+    if (v) {
+      v.stock = Math.max(0, (Number(v.stock) || 0) + delta);
+      recalcVariantStock(product);
+      return;
+    }
+    // Variante no encontrada: cae al stock simple como respaldo.
+  }
+  product.stock = Math.max(0, (Number(product.stock) || 0) + delta);
+}
+
+// ---------------------------------------------------------------------------
+// Mercado Libre — comisión e id de venta (VERBATIM de ml-sync.js).
+// ---------------------------------------------------------------------------
+
+export const COMMISSION_CLASSIC = Number(process.env.ML_COMMISSION_CLASSIC || 0.135);
+export const COMMISSION_PREMIUM = Number(process.env.ML_COMMISSION_PREMIUM || 0.165);
+
+// Comisión por unidad: real (sale_fee) si está disponible, si no estimada por tasa
+// según el tipo de publicación (ml-sync.js:244-248).
+export function unitCommissionFor(it) {
+  if (typeof it.sale_fee === 'number' && it.sale_fee > 0) return { perUnit: it.sale_fee, source: 'sale_fee' };
+  const rate = it.listing_type_id === 'gold_pro' ? COMMISSION_PREMIUM : COMMISSION_CLASSIC;
+  return { perUnit: (it.unit_price || 0) * rate, source: 'estimado' };
+}
+// El id determinista de venta de ML (mismos dígitos que el cron, para el dedupe
+// order_id+item_id) ya existe arriba como saleIdFor(order, itemId) — se reutiliza.
 
 // ---------------------------------------------------------------------------
 // Sistema de Briefing (la inyección de contexto en 3 capas).

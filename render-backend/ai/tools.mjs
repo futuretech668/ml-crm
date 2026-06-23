@@ -76,26 +76,41 @@ export function buildCrmTools(ctx) {
     }
   );
 
+  // Lista compacta de variantes de un producto (para guiar al modelo).
+  const variantSummary = (p) => (p.variants || []).map(v => ({
+    variantId: v.id, label: domain.variantLabelOf(v) || '(sin etiqueta)', stock: v.stock
+  }));
+
   const add_sale = tool(
     async (args) => {
       const product = findProduct(args.productId);
       if (!product) return j({ error: 'No existe un producto con ese id. Usa list_products para ver los ids.' });
+      let variant = null;
+      if (product.hasVariants) {
+        if (args.variantId == null) {
+          return j({ error: 'Este producto maneja stock por variante. Indica variantId.', variantes: variantSummary(product) });
+        }
+        variant = domain.findVariant(product, args.variantId);
+        if (!variant) return j({ error: 'No existe esa variante en el producto.', variantes: variantSummary(product) });
+      }
       const sale = domain.buildSalePayload(product, args, {
-        id: ctx.nextId(), today: ctx.today(), time: ctx.time(), nowIso: ctx.nowIso()
+        id: ctx.nextId(), today: ctx.today(), time: ctx.time(), nowIso: ctx.nowIso(), variant
       });
       state.sales = state.sales || [];
       state.sales.push(sale);
-      product.stock = Math.max(0, (product.stock || 0) - sale.quantity);
+      domain.applyStockDelta(product, sale.variantId, -sale.quantity);
+      product.lastModified = ctx.nowIso();
       mark('sales'); mark('products');
-      ctx.did.push({ action: 'add_sale', saleId: sale.id, productName: sale.productName, quantity: sale.quantity, totalPrice: sale.totalPrice, profit: sale.profit });
+      ctx.did.push({ action: 'add_sale', saleId: sale.id, productName: sale.productName, variantLabel: sale.variantLabel, quantity: sale.quantity, totalPrice: sale.totalPrice, profit: sale.profit });
       return j({ ok: true, sale });
     },
     {
       name: 'add_sale',
-      description: 'Registra una venta en el CRM del usuario. profit = total − costo·cantidad − comisión − envío. Descuenta el stock del producto. salePrice/costPrice por defecto son los del producto.',
+      description: 'Registra una venta en el CRM del usuario. profit = total − costo·cantidad − comisión − envío. Descuenta el stock del producto (de la VARIANTE si el producto las maneja). salePrice/costPrice por defecto son los del producto o de la variante. Si el producto tiene variantes, DEBES pasar variantId (usa list_products para verlas).',
       schema: z.object({
         productId: z.number(),
         quantity: z.number(),
+        variantId: z.number().optional().describe('Obligatorio si el producto maneja variantes (color/talla).'),
         salePrice: z.number().optional(),
         costPrice: z.number().optional(),
         commission: z.number().optional(),
@@ -114,14 +129,17 @@ export function buildCrmTools(ctx) {
       if (idx < 0) return j({ error: 'No encontré una venta con ese id.' });
       const [removed] = state.sales.splice(idx, 1);
       const product = findProduct(removed.productId);
-      if (product) product.stock = (product.stock || 0) + (removed.quantity || 0);
+      if (product) {
+        domain.applyStockDelta(product, removed.variantId, +(removed.quantity || 0));
+        product.lastModified = ctx.nowIso();
+      }
       mark('sales'); if (product) mark('products');
       ctx.did.push({ action: 'delete_sale', saleId: removed.id, productName: removed.productName });
       return j({ ok: true, removed });
     },
     {
       name: 'delete_sale',
-      description: 'Elimina una venta del CRM por id y restaura el stock del producto.',
+      description: 'Elimina una venta del CRM por id y restaura el stock del producto (de la variante si la venta tenía variantId).',
       schema: z.object({ id: z.number() })
     }
   );
@@ -137,7 +155,7 @@ export function buildCrmTools(ctx) {
     },
     {
       name: 'add_product',
-      description: 'Crea un producto en el CRM con la forma exacta de la app.',
+      description: 'Crea un producto en el CRM con la forma exacta de la app. Para un producto con variantes (color/talla), pasa variants[] y el stock total se calcula como la suma de las variantes.',
       schema: z.object({
         name: z.string(),
         costPrice: z.number(),
@@ -146,7 +164,20 @@ export function buildCrmTools(ctx) {
         stockMin: z.number().optional(),
         shipping: z.number().optional(),
         commission: z.number().optional(),
-        commissionType: z.enum(['fixed', 'percentage']).optional()
+        commissionType: z.enum(['fixed', 'percentage']).optional(),
+        variants: z.array(z.object({
+          color: z.string().optional(),
+          colorHex: z.string().optional(),
+          talla: z.string().optional(),
+          precioVenta: z.number().optional(),
+          precioCosto: z.number().optional(),
+          stock: z.number().optional(),
+          tieneEnvio: z.boolean().optional(),
+          costoEnvio: z.number().optional(),
+          tieneComision: z.boolean().optional(),
+          comisionTipo: z.enum(['fixed', 'percentage']).optional(),
+          comision: z.number().optional()
+        })).optional().describe('Variantes del producto (color/talla) con su stock propio.')
       })
     }
   );
@@ -155,16 +186,21 @@ export function buildCrmTools(ctx) {
     async (args) => {
       const product = findProduct(args.id);
       if (!product) return j({ error: 'No existe un producto con ese id.' });
-      const fields = ['name', 'costPrice', 'salePrice', 'stock', 'stockMin', 'shipping', 'commission', 'commissionType'];
+      // En productos con variantes el stock es derivado (Σ variantes); editarlo aquí lo
+      // sobrescribiría el siguiente recálculo de la app. Guíalo a manage_variant.
+      if (args.stock !== undefined && product.hasVariants) {
+        return j({ error: 'Este producto maneja stock por variante; no edites product.stock. Usa manage_variant para ajustar el stock de cada variante.' });
+      }
+      const fields = ['name', 'costPrice', 'salePrice', 'stock', 'stockMin', 'shipping', 'commission', 'commissionType', 'archived'];
       for (const f of fields) if (args[f] !== undefined) product[f] = args[f];
       product.lastModified = ctx.nowIso();
       mark('products');
-      ctx.did.push({ action: 'edit_product', productId: product.id, name: product.name });
+      ctx.did.push({ action: 'edit_product', productId: product.id, name: product.name, archived: product.archived });
       return j({ ok: true, product });
     },
     {
       name: 'edit_product',
-      description: 'Edita campos de un producto existente (por id). Solo cambia los campos provistos.',
+      description: 'Edita campos de un producto existente (por id). Solo cambia los campos provistos. Usa archived:true para ARCHIVAR (ocultar sin borrar, reversible) o archived:false para desarchivar. No edites stock de productos con variantes (usa manage_variant).',
       schema: z.object({
         id: z.number(),
         name: z.string().optional(),
@@ -174,7 +210,174 @@ export function buildCrmTools(ctx) {
         stockMin: z.number().optional(),
         shipping: z.number().optional(),
         commission: z.number().optional(),
-        commissionType: z.enum(['fixed', 'percentage']).optional()
+        commissionType: z.enum(['fixed', 'percentage']).optional(),
+        archived: z.boolean().optional().describe('true = archivar (reversible); false = desarchivar.')
+      })
+    }
+  );
+
+  const delete_product = tool(
+    async (args) => {
+      state.products = state.products || [];
+      const idx = state.products.findIndex(p => p.id === args.id);
+      if (idx < 0) return j({ error: 'No existe un producto con ese id.' });
+      const product = state.products[idx];
+      const ventas = (state.sales || []).filter(s => s.productId === args.id).length;
+      // Salvaguarda: si tiene ventas asociadas, exige confirmación explícita.
+      if (ventas > 0 && args.confirm !== true) {
+        return j({
+          needsConfirm: true,
+          message: `El producto "${product.name}" tiene ${ventas} venta(s) asociada(s). Las ventas históricas se conservarán, pero el producto se quitará del catálogo. Confirma para borrar.`,
+          ventasAsociadas: ventas,
+          hint: 'Vuelve a llamar delete_product con confirm:true tras la confirmación del usuario. Si prefieres conservarlo, usa edit_product con archived:true.'
+        });
+      }
+      state.products.splice(idx, 1);
+      mark('products');
+      ctx.did.push({ action: 'delete_product', productId: product.id, name: product.name, ventasConservadas: ventas });
+      return j({ ok: true, deleted: { id: product.id, name: product.name }, ventasConservadas: ventas });
+    },
+    {
+      name: 'delete_product',
+      description: 'Borra DEFINITIVAMENTE un producto del catálogo (las ventas históricas se conservan). Si tiene ventas asociadas, devuelve needsConfirm:true y NO borra hasta que lo llames de nuevo con confirm:true. Para ocultar sin borrar, usa edit_product con archived:true.',
+      schema: z.object({
+        id: z.number(),
+        confirm: z.boolean().optional().describe('Pásalo en true para confirmar el borrado de un producto con ventas asociadas.')
+      })
+    }
+  );
+
+  const manage_variant = tool(
+    async (args) => {
+      const product = findProduct(args.productId);
+      if (!product) return j({ error: 'No existe un producto con ese id.' });
+      product.variants = Array.isArray(product.variants) ? product.variants : [];
+      if (args.action === 'add') {
+        const variant = domain.buildVariantPayload(args, { id: ctx.nextId() });
+        product.variants.push(variant);
+        product.hasVariants = true;
+        domain.recalcVariantStock(product);
+        product.lastModified = ctx.nowIso();
+        mark('products');
+        ctx.did.push({ action: 'variant_add', productId: product.id, variantId: variant.id, label: domain.variantLabelOf(variant) });
+        return j({ ok: true, variant, stockTotal: product.stock });
+      }
+      const variant = domain.findVariant(product, args.variantId);
+      if (!variant) return j({ error: 'No existe esa variante.', variantes: variantSummary(product) });
+      if (args.action === 'edit') {
+        const fields = ['color', 'colorHex', 'talla', 'precioVenta', 'precioCosto', 'tieneEnvio', 'costoEnvio', 'tieneComision', 'comisionTipo', 'comision', 'stock'];
+        for (const f of fields) if (args[f] !== undefined) variant[f] = args[f];
+        domain.recalcVariantStock(product);
+        product.lastModified = ctx.nowIso();
+        mark('products');
+        ctx.did.push({ action: 'variant_edit', productId: product.id, variantId: variant.id });
+        return j({ ok: true, variant, stockTotal: product.stock });
+      }
+      if (args.action === 'delete') {
+        const i = product.variants.findIndex(v => String(v.id) === String(args.variantId));
+        const [removed] = product.variants.splice(i, 1);
+        // Stock = suma de las variantes restantes (0 si no queda ninguna).
+        product.stock = product.variants.reduce((a, v) => a + (Number(v.stock) || 0), 0);
+        product.hasVariants = product.variants.length > 0;
+        if (product.hasVariants) domain.recalcVariantStock(product);
+        product.lastModified = ctx.nowIso();
+        mark('products');
+        ctx.did.push({ action: 'variant_delete', productId: product.id, variantId: removed.id });
+        return j({ ok: true, removed, stockTotal: product.stock });
+      }
+      return j({ error: 'Acción de variante no válida.' });
+    },
+    {
+      name: 'manage_variant',
+      description: 'Gestiona variantes (color/talla) de un producto y su stock. action: add (crea variante; marca el producto como con variantes), edit (cambia solo campos provistos de una variante por variantId), delete (quita la variante). El stock total del producto se recalcula como la suma de las variantes.',
+      schema: z.object({
+        action: z.enum(['add', 'edit', 'delete']),
+        productId: z.number(),
+        variantId: z.number().optional().describe('Obligatorio para edit/delete.'),
+        color: z.string().optional(),
+        colorHex: z.string().optional(),
+        talla: z.string().optional(),
+        precioVenta: z.number().optional(),
+        precioCosto: z.number().optional(),
+        stock: z.number().optional(),
+        tieneEnvio: z.boolean().optional(),
+        costoEnvio: z.number().optional(),
+        tieneComision: z.boolean().optional(),
+        comisionTipo: z.enum(['fixed', 'percentage']).optional(),
+        comision: z.number().optional()
+      })
+    }
+  );
+
+  const ml_register_order = tool(
+    async (args) => {
+      const product = findProduct(args.productId);
+      if (!product) return j({ error: 'No existe el producto mapeado. Crea el producto con add_product (o mapéalo a uno existente) y vuelve a intentar.' });
+      let variant = null;
+      if (product.hasVariants) {
+        if (args.variantId == null) return j({ error: 'El producto maneja variantes. Indica variantId.', variantes: variantSummary(product) });
+        variant = domain.findVariant(product, args.variantId);
+        if (!variant) return j({ error: 'No existe esa variante.', variantes: variantSummary(product) });
+      }
+      const itemId = String(args.itemId);
+      const orderId = String(args.orderId);
+      const saleId = domain.saleIdFor({ id: orderId }, itemId);
+      state.sales = state.sales || [];
+      // Dedupe con el MISMO criterio del cron (ml-sync.js:298): no duplicar.
+      if (state.sales.some(s => s.source === 'mercadolibre' && String(s.item_id) === itemId && s.id === saleId)) {
+        return j({ alreadyRegistered: true, message: 'Esta venta de Mercado Libre ya está registrada en el CRM.', saleId });
+      }
+      const qty = Number(args.quantity) || 1;
+      const unitPrice = Number(args.unitPrice) || 0;
+      const comm = domain.unitCommissionFor({ sale_fee: args.saleFee, unit_price: unitPrice, listing_type_id: args.listingTypeId });
+      const commissionPerUnit = +comm.perUnit.toFixed(2);
+      const commission = +(commissionPerUnit * qty).toFixed(2);
+      const costPriceUnit = variant ? (Number(variant.precioCosto) || 0) : (Number(product.costPrice) || 0);
+      const hasShip = args.shipping != null;
+      const shipping = hasShip ? Number(args.shipping) : (Number(product.shipping) || 0) * qty;
+      const totalPrice = unitPrice * qty;
+      const profit = totalPrice - costPriceUnit * qty - commission - shipping;
+      const sale = {
+        id: saleId, date: args.date || ctx.today(), time: args.time || ctx.time(),
+        productId: product.id, productName: variant ? `${product.name} (${domain.variantLabelOf(variant)})` : (args.title || product.name),
+        quantity: qty, salePrice: unitPrice, costPrice: costPriceUnit, commission,
+        commissionType: 'percentage',
+        commissionValue: unitPrice > 0 ? +((commissionPerUnit / unitPrice) * 100).toFixed(2) : 0,
+        shipping, totalPrice, profit, createdAt: ctx.nowIso(),
+        source: 'mercadolibre', item_id: itemId, order_id: orderId,
+        feeSource: comm.source, shippingSource: hasShip ? 'ml' : 'local',
+        variantId: variant ? variant.id : null, variantLabel: variant ? domain.variantLabelOf(variant) : ''
+      };
+      state.sales.push(sale);
+      domain.applyStockDelta(product, sale.variantId, -qty);
+      product.lastModified = ctx.nowIso();
+      // Crea el mapeo item_id → producto para que el cron NO la retenga ni duplique,
+      // y limpia cualquier pendiente/descarte de esa publicación (ml-sync.js:300-355).
+      state.mappings = state.mappings || {};
+      state.mappings[itemId] = { productId: product.id, productName: product.name };
+      if (Array.isArray(state.pendingMappings)) state.pendingMappings = state.pendingMappings.filter(p => String(p.item_id) !== itemId);
+      if (Array.isArray(state.dismissedPending)) state.dismissedPending = state.dismissedPending.filter(x => String(x) !== itemId);
+      mark('sales'); mark('products'); mark('mappings'); mark('pendingMappings');
+      if (state.dismissedPending) mark('dismissedPending');
+      ctx.did.push({ action: 'ml_register_order', saleId, orderId, itemId, productName: sale.productName, totalPrice, feeSource: comm.source });
+      return j({ ok: true, sale, mapped: true });
+    },
+    {
+      name: 'ml_register_order',
+      description: 'Registra en el CRM una venta de Mercado Libre que NO se sincronizó (p. ej. el producto no existía al momento). Toma los datos del pedido leído con ml_orders. Usa la comisión REAL (saleFee) si la entrega ML, o la estima por tipo de publicación. Es anti-duplicado: usa el mismo id que el cron y crea el mapeo item_id→producto para que la próxima sincronización no la duplique. Si el producto aún no existe, primero créalo con add_product.',
+      schema: z.object({
+        orderId: z.union([z.string(), z.number()]).describe('id del pedido de Mercado Libre (order_id).'),
+        itemId: z.union([z.string(), z.number()]).describe('id de la publicación (item_id, ej. MLC123...).'),
+        productId: z.number().describe('id del producto del CRM al que corresponde.'),
+        quantity: z.number(),
+        unitPrice: z.number().describe('precio unitario de la venta en ML.'),
+        variantId: z.number().optional(),
+        saleFee: z.number().optional().describe('comisión REAL total por unidad que entrega ML (sale_fee). Si no la tienes, se estima.'),
+        listingTypeId: z.string().optional().describe('tipo de publicación (ej. gold_pro) para estimar comisión si falta saleFee.'),
+        shipping: z.number().optional().describe('costo de envío TOTAL del ítem; si falta se usa el del producto.'),
+        date: z.string().optional().describe('YYYY-MM-DD del pedido; por defecto hoy.'),
+        time: z.string().optional(),
+        title: z.string().optional().describe('título de la publicación (respaldo para el nombre).')
       })
     }
   );
@@ -256,7 +459,8 @@ export function buildCrmTools(ctx) {
 
   return [
     query_sales, list_products, get_goal_progress, get_finance_summary,
-    add_sale, delete_sale, add_product, edit_product, manage_task,
+    add_sale, delete_sale, add_product, edit_product, delete_product,
+    manage_variant, ml_register_order, manage_task,
     save_memory, send_report
   ];
 }
