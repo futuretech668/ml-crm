@@ -296,7 +296,13 @@ export function productMargins(state, args) {
       margenUnitario: Math.round(margenUnit),
       margenPct: +margenPct.toFixed(1),
       bajoStock: (p.stock || 0) <= stockMin,
-      archivado: !!p.archived
+      archivado: !!p.archived,
+      // Variantes: para que el modelo sepa qué producto las maneja y con qué variantId
+      // vender (add_sale/ml_register_order exigen ese variantId, que suele ser texto).
+      hasVariants: !!p.hasVariants,
+      variantes: (p.hasVariants && Array.isArray(p.variants) && p.variants.length)
+        ? p.variants.map(v => ({ variantId: v.id, label: variantLabelOf(v) || '(sin etiqueta)', stock: Number(v.stock) || 0 }))
+        : undefined
     };
   });
   if (args.lowStockOnly) out = out.filter(p => p.bajoStock);

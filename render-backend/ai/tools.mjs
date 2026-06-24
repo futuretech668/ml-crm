@@ -46,6 +46,8 @@ export function buildCrmTools(ctx) {
     {
       name: 'list_products',
       description: 'Lista productos con su margen unitario y porcentual exactos, stock y si están bajo stock. ' +
+        'Incluye hasVariants y, si las tiene, variantes:[{variantId,label,stock}]. Para VENDER un producto con variantes, ' +
+        'pasa a add_sale el variantId EXACTO de aquí (suele ser texto, ej. "v0-Negro"). ' +
         'Filtra archivados o solo bajo stock; ordena por margen/margenPct/stock/nombre.',
       schema: z.object({
         includeArchived: z.boolean().optional(),
@@ -106,11 +108,11 @@ export function buildCrmTools(ctx) {
     },
     {
       name: 'add_sale',
-      description: 'Registra una venta en el CRM del usuario. profit = total − costo·cantidad − comisión − envío. Descuenta el stock del producto (de la VARIANTE si el producto las maneja). salePrice/costPrice por defecto son los del producto o de la variante. Si el producto tiene variantes, DEBES pasar variantId (usa list_products para verlas).',
+      description: 'Registra una venta en el CRM del usuario. profit = total − costo·cantidad − comisión − envío. Descuenta el stock del producto (de la VARIANTE si el producto las maneja). salePrice/costPrice por defecto son los del producto o de la variante. Si el producto tiene variantes (hasVariants:true en list_products), DEBES pasar variantId copiándolo EXACTO de list_products (puede ser texto como "v0-Negro", no lo inventes ni lo conviertas a número).',
       schema: z.object({
         productId: z.number(),
         quantity: z.number(),
-        variantId: z.number().optional().describe('Obligatorio si el producto maneja variantes (color/talla).'),
+        variantId: z.union([z.string(), z.number()]).optional().describe('Obligatorio si el producto maneja variantes (color/talla). Cópialo EXACTO de list_products (suele ser texto, ej. "v0-Negro").'),
         salePrice: z.number().optional(),
         costPrice: z.number().optional(),
         commission: z.number().optional(),
@@ -293,7 +295,7 @@ export function buildCrmTools(ctx) {
       schema: z.object({
         action: z.enum(['add', 'edit', 'delete']),
         productId: z.number(),
-        variantId: z.number().optional().describe('Obligatorio para edit/delete.'),
+        variantId: z.union([z.string(), z.number()]).optional().describe('Obligatorio para edit/delete (cópialo EXACTO de list_products; suele ser texto, ej. "v0-Negro").'),
         color: z.string().optional(),
         colorHex: z.string().optional(),
         talla: z.string().optional(),
@@ -371,7 +373,7 @@ export function buildCrmTools(ctx) {
         productId: z.number().describe('id del producto del CRM al que corresponde.'),
         quantity: z.number(),
         unitPrice: z.number().describe('precio unitario de la venta en ML.'),
-        variantId: z.number().optional(),
+        variantId: z.union([z.string(), z.number()]).optional().describe('Si el producto maneja variantes, id de la variante (cópialo EXACTO de list_products; suele ser texto, ej. "v0-Negro").'),
         saleFee: z.number().optional().describe('comisión REAL total por unidad que entrega ML (sale_fee). Si no la tienes, se estima.'),
         listingTypeId: z.string().optional().describe('tipo de publicación (ej. gold_pro) para estimar comisión si falta saleFee.'),
         shipping: z.number().optional().describe('costo de envío TOTAL del ítem; si falta se usa el del producto.'),
@@ -454,7 +456,7 @@ export function buildCrmTools(ctx) {
       schema: z.object({
         itemId: z.union([z.string(), z.number()]).describe('item_id de la publicación pendiente (de list_pending_ml_sales).'),
         productId: z.number().describe('id del producto del CRM al que corresponde (créalo antes si no existe).'),
-        variantId: z.number().optional().describe('si el producto maneja variantes, id de la variante (color/talla) vendida. Si no la das, se usa la sugerida del pending.')
+        variantId: z.union([z.string(), z.number()]).optional().describe('si el producto maneja variantes, id de la variante (color/talla) vendida (cópialo EXACTO de list_products; suele ser texto, ej. "v0-Negro"). Si no la das, se usa la sugerida del pending.')
       })
     }
   );
