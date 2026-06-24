@@ -108,6 +108,11 @@ async function confirmGate(ctx, sig, confirmToken, preview, execFn) {
   }
   const token = ctx.mintToken();
   pend.push({ token, actionSig: sig, issuedAtTurn: ctx.currentTurn });
+  // Re-capa tras añadir: la poda inicial ocurre ANTES del push, así que sin esto la
+  // lista podía quedar en MAX+1. Mantiene el invariante de tope estricto (los más recientes).
+  if (pend.length > MAX_PENDING_CONFIRMS) {
+    pend = ctx.thread.pendingConfirms = pend.slice(-MAX_PENDING_CONFIRMS);
+  }
   ctx.proposed.push({ token, ...preview });
   return j({
     proposed: true,

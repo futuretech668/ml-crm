@@ -153,6 +153,46 @@ test('history ops — list, get, delete', async () => {
   } finally { restore(); }
 });
 
+test('contrato — bad_json (400) y no_message (400) con la forma de error documentada', async () => {
+  const { restore } = setupAgent({ initialDb: userDb() });
+  try {
+    // body no parseable → 400 bad_json (el harness arma el event; mandamos un body roto a mano).
+    const ev = { httpMethod: 'POST', headers: { authorization: 'Bearer ' + TOKEN }, body: '{no es json' };
+    const agent = await import('../agent.mjs');
+    const r1 = await agent.handle(ev);
+    const j1 = JSON.parse(r1.body);
+    assert.equal(r1.statusCode, 400);
+    assert.equal(j1.reason, 'bad_json');
+    assert.equal(j1.ok, false);
+    // send sin message → 400 no_message.
+    const r2 = await call({ op: 'send', message: '   ' }, TOKEN);
+    assert.equal(r2.status, 400);
+    assert.equal(r2.json.reason, 'no_message');
+  } finally { restore(); }
+});
+
+test('contrato — get de un hilo inexistente devuelve messages: [] (no rompe)', async () => {
+  const { restore } = setupAgent({ initialDb: userDb() });
+  try {
+    const r = await call({ op: 'get', threadId: 't_no_existe' }, TOKEN);
+    assert.equal(r.status, 200);
+    assert.equal(r.json.ok, true);
+    assert.ok(Array.isArray(r.json.messages));
+    assert.equal(r.json.messages.length, 0);
+    assert.equal(r.json.threadId, 't_no_existe');
+  } finally { restore(); }
+});
+
+test('contrato — método GET (no POST) en handle() es 405 method', async () => {
+  const { restore } = setupAgent({ initialDb: userDb() });
+  try {
+    const agent = await import('../agent.mjs');
+    const r = await agent.handle({ httpMethod: 'GET', headers: {}, body: '' });
+    assert.equal(r.statusCode, 405);
+    assert.equal(JSON.parse(r.body).reason, 'method');
+  } finally { restore(); }
+});
+
 test('save_memory — se persiste y aparece en la siguiente apertura de perfil', async () => {
   const brain = async (msg, byName) => {
     await byName.save_memory.invoke({ note: 'Vende sobre todo en diciembre.' });

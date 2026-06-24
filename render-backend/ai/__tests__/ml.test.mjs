@@ -167,6 +167,48 @@ test('confirm-gate — pendingConfirms se poda (caducados fuera, cap a 20)', asy
   }
 });
 
+test('confirm-gate — el cap de 20 se aplica con tokens TODOS dentro del TTL', async () => {
+  // Caso que el test anterior NO ejercita: 25 propuestas vivas DENTRO del TTL
+  // (mismo turno base) → la poda por TTL no elimina nada y SÍ se dispara el cap a 20.
+  const client = fakeClient({});
+  const ctx = mlCtx(client);
+  ctx.currentTurn = 1;
+  const t = toolMap(ctx);
+  for (let i = 1; i <= 25; i++) {
+    await t.ml_update_listing.invoke({ itemId: 'MLC' + i, price: 1000 + i });
+  }
+  // Todos se emitieron en el turno 1 (dentro del TTL de 5) → solo el cap los recorta.
+  assert.equal(ctx.thread.pendingConfirms.length, 20);
+  // Y deben ser los 20 MÁS RECIENTES (slice(-20)): MLC6..MLC25 — se perdieron MLC1..MLC5.
+  const sigs = ctx.thread.pendingConfirms.map(p => p.actionSig);
+  assert.ok(sigs.some(s => s.includes('MLC25')));
+  assert.ok(sigs.some(s => s.includes('MLC6')));
+  assert.ok(!sigs.some(s => s.includes('"price":1001'))); // MLC1 (1000+1) fue podado
+});
+
+test('confirm-gate — TTL es inclusivo en su borde (turno+5 ejecuta, turno+6 no)', async () => {
+  // Verifica que NO hay off-by-one en el límite del TTL (<= 5).
+  const mk = () => { const c = fakeClient({}); const ctx = mlCtx(c); return { c, ctx, t: toolMap(ctx) }; };
+  // Borde exacto: propuesta en turno 1, confirmación en turno 6 → diff = 5 = TTL → EJECUTA.
+  {
+    const { c, ctx, t } = mk();
+    await t.ml_answer_question.invoke({ questionId: '101', text: 'Sí.' }); // TOK1, turno 1
+    ctx.currentTurn = 6;
+    const r = JSON.parse(await t.ml_answer_question.invoke({ questionId: '101', text: 'Sí.', confirmToken: 'TOK1' }));
+    assert.equal(r.ok, true, 'diff=5 debe ejecutar (TTL inclusivo)');
+    assert.equal(c._calls.filter(x => x.m === 'POST').length, 1);
+  }
+  // Un turno más allá: propuesta en turno 1, confirmación en turno 7 → diff = 6 > TTL → re-propone.
+  {
+    const { c, ctx, t } = mk();
+    await t.ml_answer_question.invoke({ questionId: '101', text: 'Sí.' }); // TOK1, turno 1
+    ctx.currentTurn = 7;
+    const r = JSON.parse(await t.ml_answer_question.invoke({ questionId: '101', text: 'Sí.', confirmToken: 'TOK1' }));
+    assert.equal(r.proposed, true, 'diff=6 debe re-proponer (caducado)');
+    assert.equal(c._calls.filter(x => x.m === 'POST').length, 0);
+  }
+});
+
 // ctx enriquecido para ml_register_order_by_id (necesita state/changed/nextId/fechas).
 function mlCtxFull(client, state) {
   let id = 7000;
