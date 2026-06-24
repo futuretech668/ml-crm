@@ -228,16 +228,21 @@ export function buildMlTools(ctx) {
         const totalPrice = unitPrice * qty;
         const costPrice = _variant ? (Number(_variant.precioCosto) || 0) : (Number(product.costPrice) || 0);
         const profit = totalPrice - costPrice * qty - commission - lineShip;
+        const _resolvedName = _variant ? `${product.name} (${domain.variantLabelOf(_variant)})` : product.name;
         const sale = {
           id: saleId, date, time,
-          productId: product.id, productName: _variant ? `${product.name} (${domain.variantLabelOf(_variant)})` : product.name,
+          productId: product.id, productName: _resolvedName,
           quantity: qty, salePrice: unitPrice, costPrice, commission,
           commissionType: 'percentage',
           commissionValue: unitPrice > 0 ? +((commissionPerUnit / unitPrice) * 100).toFixed(2) : 0,
           shipping: lineShip, totalPrice, profit, createdAt: ctx.nowIso(),
           source: 'mercadolibre', item_id: itemId, order_id: orderId,
           feeSource: comm.source, shippingSource: realShip != null ? 'ml' : 'local',
-          variantId: _variant ? _variant.id : null, variantLabel: _variant ? domain.variantLabelOf(_variant) : ''
+          variantId: _variant ? _variant.id : null, variantLabel: _variant ? domain.variantLabelOf(_variant) : '',
+          // Auditoría (campos aditivos).
+          registeredAt: ctx.nowIso(), registeredBy: 'mia',
+          originalTitle: title, resolvedProductName: _resolvedName,
+          nameConflictResolved: !!(title && title !== _resolvedName)
         };
         state.sales.push(sale);
         domain.applyStockDelta(product, sale.variantId, -qty);

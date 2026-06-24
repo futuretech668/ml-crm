@@ -357,6 +357,104 @@ test('register_pending_ml_sale — pide crear el producto si no existe', async (
   assert.equal(state.pendingMappings.length, 1); // no tocó la pendiente
 });
 
+// === Casos edge del Agente B: nunca perder una venta de ML ===
+
+test('register_pending_ml_sale — usa la fecha REAL del pedido (7 días atrás, no hoy)', async () => {
+  const state = pendingState();
+  // El pendiente quedó retenido hace 7 días respecto a NOW (2026-06-20).
+  state.pendingMappings[0].heldSales = [{
+    saleId: 88800007, orderId: '2000000777', price: 15000, quantity: 1,
+    commissionPerUnit: 2025, shippingTotal: 2990, feeSource: 'sale_fee', date: '2026-06-13', time: '08:00'
+  }];
+  const ctx = makeCtx(state);
+  const t = toolsByName(buildCrmTools(ctx));
+  const prod = JSON.parse(await t.add_product.invoke({ name: 'Lámpara LED escritorio', costPrice: 6000, salePrice: 15000, stock: 10 }));
+  const r = JSON.parse(await t.register_pending_ml_sale.invoke({ itemId: 'MLC9001', productId: prod.product.id }));
+  assert.equal(r.registradas, 1);
+  const sale = r.ventas[0];
+  assert.equal(sale.date, '2026-06-13');          // fecha REAL, NO la de hoy
+  assert.notEqual(sale.date, ctx.today());
+  assert.equal(sale.order_id, '2000000777');       // orderId real propagado
+  assert.equal(sale.registeredBy, 'mia');          // auditoría
+});
+
+test('list_pending_ml_sales — fuzzy match: título similar pero distinto da suggested o possible', async () => {
+  const state = goldenState();
+  // Pendiente con título MUY parecido a "Audífonos Pro" → debe ser suggested (>0.7).
+  // Otra con parecido medio → possibleMatches (0.4–0.7).
+  state.pendingMappings = [
+    { item_id: 'MLC-A', title: 'Audífonos Pro', price: 25000, quantity: 1,
+      heldSales: [{ saleId: 1, orderId: '900', price: 25000, quantity: 1, date: '2026-06-18' }] },
+    { item_id: 'MLC-B', title: 'Cargador de pared', price: 6000, quantity: 1,
+      heldSales: [{ saleId: 2, orderId: '901', price: 6000, quantity: 1, date: '2026-06-18' }] }
+  ];
+  state.dismissedPending = [];
+  const ctx = makeCtx(state);
+  const t = toolsByName(buildCrmTools(ctx));
+  const r = JSON.parse(await t.list_pending_ml_sales.invoke({}));
+  const a = r.find(x => x.item_id === 'MLC-A');
+  const b = r.find(x => x.item_id === 'MLC-B');
+  // "Audífonos Pro" idéntico al nombre del producto → match fuerte.
+  assert.equal(a.suggestedProductName, 'Audífonos Pro');
+  assert.ok(a.matchScore > 0.7);
+  // "Cargador para auto rápido" comparte solo "cargador" con "Cargador USB-C" → parecido medio.
+  assert.ok(!b.suggestedProductName, 'no debería ser un match fuerte');
+  assert.ok(Array.isArray(b.possibleMatches) && b.possibleMatches.some(m => m.productName === 'Cargador USB-C'));
+  assert.ok(b.possibleMatches[0].matchScore >= 0.4 && b.possibleMatches[0].matchScore <= 0.7);
+});
+
+test('register_pending_ml_sale — anti-duplicado SIMÉTRICO (source+item_id+id)', async () => {
+  const state = pendingState();
+  const ctx = makeCtx(state);
+  const t = toolsByName(buildCrmTools(ctx));
+  const prod = JSON.parse(await t.add_product.invoke({ name: 'Lámpara LED escritorio', costPrice: 6000, salePrice: 15000, stock: 10 }));
+  // Simula que el cron ya registró ESTA venta (mismo id/item_id de la heldSale).
+  state.sales.push({ id: 88800001, source: 'mercadolibre', item_id: 'MLC9001', quantity: 1, productId: prod.product.id });
+  const stockAntes = state.products.find(p => p.id === prod.product.id).stock;
+  const r = JSON.parse(await t.register_pending_ml_sale.invoke({ itemId: 'MLC9001', productId: prod.product.id }));
+  assert.equal(r.ok, true);
+  assert.equal(r.registradas, 0);                 // no la volvió a registrar
+  // No descontó stock de nuevo.
+  assert.equal(state.products.find(p => p.id === prod.product.id).stock, stockAntes);
+  // Solo existe UNA venta con ese id/item_id.
+  assert.equal(state.sales.filter(s => s.source === 'mercadolibre' && String(s.item_id) === 'MLC9001' && s.id === 88800001).length, 1);
+});
+
+test('register_pending_ml_sale — producto con variantes descuenta la variante correcta', async () => {
+  const state = goldenState();
+  // Producto con variantes (Polera: Rojo/M=4, Azul/L=3, total 7).
+  state.products.push(variantProduct());
+  state.pendingMappings = [{
+    item_id: 'MLC-VAR', title: 'Polera Azul L', price: 9000, quantity: 2,
+    suggestedVariantId: 502,
+    heldSales: [{ saleId: 5550001, orderId: '950', price: 9000, quantity: 2, commissionPerUnit: 1000, shippingTotal: 0, feeSource: 'sale_fee', date: '2026-06-17', time: '12:00' }],
+    createdAt: '2026-06-17T12:00:00.000Z'
+  }];
+  state.dismissedPending = [];
+  const ctx = makeCtx(state);
+  const t = toolsByName(buildCrmTools(ctx));
+  const r = JSON.parse(await t.register_pending_ml_sale.invoke({ itemId: 'MLC-VAR', productId: 50, variantId: 502 }));
+  assert.equal(r.registradas, 1);
+  const p = state.products.find(x => x.id === 50);
+  const vAzul = p.variants.find(v => v.id === 502);
+  const vRojo = p.variants.find(v => v.id === 501);
+  assert.equal(vAzul.stock, 1);                   // 3 − 2 vendidas
+  assert.equal(vRojo.stock, 4);                   // intacta
+  assert.equal(p.stock, 5);                       // total recalculado
+  assert.equal(r.ventas[0].variantId, 502);
+  assert.equal(r.ventas[0].costPrice, 3000);      // costo del producto base (forma de la app)
+});
+
+test('register_pending_ml_sale — sin producto da error claro en español', async () => {
+  const state = pendingState();
+  const ctx = makeCtx(state);
+  const t = toolsByName(buildCrmTools(ctx));
+  const r = JSON.parse(await t.register_pending_ml_sale.invoke({ itemId: 'MLC9001', productId: 99999 }));
+  assert.ok(r.error);
+  assert.match(r.error, /no existe|créalo|add_product/i);
+  assert.equal(state.pendingMappings.length, 1); // la pendiente sigue intacta
+});
+
 test('add_product — acepta variants[] y deriva stock total', async () => {
   const state = goldenState();
   const ctx = makeCtx(state);

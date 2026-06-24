@@ -366,16 +366,20 @@ function applyOrder(order, ctx) {
       const profit = totalPrice - costPrice * qty - commission - shipping;
       const variantLabel = mapping.variantLabel || '';
       const _pName = mapping.productName || product.name || title;
+      const _resolvedName = variantLabel ? (_pName + ' (' + variantLabel + ')') : _pName;
       sales.push({
         id: saleId, date, time,
-        productId: mapping.productId, productName: variantLabel ? (_pName + ' (' + variantLabel + ')') : _pName,
+        productId: mapping.productId, productName: _resolvedName,
         quantity: qty, salePrice: unitPrice, costPrice, commission,
         commissionType: 'percentage',
         commissionValue: unitPrice > 0 ? +((commissionPerUnit / unitPrice) * 100).toFixed(2) : 0,
         shipping, totalPrice, profit, createdAt: new Date().toISOString(),
         source: 'mercadolibre', item_id: itemId, order_id: String(order.id),
         feeSource: comm.source, shippingSource: lineShip != null ? 'ml' : 'local',
-        variantId, variantLabel
+        variantId, variantLabel,
+        // Auditoría (campos aditivos): de dónde vino y cómo se resolvió el nombre.
+        registeredAt: new Date().toISOString(), registeredBy: 'sync',
+        originalTitle: title, resolvedProductName: _resolvedName, nameConflictResolved: false
       });
       const idx = products.findIndex((p) => p.id === mapping.productId);
       if (idx >= 0) {
@@ -390,7 +394,9 @@ function applyOrder(order, ctx) {
       added++;
     } else {
       hadUnmapped = true;
-      const heldSale = { saleId, price: unitPrice, quantity: qty, commissionPerUnit, shippingTotal: lineShip, feeSource: comm.source, date, time };
+      // Guardamos el orderId REAL en cada heldSale (antes solo sobrevivía embebido en
+      // saleId): así la venta registrada desde el pendiente tendrá su order_id real.
+      const heldSale = { saleId, orderId: String(order.id), price: unitPrice, quantity: qty, commissionPerUnit, shippingTotal: lineShip, feeSource: comm.source, date, time };
       const pend = pendingMappings.find((p) => String(p.item_id) === itemId);
       if (pend) {
         pend.heldSales = pend.heldSales || [];

@@ -81,6 +81,24 @@ REGISTRAR UNA VENTA DE ML QUE NO SE REGISTRÓ (el producto no existía cuando se
      sus datos reales, descuenta stock y la saca de pendientes. (Es anti-duplicado.)
 · Solo usa ml_register_order si la venta NO aparece en list_pending_ml_sales pero sí en ml_orders en vivo
   (p. ej. ocurrió después del último sync).
+· CONFLICTO DE NOMBRE (fuzzy match): list_pending_ml_sales compara el título de cada pendiente con tu
+  catálogo. Si trae suggestedProductName + matchScore (parecido fuerte) o possibleMatches[] (parecidos
+  medios), NUNCA los asocies tú solo: PREGÚNTALE al usuario, p. ej. "La venta pendiente '[título]' puede
+  ser el mismo producto que '[suggestedProductName]'. ¿Es el mismo? (Sí / No / Ver ambos)". Solo con un
+  "Sí" llamas register_pending_ml_sale con ese productId; con "No" creas el producto nuevo o pides cuál es.
+
+REGISTRO RETROACTIVO ("agrega la venta de ML del día X de [producto]")
+· Una venta vieja NUNCA se pierde. Cuando el usuario pida agregar una venta de un día pasado:
+  1) Primero MÍRALA en ml_orders (puedes acotar con from=YYYY-MM-DD). Identifica el pedido por fecha,
+     producto y monto.
+  2) Si aparece, usa ml_register_order_by_id con su orderId: trae la comisión y el envío REALES de ML,
+     mapea el producto y respeta la FECHA REAL del pedido (no la de hoy). Es anti-duplicado.
+  3) Si NO aparece en ml_orders (pedido muy antiguo, fuera de la ventana que devuelve ML) PERO sí está en
+     list_pending_ml_sales, regístrala con register_pending_ml_sale (conserva su fecha/comisión/envío reales).
+  4) Si no está en ninguno (demasiado antiguo), regístrala con add_sale poniendo date = la fecha REAL que
+     te indique el usuario, y AVÍSALE que, al no venir de ML, la comisión y el envío serán los del producto
+     (o los que él te dé), no los reales de Mercado Libre.
+· Nunca uses la fecha de hoy para una venta de otro día: usa SIEMPRE la fecha real del pedido.
 
 REGISTRAR UNA VENTA DE ML POR SU NÚMERO ("agrega la venta de ML 302")
 · Cuando el usuario te dé el NÚMERO de un pedido de ML, usa ml_register_order_by_id con ese número. Esa

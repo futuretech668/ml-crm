@@ -339,16 +339,22 @@ export function buildCrmTools(ctx) {
       const shipping = hasShip ? Number(args.shipping) : (Number(product.shipping) || 0) * qty;
       const totalPrice = unitPrice * qty;
       const profit = totalPrice - costPriceUnit * qty - commission - shipping;
+      const _resolvedName = variant ? `${product.name} (${domain.variantLabelOf(variant)})` : (args.title || product.name);
+      const _origTitle = args.title || product.name;
       const sale = {
         id: saleId, date: args.date || ctx.today(), time: args.time || ctx.time(),
-        productId: product.id, productName: variant ? `${product.name} (${domain.variantLabelOf(variant)})` : (args.title || product.name),
+        productId: product.id, productName: _resolvedName,
         quantity: qty, salePrice: unitPrice, costPrice: costPriceUnit, commission,
         commissionType: 'percentage',
         commissionValue: unitPrice > 0 ? +((commissionPerUnit / unitPrice) * 100).toFixed(2) : 0,
         shipping, totalPrice, profit, createdAt: ctx.nowIso(),
         source: 'mercadolibre', item_id: itemId, order_id: orderId,
         feeSource: comm.source, shippingSource: hasShip ? 'ml' : 'local',
-        variantId: variant ? variant.id : null, variantLabel: variant ? domain.variantLabelOf(variant) : ''
+        variantId: variant ? variant.id : null, variantLabel: variant ? domain.variantLabelOf(variant) : '',
+        // Auditoría (campos aditivos).
+        registeredAt: ctx.nowIso(), registeredBy: 'mia',
+        originalTitle: _origTitle, resolvedProductName: _resolvedName,
+        nameConflictResolved: !!(_origTitle && _origTitle !== _resolvedName)
       };
       state.sales.push(sale);
       domain.applyStockDelta(product, sale.variantId, -qty);
@@ -388,23 +394,42 @@ export function buildCrmTools(ctx) {
     async () => {
       const dism = new Set((state.dismissedPending || []).map(String));
       const pend = (state.pendingMappings || []).filter(p => !dism.has(String(p.item_id)));
-      return j(pend.map(p => ({
-        item_id: p.item_id,
-        title: p.title,
-        price: p.price,
-        quantity: p.quantity,
-        suggestedProductId: p.suggestedProductId || null,
-        suggestedName: p.suggestedName || null,
-        suggestedVariantId: p.suggestedVariantId || null,
-        suggestedVariantLabel: p.suggestedVariantLabel || null,
-        needsVariant: !!p.needsVariant,
-        ventasRetenidas: (p.heldSales || []).length || 1,
-        fechas: (p.heldSales || []).map(h => h.date).filter(Boolean)
-      })));
+      const products = Array.isArray(state.products) ? state.products : [];
+      return j(pend.map(p => {
+        const out = {
+          item_id: p.item_id,
+          title: p.title,
+          price: p.price,
+          quantity: p.quantity,
+          suggestedProductId: p.suggestedProductId || null,
+          suggestedName: p.suggestedName || null,
+          suggestedVariantId: p.suggestedVariantId || null,
+          suggestedVariantLabel: p.suggestedVariantLabel || null,
+          needsVariant: !!p.needsVariant,
+          ventasRetenidas: (p.heldSales || []).length || 1,
+          fechas: (p.heldSales || []).map(h => h.date).filter(Boolean)
+        };
+        // Fuzzy match del título contra los productos del CRM (score 0..1, alto = más parecido).
+        // > 0.7 → match fuerte (suggestedProduct*/matchScore). 0.4–0.7 → possibleMatches.
+        // NUNCA se mezcla automáticamente: MIA debe PREGUNTAR antes de asociar.
+        const cands = domain.fuzzyMatchProducts(products, p.title);
+        const best = cands[0] || null;
+        if (best && best.score > 0.7) {
+          out.suggestedProductId = best.productId;
+          out.suggestedProductName = best.productName;
+          out.matchScore = best.score;
+        }
+        const possibles = cands.filter(c => c.score >= 0.4 && c.score <= 0.7)
+          .map(c => ({ productId: c.productId, productName: c.productName, matchScore: c.score }));
+        if (possibles.length) out.possibleMatches = possibles;
+        return out;
+      }));
     },
     {
       name: 'list_pending_ml_sales',
-      description: 'Lista las ventas de Mercado Libre que quedaron EN ESPERA porque su publicación aún no estaba mapeada a un producto del CRM (p. ej. el producto no existía cuando se vendió). Trae el título de la publicación, precio, cantidad, la sugerencia de producto y las fechas reales de las ventas retenidas. Úsala cuando el usuario diga que falta una venta de ML o que vendió algo que no estaba en su catálogo.',
+      description: 'Lista las ventas de Mercado Libre que quedaron EN ESPERA porque su publicación aún no estaba mapeada a un producto del CRM (p. ej. el producto no existía cuando se vendió). Trae el título de la publicación, precio, cantidad, las fechas reales de las ventas retenidas y un FUZZY MATCH contra el catálogo: si hay un parecido fuerte (matchScore > 0.7) lo entrega como suggestedProductId/suggestedProductName/matchScore; los parecidos medios (0.4–0.7) vienen en possibleMatches[]. matchScore va de 0 a 1 (1 = idéntico). ' +
+        'NUNCA asocies una pendiente a un producto automáticamente: si hay un suggestedProductName o possibleMatches, PREGÚNTALE al usuario, p. ej.: "La venta pendiente \'[title]\' puede ser el mismo producto que \'[suggestedProductName]\'. ¿Es el mismo? (Sí / No / Ver ambos)". Solo tras un "Sí" llama register_pending_ml_sale con ese productId. ' +
+        'Úsala cuando el usuario diga que falta una venta de ML o que vendió algo que no estaba en su catálogo.',
       schema: z.object({})
     }
   );
@@ -428,12 +453,15 @@ export function buildCrmTools(ctx) {
       }
       state.sales = state.sales || [];
       const built = domain.buildMlSalesFromPending(pending, product, {
-        baseId: ctx.nextId(), nowIso: ctx.nowIso(), today: ctx.today(), time: ctx.time(), variantId
+        baseId: ctx.nextId(), nowIso: ctx.nowIso(), today: ctx.today(), time: ctx.time(), variantId,
+        registeredBy: 'mia', registeredAt: ctx.nowIso()
       });
       const nuevas = [];
       for (const sale of built) {
-        // Dedupe igual que la app (index.html:7086): no duplicar ventas de ML por id.
-        if (state.sales.some(s => s.source === 'mercadolibre' && s.id === sale.id)) continue;
+        // Dedupe SIMÉTRICO con el cron (ml-sync.js:325) y ml_register_order: mismo
+        // triple criterio source + item_id + id. Antes solo comparaba s.id, lo que era
+        // asimétrico y podía dejar pasar/duplicar ventas.
+        if (state.sales.some(s => s.source === 'mercadolibre' && String(s.item_id) === String(sale.item_id) && s.id === sale.id)) continue;
         state.sales.push(sale);
         domain.applyStockDelta(product, sale.variantId, -sale.quantity);
         nuevas.push(sale);

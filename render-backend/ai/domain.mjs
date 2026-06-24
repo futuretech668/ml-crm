@@ -576,6 +576,33 @@ export function suggestProduct(products, title, minScore) {
   return bestScore >= minScore ? best : null;
 }
 
+// Fuzzy match de nombres para las ventas pendientes: compara un título de ML contra
+// TODOS los productos activos y devuelve los candidatos ordenados con un score
+// NORMALIZADO 0..1 donde "score ALTO = MÁS parecido" (coherente con la doc de la tool).
+// Es una función PURA (sin dependencias externas): usa el mismo tokenizado/ stopwords
+// que suggestProduct, y mezcla cobertura del nombre del producto (m/pWords) con la
+// del título (m/tWords) para que un título largo no infle el score de un nombre corto.
+// (Se evita fuse.js a propósito: NO es dependencia del backend; ver bloqueo en el reporte.)
+export function fuzzyMatchProducts(products, title) {
+  const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter((w) => w && !STOPWORDS.has(w));
+  const tWords = norm(title);
+  const tSet = new Set(tWords);
+  const out = [];
+  for (const p of (products || [])) {
+    if (p.archived) continue;
+    const pWords = norm(p.name);
+    if (!pWords.length) continue;
+    let m = 0; for (const w of pWords) if (tSet.has(w)) m++;
+    const covProduct = m / pWords.length;                 // cuánto del nombre del producto está en el título
+    const covTitle = tWords.length ? m / tWords.length : 0; // cuánto del título está en el nombre
+    // Score normalizado 0..1: media de ambas coberturas (alto = más parecido).
+    const score = +(((covProduct + covTitle) / 2)).toFixed(3);
+    if (m > 0) out.push({ productId: p.id, productName: p.name, score, covProduct, covTitle });
+  }
+  return out.sort((a, b) => b.score - a.score);
+}
+
 // Dado un producto con variantes y el título de la publicación de ML, intenta
 // resolver la variante por color/talla presentes en el título (ej. "audífonos
 // negros" -> variante "Negro"). Devuelve la variante SOLO si calza exactamente
@@ -614,7 +641,12 @@ export function buildMlSalesFromPending(pending, product, opts) {
   const variantLabel = variant ? variantLabelOf(variant) : '';
   const held = (pending.heldSales && pending.heldSales.length)
     ? pending.heldSales
-    : [{ saleId: pending.saleId, price: pending.price, quantity: pending.quantity, commissionRate: pending.commissionRate, date: pending.date, time: pending.time }];
+    : [{ saleId: pending.saleId, orderId: pending.orderId, price: pending.price, quantity: pending.quantity, commissionRate: pending.commissionRate, date: pending.date, time: pending.time }];
+  // Nombre resuelto del producto mapeado (con variante si aplica) y título original
+  // de ML, para la auditoría y para detectar conflictos de nombre.
+  const resolvedProductName = variantLabel ? (product.name + ' (' + variantLabel + ')') : product.name;
+  const originalTitle = pending.title || '';
+  const nameConflictResolved = !!(originalTitle && originalTitle !== resolvedProductName);
   return held.map((h, i) => {
     const qty = h.quantity || 1;
     const unitPrice = h.price || product.salePrice;
@@ -623,13 +655,19 @@ export function buildMlSalesFromPending(pending, product, opts) {
     const shipping = (h.shippingTotal != null) ? h.shippingTotal : (product.shipping || 0) * qty;
     const totalPrice = unitPrice * qty;
     const profit = totalPrice - (product.costPrice * qty) - commissionAmount - shipping;
-    const saleId = h.saleId || ((opts.baseId || 0) + i);
+    // orderId REAL: del heldSale (lo guarda el cron) o de la raíz del pending.
+    const orderId = (h.orderId != null) ? String(h.orderId) : (pending.orderId != null ? String(pending.orderId) : null);
+    // saleId determinista: el del heldSale; si un pendiente legado no lo trae, se
+    // deriva de orderId+itemId (mismo id que el cron) — NO un baseId aleatorio, para
+    // que el dedupe order_id+item_id funcione.
+    const saleId = (h.saleId != null) ? h.saleId
+      : (orderId != null ? saleIdFor({ id: orderId }, pending.item_id) : ((opts.baseId || 0) + i));
     return {
       id: saleId,
       date: h.date || opts.today,
       time: h.time || opts.time || '00:00',
       productId: product.id,
-      productName: product.name,
+      productName: resolvedProductName,
       quantity: qty,
       salePrice: unitPrice,
       costPrice: product.costPrice,
@@ -642,10 +680,17 @@ export function buildMlSalesFromPending(pending, product, opts) {
       createdAt: opts.nowIso,
       source: 'mercadolibre',
       item_id: pending.item_id,
+      order_id: orderId,
       feeSource: (h.commissionPerUnit != null) ? 'sale_fee' : 'estimado',
       shippingSource: (h.shippingTotal != null) ? 'ml' : 'local',
       variantId,
-      variantLabel
+      variantLabel,
+      // Auditoría (campos aditivos).
+      registeredAt: opts.registeredAt || opts.nowIso,
+      registeredBy: opts.registeredBy || 'mia',
+      originalTitle,
+      resolvedProductName,
+      nameConflictResolved
     };
   });
 }
