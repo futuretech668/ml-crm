@@ -7273,16 +7273,29 @@
 
         // ---- Registra TODAS las ventas retenidas de una publicación ML al confirmar el mapeo ----
         function registerMLSale(pending, product, variantId) {
+            // saleId determinista (mismos dígitos que el cron/backend) para que el
+            // dedupe order_id+item_id funcione igual en frontend y backend.
+            const _saleIdFor = (orderId, itemId) => {
+                const base = String(orderId).replace(/\D/g, '').slice(-11) || String(Date.now());
+                const tail = String(itemId).replace(/\D/g, '').slice(-3) || '0';
+                return Number(base + tail.padStart(3, '0'));
+            };
             // Compatibilidad: si no hay heldSales (formato viejo), construir una desde los campos sueltos
             const held = (pending.heldSales && pending.heldSales.length)
                 ? pending.heldSales
-                : [{ saleId: pending.saleId, price: pending.price, quantity: pending.quantity, commissionRate: pending.commissionRate, date: pending.date, time: pending.time }];
+                : [{ saleId: pending.saleId, orderId: pending.orderId, price: pending.price, quantity: pending.quantity, commissionRate: pending.commissionRate, date: pending.date, time: pending.time }];
 
             // Variante: la que se indicó, o la del mapeo/pending; null si el producto no maneja variantes.
             const _variant = (product.hasVariants && Array.isArray(product.variants))
                 ? (variantId != null ? product.variants.find(v => String(v.id) === String(variantId)) : null)
                 : null;
+            // Nombre resuelto (con variante) y título original de ML, para auditoría
+            // y detección de conflicto de nombre — mismo formato que buildMlSalesFromPending.
+            const resolvedProductName = _variant ? (product.name + ' (' + variantLabelOf(_variant) + ')') : product.name;
+            const originalTitle = pending.title || '';
+            const nameConflictResolved = !!(originalTitle && originalTitle !== resolvedProductName);
             const now = new Date();
+            const nowIso = now.toISOString();
             let registradas = 0;
             held.forEach((h, i) => {
                 const qty = h.quantity || 1;
@@ -7299,15 +7312,20 @@
                 const shipping = (h.shippingTotal != null) ? h.shippingTotal : shipUnit * qty;
                 const totalPrice = unitPrice * qty;
                 const profit = totalPrice - (costUnit * qty) - commissionAmount - shipping;
-                const saleId = h.saleId || (Date.now() + i);
-                // Evitar duplicar si ya existe esa venta de ML
-                if (STATE.sales.some(s => s.source === 'mercadolibre' && s.id === saleId)) return;
+                // orderId REAL: del heldSale (lo guarda el cron) o de la raíz del pending.
+                const orderId = (h.orderId != null) ? String(h.orderId) : (pending.orderId != null ? String(pending.orderId) : null);
+                // saleId determinista: el del heldSale; si un pendiente legado no lo trae,
+                // se deriva de orderId+itemId (NO Date.now()) para que el dedupe funcione.
+                const saleId = (h.saleId != null) ? h.saleId
+                    : (orderId != null ? _saleIdFor(orderId, pending.item_id) : (Date.now() + i));
+                // Evitar duplicar (dedupe simétrico source+item_id+id, igual que el cron/backend)
+                if (STATE.sales.some(s => s.source === 'mercadolibre' && String(s.item_id) === String(pending.item_id) && s.id === saleId)) return;
                 STATE.sales.push({
                     id: saleId,
                     date: h.date || _ymd(now),
                     time: h.time || (String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0')),
                     productId: product.id,
-                    productName: _variant ? (product.name + ' (' + variantLabelOf(_variant) + ')') : product.name,
+                    productName: resolvedProductName,
                     quantity: qty,
                     salePrice: unitPrice,
                     costPrice: costUnit,
@@ -7317,13 +7335,20 @@
                     shipping: shipping,
                     totalPrice: totalPrice,
                     profit: profit,
-                    createdAt: now.toISOString(),
+                    createdAt: nowIso,
                     source: 'mercadolibre',
                     item_id: pending.item_id,
+                    order_id: orderId,
                     feeSource: (h.commissionPerUnit != null) ? 'sale_fee' : 'estimado',
                     shippingSource: (h.shippingTotal != null) ? 'ml' : 'local',
                     variantId: _variant ? _variant.id : null,
-                    variantLabel: _variant ? variantLabelOf(_variant) : ''
+                    variantLabel: _variant ? variantLabelOf(_variant) : '',
+                    // Auditoría (campos aditivos, mismo formato que el backend).
+                    registeredAt: nowIso,
+                    registeredBy: 'app',
+                    originalTitle: originalTitle,
+                    resolvedProductName: resolvedProductName,
+                    nameConflictResolved: nameConflictResolved
                 });
                 const p = STATE.products.find(pr => pr.id === product.id);
                 if (p) {
