@@ -164,13 +164,36 @@ export function buildMlTools(ctx) {
         let product = mapping ? findProduct(mapping.productId) : null;
         if (!product) {
           const auto = domain.suggestProduct(state.products, title, 0.8);
-          if (auto) { product = auto; state.mappings[itemId] = { productId: auto.id, productName: auto.name }; mark('mappings'); }
+          if (auto && !auto.hasVariants) {
+            product = auto; state.mappings[itemId] = { productId: auto.id, productName: auto.name }; mark('mappings');
+          } else if (auto && auto.hasVariants) {
+            // Producto claro con variantes: solo auto-mapear si la variante es CLARA.
+            const av = domain.suggestVariant(auto, title);
+            if (av) { product = auto; mapping = { productId: auto.id, productName: auto.name, variantId: av.id, variantLabel: domain.variantLabelOf(av) }; state.mappings[itemId] = mapping; mark('mappings'); }
+            else {
+              // variante ambigua -> a pendiente para que se elija
+              pendingItems.push({ itemId, title, unitPrice, saleFee: saleFee != null ? saleFee : null, quantity: qty, sugerencia: { productId: auto.id, name: auto.name, variantId: null, variantLabel: null, needsVariant: true } });
+              continue;
+            }
+          }
         }
         if (!product) {
           const sug = domain.suggestProduct(state.products, title, 0.4);
-          pendingItems.push({ itemId, title, unitPrice, saleFee: saleFee != null ? saleFee : null, quantity: qty, sugerencia: sug ? { productId: sug.id, name: sug.name } : null });
+          const sv = (sug && sug.hasVariants) ? domain.suggestVariant(sug, title) : null;
+          pendingItems.push({ itemId, title, unitPrice, saleFee: saleFee != null ? saleFee : null, quantity: qty, sugerencia: sug ? { productId: sug.id, name: sug.name, variantId: sv ? sv.id : null, variantLabel: sv ? domain.variantLabelOf(sv) : null, needsVariant: !!sug.hasVariants } : null });
           continue;
         }
+        // Variante para el descuento/venta: del mapeo, o resolver por título si es clara.
+        let variantId = (mapping && mapping.variantId != null) ? mapping.variantId : null;
+        if (product.hasVariants && variantId == null) {
+          const av = domain.suggestVariant(product, title);
+          if (av) { variantId = av.id; state.mappings[itemId] = { productId: product.id, productName: product.name, variantId: av.id, variantLabel: domain.variantLabelOf(av) }; mark('mappings'); }
+          else {
+            pendingItems.push({ itemId, title, unitPrice, saleFee: saleFee != null ? saleFee : null, quantity: qty, sugerencia: { productId: product.id, name: product.name, variantId: null, variantLabel: null, needsVariant: true } });
+            continue;
+          }
+        }
+        const _variant = variantId != null ? domain.findVariant(product, variantId) : null;
 
         const saleId = domain.saleIdFor({ id: orderId }, itemId);
         if (state.sales.some(s => s.source === 'mercadolibre' && String(s.item_id) === itemId && s.id === saleId)) {
@@ -182,23 +205,23 @@ export function buildMlTools(ctx) {
         const commission = +(commissionPerUnit * qty).toFixed(2);
         const lineShip = realShip != null ? +(realShip * (qty / totalQty)).toFixed(2) : (Number(product.shipping) || 0) * qty;
         const totalPrice = unitPrice * qty;
-        const costPrice = Number(product.costPrice) || 0;
+        const costPrice = _variant ? (Number(_variant.precioCosto) || 0) : (Number(product.costPrice) || 0);
         const profit = totalPrice - costPrice * qty - commission - lineShip;
         const sale = {
           id: saleId, date, time,
-          productId: product.id, productName: product.name,
+          productId: product.id, productName: _variant ? `${product.name} (${domain.variantLabelOf(_variant)})` : product.name,
           quantity: qty, salePrice: unitPrice, costPrice, commission,
           commissionType: 'percentage',
           commissionValue: unitPrice > 0 ? +((commissionPerUnit / unitPrice) * 100).toFixed(2) : 0,
           shipping: lineShip, totalPrice, profit, createdAt: ctx.nowIso(),
           source: 'mercadolibre', item_id: itemId, order_id: orderId,
           feeSource: comm.source, shippingSource: realShip != null ? 'ml' : 'local',
-          variantId: null, variantLabel: ''
+          variantId: _variant ? _variant.id : null, variantLabel: _variant ? domain.variantLabelOf(_variant) : ''
         };
         state.sales.push(sale);
-        domain.applyStockDelta(product, null, -qty);
+        domain.applyStockDelta(product, sale.variantId, -qty);
         product.lastModified = ctx.nowIso();
-        state.mappings[itemId] = { productId: product.id, productName: product.name };
+        state.mappings[itemId] = { productId: product.id, productName: product.name, variantId: _variant ? _variant.id : null, variantLabel: _variant ? domain.variantLabelOf(_variant) : '' };
         if (Array.isArray(state.pendingMappings)) state.pendingMappings = state.pendingMappings.filter(p => String(p.item_id) !== itemId);
         if (Array.isArray(state.dismissedPending)) state.dismissedPending = state.dismissedPending.filter(x => String(x) !== itemId);
         registradas.push(sale);

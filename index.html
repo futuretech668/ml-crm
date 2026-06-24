@@ -2761,6 +2761,19 @@
                     </div>
                 </div>
 
+                <!-- MAPEOS ML -->
+                <div class="section" id="mapeos">
+                    <div class="page-head">
+                        <div class="page-title"><i data-lucide="link"></i>Mapeos de Mercado Libre</div>
+                        <div class="page-sub">Qué producto (y variante) corresponde a cada publicación de ML</div>
+                    </div>
+                    <div class="card">
+                        <h2><i data-lucide="link"></i>Publicaciones vinculadas</h2>
+                        <div style="margin-bottom:12px;font-size:12.5px;color:var(--text-muted);">Aquí puedes corregir a qué producto/variante se asocia cada publicación de ML. Si borras un mapeo, la próxima venta de esa publicación volverá a preguntarte.</div>
+                        <div id="mapeosList"></div>
+                    </div>
+                </div>
+
                 <!-- ANÁLISIS -->
                 <div class="section" id="analytics">
                     <div class="page-head">
@@ -3609,10 +3622,10 @@
         // Etiquetas visibles de cada pestaña de Rendimiento.
         const RENDIMIENTO_LABELS = { analytics:'Análisis', metas:'Metas', logros:'Logros', reportes:'Reportes', alerts:'Alertas' };
         // Subsecciones (pestañas internas) de "Productos".
-        const GRUPO_PRODUCTOS = ['products','inventory'];
-        const PRODUCTOS_LABELS = { products:'Catálogo', inventory:'Inventario' };
+        const GRUPO_PRODUCTOS = ['products','inventory','mapeos'];
+        const PRODUCTOS_LABELS = { products:'Catálogo', inventory:'Inventario', mapeos:'Mapeos ML' };
         // Etiqueta para la miga de pan de cada sección de primer nivel.
-        const SECCION_LABELS = { dashboard:'Dashboard', sales:'Ventas', finanzas:'Finanzas', agenda:'Agenda', settings:'Configuración', products:'Productos', inventory:'Productos', rendimiento:'Rendimiento' };
+        const SECCION_LABELS = { dashboard:'Dashboard', sales:'Ventas', finanzas:'Finanzas', agenda:'Agenda', settings:'Configuración', products:'Productos', inventory:'Productos', mapeos:'Productos', rendimiento:'Rendimiento' };
         // Despachador de render por sección (reutilizado por irASeccion y por el sync de nube).
         const RENDER_SECCION = {
             analytics: () => renderAnalytics(),
@@ -3671,8 +3684,8 @@
             seccionActiva = seccion;
             STATE.currentSection = seccion;
 
-            // Resaltar item activo en el rail. 'inventory' mantiene activo el item "Productos".
-            const railSec = (seccion === 'inventory') ? 'products' : seccion;
+            // Resaltar item activo en el rail. 'inventory'/'mapeos' mantienen activo el item "Productos".
+            const railSec = (seccion === 'inventory' || seccion === 'mapeos') ? 'products' : seccion;
             document.querySelectorAll('.rail-item').forEach(el => {
                 el.classList.toggle('active', el.dataset.sec === railSec);
             });
@@ -3680,8 +3693,8 @@
             const accountBtn = document.getElementById('accountBtn');
             if (accountBtn) accountBtn.classList.toggle('acct-active', seccion === 'settings');
 
-            // Sincronizar pestañas Productos / Inventario
-            if (seccion === 'products' || seccion === 'inventory') {
+            // Sincronizar pestañas Productos / Inventario / Mapeos
+            if (seccion === 'products' || seccion === 'inventory' || seccion === 'mapeos') {
                 setActiveTab('pi', seccion);
             }
 
@@ -3690,6 +3703,7 @@
             if (seccion === 'alerts') renderAlerts();
             if (seccion === 'dashboard') renderDashboard();
             if (seccion === 'inventory') renderInventory();
+            if (seccion === 'mapeos') { if (window.renderMapeos) renderMapeos(); }
             if (seccion === 'sales') { updateDropdowns(); renderSalesList(); if (window.ventaPoblarCanales) ventaPoblarCanales(); }
             if (seccion === 'products') renderProductsList();
             if (seccion === 'finanzas') { if (window.renderFinanzas) renderFinanzas(); }
@@ -3729,8 +3743,9 @@
         // Inyecta la barra de pestañas Productos / Inventario al inicio de ambas secciones.
         function injectProductTabs(){
             const botones = '<button type="button" class="pi-tab" data-pi="products">Catálogo</button>'
-                          + '<button type="button" class="pi-tab" data-pi="inventory">Inventario</button>';
-            injectTabBar(['products', 'inventory'], botones, 'pi', (id) => { if (window.irASeccion) window.irASeccion(id); });
+                          + '<button type="button" class="pi-tab" data-pi="inventory">Inventario</button>'
+                          + '<button type="button" class="pi-tab" data-pi="mapeos">Mapeos ML</button>';
+            injectTabBar(['products', 'inventory', 'mapeos'], botones, 'pi', (id) => { if (window.irASeccion) window.irASeccion(id); });
         }
 
         // Inyecta la barra de pestañas de Rendimiento al inicio de cada subsección,
@@ -3784,7 +3799,7 @@
         function updateCrumbs(sec){
             const el = document.getElementById('crumbs'); if (!el) return;
             let parts;
-            if (sec === 'products' || sec === 'inventory') parts = ['Productos', PRODUCTOS_LABELS[sec]];
+            if (sec === 'products' || sec === 'inventory' || sec === 'mapeos') parts = ['Productos', PRODUCTOS_LABELS[sec]];
             else if (sec === 'rendimiento') parts = ['Rendimiento', RENDIMIENTO_LABELS[tabRendimientoActiva()]];
             else parts = [SECCION_LABELS[sec] || sec];
             el.innerHTML = parts.filter(Boolean).map((p, i, arr) =>
@@ -5550,13 +5565,25 @@
                 // "Sin stock" se ve más intenso (rojo sólido con texto blanco).
                 const badgeStyle = lvl.key === 'sin' ? ' style="background:#dc2626;color:#fff;font-weight:700;"' : '';
 
+                const _esVar = !!(p.hasVariants && Array.isArray(p.variants) && p.variants.length);
+                // Con variantes: el nombre es clickable (despliega el panel) y el stock es DERIVADO
+                // (suma de variantes), por eso no se edita aquí sino por variante en el panel.
+                const nameCell = _esVar
+                    ? `<td style="cursor:pointer;user-select:none;" onclick="if(window.toggleInvVariantPanel)toggleInvVariantPanel(${p.id})"><strong>${DOMPurify.sanitize(p.name)}</strong> <span style="color:var(--text-muted);font-weight:600;">· ${p.variants.length} var.</span> <i data-lucide="chevron-down" id="invVarChevron-${p.id}" style="width:14px;height:14px;vertical-align:middle;transition:transform .3s ease;"></i></td>`
+                    : `<td><strong>${DOMPurify.sanitize(p.name)}</strong></td>`;
+                const stockCell = _esVar
+                    ? `<td style="padding:14px 16px;color:var(--text-muted);" title="Stock total = suma de variantes (edítalo por variante)">${p.stock} <span style="font-size:11px;">total</span></td>`
+                    : `<td data-product-id="${p.id}" class="editable-stock" style="cursor: pointer; padding: 14px 16px; user-select: none;">${p.stock}</td>`;
                 html += `<tr>
-                    <td><strong>${DOMPurify.sanitize(p.name)}</strong></td>
+                    ${nameCell}
                     <td><span class="badge ${lvl.badge}"${badgeStyle}>${status}</span></td>
-                    <td data-product-id="${p.id}" class="editable-stock" style="cursor: pointer; padding: 14px 16px; user-select: none;">${p.stock}</td>
+                    ${stockCell}
                     <td>${initialStock}</td>
                     <td>${Math.round(percent)}%</td>
                 </tr>`;
+                if (_esVar) {
+                    html += `<tr data-inv-var-row="${p.id}"><td colspan="5" style="padding:0;border:none;"><div id="invVarPanel-${p.id}" style="max-height:0;overflow:hidden;transition:max-height .3s ease;background:var(--bg-primary);">${renderVariantRows(p)}</div></td></tr>`;
+                }
             });
             html += `</tbody></table></div>`;
             // Valor del inventario al pie (tarjetas de resumen, debajo de la tabla crítica).
@@ -5575,9 +5602,74 @@
 
             // Agregar event listeners para edición inline
             setupStockEditing();
+            setupVariantStockEditing(); // permite editar el stock por variante también en Inventario
         }
         window.__invFiltrar = function(){ renderInventory(); };
         window.__invVerTodos = function(){ invShowAll = true; renderInventory(); };
+
+        // ===== MAPEOS ML: ver/editar/borrar a qué producto+variante va cada publicación =====
+        function renderMapeos(){
+            const cont = document.getElementById('mapeosList');
+            if (!cont) return;
+            const map = STATE.mappings || {};
+            const entries = Object.keys(map).map(function(itemId){ return Object.assign({ item_id: itemId }, map[itemId] || {}); });
+            if (!entries.length) {
+                cont.innerHTML = '<div class="empty-state"><i data-lucide="unlink"></i><div>Aún no hay publicaciones mapeadas. Cuando registres ventas de Mercado Libre, aparecerán aquí.</div></div>';
+                refreshIcons(); return;
+            }
+            const selStyle = 'padding:7px 9px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-primary);color:var(--text-primary);font-size:12.5px;max-width:220px;';
+            const prodOptions = function(selId){
+                return STATE.products.filter(function(p){ return !p.archived; }).map(function(p){
+                    return '<option value="' + p.id + '"' + (String(p.id) === String(selId) ? ' selected' : '') + '>' + DOMPurify.sanitize(p.name) + '</option>';
+                }).join('');
+            };
+            let html = '<div class="table-container"><table><thead><tr><th>Publicación de ML</th><th>Producto</th><th>Variante</th><th></th></tr></thead><tbody>';
+            entries.forEach(function(m){
+                const prod = STATE.products.find(function(p){ return p.id === m.productId; });
+                const esVar = !!(prod && prod.hasVariants && Array.isArray(prod.variants) && prod.variants.length);
+                let varCell = '<span style="color:var(--text-muted);">—</span>';
+                if (esVar) {
+                    const opts = prod.variants.map(function(v){
+                        return '<option value="' + DOMPurify.sanitize(String(v.id)) + '"' + (String(v.id) === String(m.variantId) ? ' selected' : '') + '>' + DOMPurify.sanitize(variantLabelOf(v) || '—') + ' (' + (Number(v.stock)||0) + ' u.)</option>';
+                    }).join('');
+                    varCell = '<select onchange="window.mapeoSetVariant(\'' + String(m.item_id) + '\', this.value)" style="' + selStyle + '">' +
+                        (m.variantId == null ? '<option value="">— elegir —</option>' : '') + opts + '</select>';
+                }
+                html += '<tr>' +
+                    '<td><strong>' + DOMPurify.sanitize(String(m.title || m.productName || m.item_id)) + '</strong><div style="font-size:11px;color:var(--text-muted);">' + DOMPurify.sanitize(String(m.item_id)) + '</div></td>' +
+                    '<td><select onchange="window.mapeoSetProduct(\'' + String(m.item_id) + '\', this.value)" style="' + selStyle + '">' + prodOptions(m.productId) + '</select></td>' +
+                    '<td>' + varCell + '</td>' +
+                    '<td><button class="btn btn-small btn-danger" onclick="window.mapeoDelete(\'' + String(m.item_id) + '\')"><i data-lucide="trash-2"></i>Borrar</button></td>' +
+                    '</tr>';
+            });
+            html += '</tbody></table></div>';
+            cont.innerHTML = html;
+            refreshIcons();
+        }
+        window.renderMapeos = renderMapeos;
+
+        window.mapeoSetProduct = function(itemId, productId){
+            const m = (STATE.mappings || {})[itemId]; if (!m) return;
+            const prod = STATE.products.find(function(p){ return p.id === parseInt(productId); }); if (!prod) return;
+            m.productId = prod.id; m.productName = prod.name;
+            m.variantId = null; m.variantLabel = ''; // al cambiar de producto, se resetea la variante
+            saveToLocalStorage(); renderMapeos();
+            showToast('✅ Mapeo actualizado');
+        };
+        window.mapeoSetVariant = function(itemId, variantId){
+            const m = (STATE.mappings || {})[itemId]; if (!m) return;
+            const prod = STATE.products.find(function(p){ return p.id === m.productId; }); if (!prod) return;
+            const v = (prod.variants || []).find(function(x){ return String(x.id) === String(variantId); });
+            m.variantId = v ? v.id : null; m.variantLabel = v ? variantLabelOf(v) : '';
+            saveToLocalStorage(); renderMapeos();
+            showToast('✅ Variante del mapeo actualizada');
+        };
+        window.mapeoDelete = function(itemId){
+            if (!confirm('¿Borrar este mapeo? La próxima venta de esta publicación volverá a preguntarte a qué producto corresponde.')) return;
+            if (STATE.mappings) delete STATE.mappings[itemId];
+            saveToLocalStorage(); renderMapeos();
+            showToast('🗑️ Mapeo borrado');
+        };
 
         function setupStockEditing() {
             document.querySelectorAll('.editable-stock').forEach(cell => {
@@ -5646,6 +5738,27 @@
         }
         window.variantLabelOf = variantLabelOf;
 
+        // Resuelve la variante de un producto a partir del título de una publicación de ML
+        // (ej. "Audífonos negros" -> variante "Negro") buscando color/talla en el título.
+        // Devuelve la variante SOLO si calza exactamente una (claro); null si hay duda.
+        // Singulariza ("negros"->"negro"). VERBATIM de domain.mjs/ml-sync.js.
+        var __ML_STOPWORDS = new Set(['de','la','el','los','las','con','para','por','y','a','en','un','una','del','al','o']);
+        function suggestVariant(product, title){
+            if (!product || !product.hasVariants || !Array.isArray(product.variants) || !product.variants.length) return null;
+            var sing = function(w){ return (w.length > 3 && w.charAt(w.length-1) === 's') ? w.slice(0,-1) : w; };
+            var norm = function(s){ return String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'')
+                .replace(/[^a-z0-9 ]/g,' ').split(/\s+/).filter(function(w){ return w && !__ML_STOPWORDS.has(w); }).map(sing); };
+            var tWords = new Set(norm(title));
+            var matches = [];
+            product.variants.forEach(function(v){
+                var vTokens = norm(v.color).concat(norm(v.talla));
+                if (!vTokens.length) return;
+                if (vTokens.every(function(w){ return tWords.has(w); })) matches.push(v);
+            });
+            return matches.length === 1 ? matches[0] : null;
+        }
+        window.suggestVariant = suggestVariant;
+
         // stock_total = suma de las variantes; marca agotada la que llega a 0 (sin eliminarla).
         function recalcVariantStock(p){
             if (p && p.hasVariants && Array.isArray(p.variants)) {
@@ -5692,6 +5805,17 @@
         window.toggleVariantPanel = function(id){
             var panel = document.getElementById('varPanel-' + id);
             var chev = document.getElementById('varChevron-' + id);
+            if (!panel) return;
+            var open = panel.classList.toggle('open');
+            panel.style.maxHeight = open ? (panel.scrollHeight + 20) + 'px' : '0';
+            if (chev) chev.style.transform = open ? 'rotate(180deg)' : '';
+        };
+
+        // Igual que toggleVariantPanel pero para la tabla de Inventario (IDs propios
+        // invVarPanel-/invVarChevron- para no chocar con los de "Mis productos").
+        window.toggleInvVariantPanel = function(id){
+            var panel = document.getElementById('invVarPanel-' + id);
+            var chev = document.getElementById('invVarChevron-' + id);
             if (!panel) return;
             var open = panel.classList.toggle('open');
             panel.style.maxHeight = open ? (panel.scrollHeight + 20) + 'px' : '0';
@@ -7029,7 +7153,7 @@
 
 
         // ---- PASO 4: confirmar mapeo item_id -> producto y registrar la venta retenida ----
-        function confirmMapping(itemId, productName) {
+        function confirmMapping(itemId, productName, variantId) {
             const pending = (STATE.pendingMappings || []).find(p => String(p.item_id) === String(itemId));
             if (!pending) return false;
 
@@ -7045,13 +7169,26 @@
             }
             if (!product) return false;
 
+            // Resolver la variante: la que se pasó explícita, o la sugerida del pending,
+            // o intentar resolverla por el título. Si el producto maneja variantes y no
+            // se puede determinar, NO confirmar (la UI debe pedir elegir variante).
+            let variant = null;
+            if (product.hasVariants && Array.isArray(product.variants) && product.variants.length) {
+                if (variantId != null) variant = product.variants.find(v => String(v.id) === String(variantId));
+                if (!variant && pending.suggestedVariantId != null) variant = product.variants.find(v => String(v.id) === String(pending.suggestedVariantId));
+                if (!variant) variant = suggestVariant(product, pending.title);
+                if (!variant) return false; // ambigua -> que el usuario elija en la burbuja
+            }
+
             // Guardar mapeo confirmado
             STATE.mappings[String(itemId)] = {
-                productId: product.id, productName: product.name, title: pending.title
+                productId: product.id, productName: product.name, title: pending.title,
+                variantId: variant ? variant.id : null,
+                variantLabel: variant ? variantLabelOf(variant) : ''
             };
 
             // Registrar la venta retenida con datos reales de ML
-            registerMLSale(pending, product);
+            registerMLSale(pending, product, variant ? variant.id : null);
 
             // Quitar de pendientes y marcar como procesada en la BD (nunca volver a notificar).
             STATE.pendingMappings = STATE.pendingMappings.filter(p => String(p.item_id) !== String(itemId));
@@ -7106,26 +7243,33 @@
         };
 
         // ---- Registra TODAS las ventas retenidas de una publicación ML al confirmar el mapeo ----
-        function registerMLSale(pending, product) {
+        function registerMLSale(pending, product, variantId) {
             // Compatibilidad: si no hay heldSales (formato viejo), construir una desde los campos sueltos
             const held = (pending.heldSales && pending.heldSales.length)
                 ? pending.heldSales
                 : [{ saleId: pending.saleId, price: pending.price, quantity: pending.quantity, commissionRate: pending.commissionRate, date: pending.date, time: pending.time }];
 
+            // Variante: la que se indicó, o la del mapeo/pending; null si el producto no maneja variantes.
+            const _variant = (product.hasVariants && Array.isArray(product.variants))
+                ? (variantId != null ? product.variants.find(v => String(v.id) === String(variantId)) : null)
+                : null;
             const now = new Date();
             let registradas = 0;
             held.forEach((h, i) => {
                 const qty = h.quantity || 1;
-                const unitPrice = h.price || product.salePrice;
+                const unitPrice = h.price || (_variant ? _variant.precioVenta : product.salePrice);
+                // Costo y envío: de la variante si hay, si no del producto.
+                const costUnit = _variant ? (Number(_variant.precioCosto) || 0) : (Number(product.costPrice) || 0);
                 // Comisión: preferir el sale_fee REAL por unidad que dejó la sync; si no, % por defecto.
                 const rate = (h.commissionRate != null) ? h.commissionRate : (product.commission / 100);
                 const commissionAmount = (h.commissionPerUnit != null)
                     ? h.commissionPerUnit * qty
                     : unitPrice * qty * rate;
                 // Envío: preferir el costo real de ML; si no, el configurado en el producto.
-                const shipping = (h.shippingTotal != null) ? h.shippingTotal : product.shipping * qty;
+                const shipUnit = _variant ? (_variant.tieneEnvio ? (Number(_variant.costoEnvio) || 0) : 0) : (Number(product.shipping) || 0);
+                const shipping = (h.shippingTotal != null) ? h.shippingTotal : shipUnit * qty;
                 const totalPrice = unitPrice * qty;
-                const profit = totalPrice - (product.costPrice * qty) - commissionAmount - shipping;
+                const profit = totalPrice - (costUnit * qty) - commissionAmount - shipping;
                 const saleId = h.saleId || (Date.now() + i);
                 // Evitar duplicar si ya existe esa venta de ML
                 if (STATE.sales.some(s => s.source === 'mercadolibre' && s.id === saleId)) return;
@@ -7134,10 +7278,10 @@
                     date: h.date || _ymd(now),
                     time: h.time || (String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0')),
                     productId: product.id,
-                    productName: product.name,
+                    productName: _variant ? (product.name + ' (' + variantLabelOf(_variant) + ')') : product.name,
                     quantity: qty,
                     salePrice: unitPrice,
-                    costPrice: product.costPrice,
+                    costPrice: costUnit,
                     commission: commissionAmount,
                     commissionType: 'percentage',
                     commissionValue: unitPrice > 0 ? +((commissionAmount / qty / unitPrice) * 100).toFixed(2) : +(rate * 100).toFixed(2),
@@ -7148,10 +7292,17 @@
                     source: 'mercadolibre',
                     item_id: pending.item_id,
                     feeSource: (h.commissionPerUnit != null) ? 'sale_fee' : 'estimado',
-                    shippingSource: (h.shippingTotal != null) ? 'ml' : 'local'
+                    shippingSource: (h.shippingTotal != null) ? 'ml' : 'local',
+                    variantId: _variant ? _variant.id : null,
+                    variantLabel: _variant ? variantLabelOf(_variant) : ''
                 });
                 const p = STATE.products.find(pr => pr.id === product.id);
-                if (p) { p.stock = Math.max(0, p.stock - qty); p.lastModified = now.toISOString(); }
+                if (p) {
+                    const pv = (_variant && Array.isArray(p.variants)) ? p.variants.find(v => String(v.id) === String(_variant.id)) : null;
+                    if (pv) { pv.stock = Math.max(0, (Number(pv.stock) || 0) - qty); recalcVariantStock(p); }
+                    else { p.stock = Math.max(0, p.stock - qty); }
+                    p.lastModified = now.toISOString();
+                }
                 registradas++;
             });
             return registradas;
@@ -7202,12 +7353,49 @@
             bubble.innerHTML = '🆕 Venta de una <strong>publicación nueva</strong>:<br>"' +
                 DOMPurify.sanitize(String(p.title || '')) + '"<br>💵 ' + precio + ' · ' + (p.quantity || 1) +
                 ' u.<br><span style="color:var(--text-secondary);font-size:12.5px;">' + sug + '</span>';
+            // Si la publicación corresponde a un producto CON variantes, dejar elegir cuál se vendió.
+            let _pendVarSel = null;
+            const _pp = (function () {
+                if (p.suggestedProductId) { const x = STATE.products.find(pr => pr.id === p.suggestedProductId && !pr.archived); if (x) return x; }
+                if (p.suggestedName) {
+                    const t = String(p.suggestedName).toLowerCase().trim();
+                    return STATE.products.find(pr => !pr.archived && pr.name.toLowerCase() === t)
+                        || STATE.products.find(pr => !pr.archived && pr.name.toLowerCase().includes(t)) || null;
+                }
+                return null;
+            })();
+            if (_pp && _pp.hasVariants && Array.isArray(_pp.variants) && _pp.variants.length) {
+                const sv = (p.suggestedVariantId != null)
+                    ? _pp.variants.find(v => String(v.id) === String(p.suggestedVariantId))
+                    : suggestVariant(_pp, p.title);
+                const lbl = document.createElement('div');
+                lbl.style.cssText = 'margin-top:10px;font-size:12.5px;color:var(--text-secondary);';
+                lbl.innerHTML = '¿Qué variante de <strong>' + DOMPurify.sanitize(_pp.name) + '</strong> se vendió?' +
+                    (sv ? '' : ' <span style="color:var(--accent-warning,#d97706);">(elígela)</span>');
+                _pendVarSel = document.createElement('select');
+                _pendVarSel.style.cssText = 'margin-top:6px;width:100%;padding:8px 10px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-primary);color:var(--text-primary);font-size:13px;';
+                if (!sv) {
+                    // Variante ambigua: obligar a elegir (placeholder sin valor, seleccionado).
+                    const ph = document.createElement('option');
+                    ph.value = ''; ph.textContent = '— elige la variante —'; ph.selected = true;
+                    _pendVarSel.appendChild(ph);
+                }
+                _pp.variants.forEach(function (v) {
+                    const o = document.createElement('option');
+                    o.value = String(v.id);
+                    o.textContent = (variantLabelOf(v) || '—') + ' (' + (Number(v.stock) || 0) + ' u.)';
+                    if (sv && String(sv.id) === String(v.id)) o.selected = true;
+                    _pendVarSel.appendChild(o);
+                });
+                bubble.appendChild(lbl);
+                bubble.appendChild(_pendVarSel);
+            }
             const row = document.createElement('div');
             row.style.cssText = 'display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;';
             const bLoad = document.createElement('button');
             bLoad.className = 'btn btn-primary btn-small';
             bLoad.textContent = '✓ Cargar esta venta';
-            bLoad.onclick = function () { if (window.chatLoadPending) chatLoadPending(p.item_id); };
+            bLoad.onclick = function () { if (window.chatLoadPending) chatLoadPending(p.item_id, _pendVarSel ? _pendVarSel.value : null); };
             const bSkip = document.createElement('button');
             bSkip.className = 'btn btn-small';
             bSkip.style.cssText = 'background:var(--bg-secondary);color:var(--text-secondary);border:1px solid var(--border-color);';
@@ -7253,12 +7441,14 @@
         }
 
         // ---- Handlers de los botones (globales: el onclick referencia window.*) ----
-        window.chatLoadPending = function (itemId) {
+        window.chatLoadPending = function (itemId, variantId) {
             const p = (STATE.pendingMappings || []).find(x => String(x.item_id) === String(itemId));
             if (!p) { _removePendingBubble(itemId); return; }
+            // Si el producto maneja variantes y aún no se eligió (placeholder ''), pedirla.
+            if (variantId === '') { showToast('👉 Elige primero la variante que se vendió'); return; }
             let ok = false;
             // Si hay sugerencia, registrar directo; si no, pedir el nombre por chat.
-            if (p.suggestedProductId || p.suggestedName) ok = confirmMapping(itemId, p.suggestedName || null);
+            if (p.suggestedProductId || p.suggestedName) ok = confirmMapping(itemId, p.suggestedName || null, variantId != null ? variantId : null);
             if (ok) {
                 if (!STATE.dismissedPending) STATE.dismissedPending = [];
                 if (STATE.dismissedPending.map(String).indexOf(String(itemId)) < 0) STATE.dismissedPending.push(String(itemId));

@@ -570,6 +570,27 @@ export function suggestProduct(products, title, minScore) {
   return bestScore >= minScore ? best : null;
 }
 
+// Dado un producto con variantes y el título de la publicación de ML, intenta
+// resolver la variante por color/talla presentes en el título (ej. "audífonos
+// negros" -> variante "Negro"). Devuelve la variante SOLO si calza exactamente
+// una (caso claro -> auto-asociar); null si hay ambigüedad (ninguna o varias),
+// para que el usuario elija. Singulariza para casar "negros" con "negro".
+// Replicado VERBATIM en ml-sync.js y en index.html.
+export function suggestVariant(product, title) {
+  if (!product || !product.hasVariants || !Array.isArray(product.variants) || !product.variants.length) return null;
+  const sing = (w) => (w.length > 3 && w.endsWith('s')) ? w.slice(0, -1) : w;
+  const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter((w) => w && !STOPWORDS.has(w)).map(sing);
+  const tWords = new Set(norm(title));
+  const matches = [];
+  for (const v of product.variants) {
+    const vTokens = [...norm(v.color), ...norm(v.talla)];
+    if (!vTokens.length) continue;
+    if (vTokens.every((w) => tWords.has(w))) matches.push(v);
+  }
+  return matches.length === 1 ? matches[0] : null;
+}
+
 // Construye las ventas de ML RETENIDAS de una publicación pendiente al mapearla a un
 // producto — port VERBATIM de registerMLSale (index.html:7064-7113). Usa la comisión
 // y el envío REALES capturados por la sync (commissionPerUnit/shippingTotal) y la
@@ -577,6 +598,14 @@ export function suggestProduct(products, title, minScore) {
 // el llamador haga dedupe/push y descuente stock.
 export function buildMlSalesFromPending(pending, product, opts) {
   opts = opts || {};
+  // Variante: explícita en opts (la que el usuario eligió) o la que ya quedó
+  // resuelta en el pending; si el producto no maneja variantes, queda en null.
+  const variant = (product && product.hasVariants)
+    ? (opts.variantId != null ? findVariant(product, opts.variantId)
+       : (pending.suggestedVariantId != null ? findVariant(product, pending.suggestedVariantId) : null))
+    : null;
+  const variantId = variant ? variant.id : null;
+  const variantLabel = variant ? variantLabelOf(variant) : '';
   const held = (pending.heldSales && pending.heldSales.length)
     ? pending.heldSales
     : [{ saleId: pending.saleId, price: pending.price, quantity: pending.quantity, commissionRate: pending.commissionRate, date: pending.date, time: pending.time }];
@@ -609,8 +638,8 @@ export function buildMlSalesFromPending(pending, product, opts) {
       item_id: pending.item_id,
       feeSource: (h.commissionPerUnit != null) ? 'sale_fee' : 'estimado',
       shippingSource: (h.shippingTotal != null) ? 'ml' : 'local',
-      variantId: null,
-      variantLabel: ''
+      variantId,
+      variantLabel
     };
   });
 }

@@ -354,7 +354,7 @@ export function buildCrmTools(ctx) {
       // Crea el mapeo item_id → producto para que el cron NO la retenga ni duplique,
       // y limpia cualquier pendiente/descarte de esa publicación (ml-sync.js:300-355).
       state.mappings = state.mappings || {};
-      state.mappings[itemId] = { productId: product.id, productName: product.name };
+      state.mappings[itemId] = { productId: product.id, productName: product.name, variantId: variant ? variant.id : null, variantLabel: variant ? domain.variantLabelOf(variant) : '' };
       if (Array.isArray(state.pendingMappings)) state.pendingMappings = state.pendingMappings.filter(p => String(p.item_id) !== itemId);
       if (Array.isArray(state.dismissedPending)) state.dismissedPending = state.dismissedPending.filter(x => String(x) !== itemId);
       mark('sales'); mark('products'); mark('mappings'); mark('pendingMappings');
@@ -393,6 +393,9 @@ export function buildCrmTools(ctx) {
         quantity: p.quantity,
         suggestedProductId: p.suggestedProductId || null,
         suggestedName: p.suggestedName || null,
+        suggestedVariantId: p.suggestedVariantId || null,
+        suggestedVariantLabel: p.suggestedVariantLabel || null,
+        needsVariant: !!p.needsVariant,
         ventasRetenidas: (p.heldSales || []).length || 1,
         fechas: (p.heldSales || []).map(h => h.date).filter(Boolean)
       })));
@@ -411,22 +414,33 @@ export function buildCrmTools(ctx) {
       if (!pending) return j({ error: 'No hay una venta de ML en espera con ese item_id. Usa list_pending_ml_sales para ver las pendientes.' });
       const product = findProduct(args.productId);
       if (!product) return j({ error: 'No existe ese producto. Créalo con add_product (ponle el COSTO real) y vuelve a llamar register_pending_ml_sale.' });
+      // Variante: si el producto la maneja, usar la que indique MIA (variantId) o la
+      // resuelta/sugerida en el pending. Si no se puede resolver, pedirla.
+      let variantId = null;
+      if (product.hasVariants) {
+        variantId = (args.variantId != null) ? args.variantId
+          : (pending.suggestedVariantId != null ? pending.suggestedVariantId : null);
+        if (variantId == null || !domain.findVariant(product, variantId)) {
+          return j({ error: 'El producto maneja variantes. Indica variantId (cuál color/talla se vendió).', variantes: variantSummary(product) });
+        }
+      }
       state.sales = state.sales || [];
       const built = domain.buildMlSalesFromPending(pending, product, {
-        baseId: ctx.nextId(), nowIso: ctx.nowIso(), today: ctx.today(), time: ctx.time()
+        baseId: ctx.nextId(), nowIso: ctx.nowIso(), today: ctx.today(), time: ctx.time(), variantId
       });
       const nuevas = [];
       for (const sale of built) {
         // Dedupe igual que la app (index.html:7086): no duplicar ventas de ML por id.
         if (state.sales.some(s => s.source === 'mercadolibre' && s.id === sale.id)) continue;
         state.sales.push(sale);
-        domain.applyStockDelta(product, null, -sale.quantity);
+        domain.applyStockDelta(product, sale.variantId, -sale.quantity);
         nuevas.push(sale);
       }
       product.lastModified = ctx.nowIso();
       // Mapea la publicación y la saca de pendientes (+ dismissedPending), como la app.
+      const _mv = variantId != null ? domain.findVariant(product, variantId) : null;
       state.mappings = state.mappings || {};
-      state.mappings[itemId] = { productId: product.id, productName: product.name, title: pending.title };
+      state.mappings[itemId] = { productId: product.id, productName: product.name, title: pending.title, variantId: _mv ? _mv.id : null, variantLabel: _mv ? domain.variantLabelOf(_mv) : '' };
       state.pendingMappings = (state.pendingMappings || []).filter(p => String(p.item_id) !== itemId);
       state.dismissedPending = Array.isArray(state.dismissedPending) ? state.dismissedPending : [];
       if (!state.dismissedPending.map(String).includes(itemId)) state.dismissedPending.push(itemId);
@@ -439,7 +453,8 @@ export function buildCrmTools(ctx) {
       description: 'Registra en el CRM una venta de ML que estaba EN ESPERA (de list_pending_ml_sales), asociándola a un producto. Usa los datos REALES capturados por la sync: fecha real del pedido (aunque sea de días atrás), comisión real (sale_fee) y envío real. Descuenta stock, crea el mapeo y la saca de pendientes. Si el producto no existe aún, primero créalo con add_product (con su costo) y luego llama esto con su id.',
       schema: z.object({
         itemId: z.union([z.string(), z.number()]).describe('item_id de la publicación pendiente (de list_pending_ml_sales).'),
-        productId: z.number().describe('id del producto del CRM al que corresponde (créalo antes si no existe).')
+        productId: z.number().describe('id del producto del CRM al que corresponde (créalo antes si no existe).'),
+        variantId: z.number().optional().describe('si el producto maneja variantes, id de la variante (color/talla) vendida. Si no la das, se usa la sugerida del pending.')
       })
     }
   );

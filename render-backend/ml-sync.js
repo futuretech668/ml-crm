@@ -276,6 +276,33 @@ function suggestProduct(products, title, minScore) {
   return bestScore >= minScore ? best : null;
 }
 
+// Resuelve la variante de un producto a partir del título de ML por color/talla.
+// Devuelve la variante SOLO si calza exactamente una (claro); null si hay duda
+// (ninguna o varias) para preguntarle al usuario. VERBATIM en domain.mjs / index.html.
+function suggestVariant(product, title) {
+  if (!product || !product.hasVariants || !Array.isArray(product.variants) || !product.variants.length) return null;
+  const sing = (w) => (w.length > 3 && w.endsWith('s')) ? w.slice(0, -1) : w;
+  const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter((w) => w && !STOPWORDS.has(w)).map(sing);
+  const tWords = new Set(norm(title));
+  const matches = [];
+  for (const v of product.variants) {
+    const vTokens = [...norm(v.color), ...norm(v.talla)];
+    if (!vTokens.length) continue;
+    if (vTokens.every((w) => tWords.has(w))) matches.push(v);
+  }
+  return matches.length === 1 ? matches[0] : null;
+}
+
+// stock_total = suma de variantes; marca agotada la que llega a 0 (VERBATIM frontend/domain).
+function recalcVariantStock(product) {
+  if (product && product.hasVariants && Array.isArray(product.variants)) {
+    product.variants.forEach((v) => { v.agotada = (Number(v.stock) || 0) <= 0; });
+    product.stock = product.variants.reduce((a, v) => a + (Number(v.stock) || 0), 0);
+  }
+  return product ? product.stock : 0;
+}
+
 function applyOrder(order, ctx) {
   const { products, sales, mappings, pendingMappings, notifications } = ctx;
   const dismissed = new Set((ctx.dismissedPending || []).map(String)); // publicaciones que el usuario ya descartó
@@ -300,32 +327,64 @@ function applyOrder(order, ctx) {
     // Si el usuario YA descartó esta publicación (y no la mapeó), no la registres ni la muestres otra vez.
     if (dismissed.has(itemId) && !mappings[itemId]) continue;
 
+    const vLabel = (v) => [v && v.color, v && v.talla].filter(Boolean).join(' / ');
     let mapping = mappings[itemId];
+    let needsVariant = false; // producto claro pero variante ambigua -> se pregunta
     // Auto-mapeo inteligente: si el nombre coincide en >80% con un producto registrado,
     // se mapea solo y se registra la venta directo (no molesta al usuario con una notificación).
     if (!mapping) {
       const auto = suggestProduct(products, title, 0.8);
-      if (auto) { mapping = { productId: auto.id, productName: auto.name }; mappings[itemId] = mapping; }
+      if (auto) {
+        if (auto.hasVariants) {
+          // Producto con variantes: solo auto-mapear si la variante es CLARA (color/talla en el título).
+          const av = suggestVariant(auto, title);
+          if (av) { mapping = { productId: auto.id, productName: auto.name, variantId: av.id, variantLabel: vLabel(av) }; mappings[itemId] = mapping; }
+          else { needsVariant = true; } // claro el producto, ambigua la variante -> pendiente
+        } else {
+          mapping = { productId: auto.id, productName: auto.name };
+          mappings[itemId] = mapping;
+        }
+      }
+    } else {
+      // Mapeo ya confirmado: si es un producto con variantes y aún no tiene variante
+      // fijada, intentar resolverla si el título la hace clara (no re-pregunta lo ya confirmado).
+      const prod = products.find((p) => p.id === mapping.productId);
+      if (prod && prod.hasVariants && mapping.variantId == null) {
+        const av = suggestVariant(prod, title);
+        if (av) { mapping.variantId = av.id; mapping.variantLabel = vLabel(av); }
+      }
     }
-    if (mapping) {
+    if (mapping && !needsVariant) {
       const product = products.find((p) => p.id === mapping.productId) || {};
-      const costPrice = product.costPrice || 0;
+      const variantId = mapping.variantId != null ? mapping.variantId : null;
+      const _mvCost = (product.hasVariants && variantId != null && Array.isArray(product.variants))
+        ? product.variants.find((x) => String(x.id) === String(variantId)) : null;
+      const costPrice = _mvCost ? (Number(_mvCost.precioCosto) || 0) : (product.costPrice || 0);
       const shipping = lineShip != null ? lineShip : (product.shipping || 0) * qty;
       const commission = +(commissionPerUnit * qty).toFixed(2);
       const totalPrice = unitPrice * qty;
       const profit = totalPrice - costPrice * qty - commission - shipping;
+      const variantLabel = mapping.variantLabel || '';
+      const _pName = mapping.productName || product.name || title;
       sales.push({
         id: saleId, date, time,
-        productId: mapping.productId, productName: mapping.productName || product.name || title,
+        productId: mapping.productId, productName: variantLabel ? (_pName + ' (' + variantLabel + ')') : _pName,
         quantity: qty, salePrice: unitPrice, costPrice, commission,
         commissionType: 'percentage',
         commissionValue: unitPrice > 0 ? +((commissionPerUnit / unitPrice) * 100).toFixed(2) : 0,
         shipping, totalPrice, profit, createdAt: new Date().toISOString(),
         source: 'mercadolibre', item_id: itemId, order_id: String(order.id),
-        feeSource: comm.source, shippingSource: lineShip != null ? 'ml' : 'local'
+        feeSource: comm.source, shippingSource: lineShip != null ? 'ml' : 'local',
+        variantId, variantLabel
       });
       const idx = products.findIndex((p) => p.id === mapping.productId);
-      if (idx >= 0) products[idx].stock = Math.max(0, (products[idx].stock || 0) - qty);
+      if (idx >= 0) {
+        const prod = products[idx];
+        const mv = (prod.hasVariants && variantId != null && Array.isArray(prod.variants))
+          ? prod.variants.find((x) => String(x.id) === String(variantId)) : null;
+        if (mv) { mv.stock = Math.max(0, (Number(mv.stock) || 0) - qty); recalcVariantStock(prod); }
+        else { prod.stock = Math.max(0, (prod.stock || 0) - qty); }
+      }
       // (Quitado a propósito) Ya NO se crea una notificación "Venta registrada" en el chat por cada venta de ML.
       // La venta se guarda igual (sales.push arriba) y se refleja en Dashboard/Finanzas. Solo se eliminó el aviso del chat.
       added++;
@@ -337,11 +396,17 @@ function applyOrder(order, ctx) {
         pend.heldSales = pend.heldSales || [];
         if (!pend.heldSales.some((h) => h.saleId === saleId)) pend.heldSales.push(heldSale);
       } else {
-        const suggested = suggestProduct(products, title);
+        // Si el producto venía claro (auto-mapeo >80%) pero la variante es ambigua,
+        // usar ese producto como sugerencia; si no, adivinar por nombre (>=0.4).
+        const suggested = (needsVariant ? suggestProduct(products, title, 0.8) : null) || suggestProduct(products, title);
+        const sVar = (suggested && suggested.hasVariants) ? suggestVariant(suggested, title) : null;
         pendingMappings.push({
           item_id: itemId, title, price: unitPrice, quantity: qty, commissionPerUnit,
           suggestedProductId: suggested ? suggested.id : null,
           suggestedName: suggested ? suggested.name : null,
+          suggestedVariantId: sVar ? sVar.id : null,
+          suggestedVariantLabel: sVar ? vLabel(sVar) : null,
+          needsVariant: !!(suggested && suggested.hasVariants),
           heldSales: [heldSale], createdAt: new Date().toISOString()
         });
         notifications.push({
