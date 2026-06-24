@@ -43,15 +43,25 @@ const fsUrl = (svc, path) =>
   'https://firestore.googleapis.com/v1/projects/' + svc.project_id + '/databases/(default)/documents/' + path;
 
 // PATCH con updateMask: actualiza SOLO los campos nombrados; deja el resto intacto.
-export async function patchMasked(svc, gtoken, path, obj, fieldPaths) {
+// updateTime (opcional): precondición de concurrencia optimista (mismo patrón que
+// ml-sync.js). Sin él: comportamiento clásico (lanza ante !ok). Con él y conflicto
+// (409/412/precondition): devuelve { ok:false, conflict:true } para reintentar.
+export async function patchMasked(svc, gtoken, path, obj, fieldPaths, updateTime) {
   const mask = fieldPaths.map(f => 'updateMask.fieldPaths=' + encodeURIComponent(f)).join('&');
-  const url = fsUrl(svc, path) + '?' + mask;
+  let url = fsUrl(svc, path) + '?' + mask;
+  if (updateTime) url += '&currentDocument.updateTime=' + encodeURIComponent(updateTime);
   const res = await fetch(url, {
     method: 'PATCH',
     headers: { Authorization: 'Bearer ' + gtoken, 'Content-Type': 'application/json' },
     body: JSON.stringify({ fields: encodeFields(obj) })
   });
+  if (updateTime && (res.status === 409 || res.status === 412 || res.status === 400)) {
+    const t = await res.text();
+    if (/precondition|updateTime|FAILED_PRECONDITION/i.test(t)) return { ok: false, conflict: true };
+    throw new Error('patchMasked ' + res.status + ': ' + t.slice(0, 160));
+  }
   if (!res.ok) throw new Error('patchMasked ' + res.status + ': ' + (await res.text()).slice(0, 160));
+  return { ok: true };
 }
 
 // ---- Selección y carga del doc de estado ----
@@ -77,11 +87,32 @@ export async function loadState(svc, gtoken, statePath) {
   return data || {};
 }
 
-// Guarda SOLO los campos indicados del doc de estado (read-modify-write seguro).
-export async function saveStateFields(svc, gtoken, statePath, state, fieldPaths) {
-  const obj = {};
-  for (const f of fieldPaths) obj[f] = state[f];
-  await patchMasked(svc, gtoken, statePath, obj, fieldPaths);
+// Guarda SOLO los campos indicados del doc de estado con CONCURRENCIA OPTIMISTA y
+// REINTENTO (mismo patrón que ml-sync.js:448-478). Relee el doc con su updateTime,
+// toma los campos a escribir de `state`, y hace PATCH con precondición. Si otro
+// proceso (cron/otro dispositivo) escribió en medio (conflicto), reintenta hasta 3
+// veces releyendo. Así MIA no pisa ventas que el cron acaba de agregar.
+//
+// Compatibilidad: misma firma. El parámetro opcional `merge(curData, fieldPaths)`
+// permite fusionar (p.ej. unir ventas por id) en cada reintento; por defecto se
+// escriben los valores tal cual vienen en `state` (comportamiento previo).
+export async function saveStateFields(svc, gtoken, statePath, state, fieldPaths, merge) {
+  let lastErr = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    // Releer SIEMPRE para obtener un updateTime fresco (precondición). Si hay merge,
+    // se le pasan los datos remotos actuales para fusionar (p.ej. unir ventas por id).
+    const cur = await core.fsGetWithMeta(svc, gtoken, statePath);
+    const updateTime = cur.updateTime;
+    if (typeof merge === 'function') merge(cur.data || {}, fieldPaths);
+    const obj = {};
+    for (const f of fieldPaths) obj[f] = state[f];
+    const w = await patchMasked(svc, gtoken, statePath, obj, fieldPaths, updateTime || undefined);
+    if (!updateTime || w.ok) return; // sin updateTime (doc nuevo) o escritura OK
+    // conflicto: el doc cambió; reintentar releyendo
+    await new Promise(r => setTimeout(r, 400));
+    lastErr = new Error('conflicto de escritura (saveStateFields)');
+  }
+  if (lastErr) throw lastErr;
 }
 
 // ---- Doc backend-only crm_ai/{uid} (memoria + hilos) ----

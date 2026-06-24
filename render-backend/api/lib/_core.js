@@ -66,9 +66,31 @@ async function fsGet(svc, token, path) {
   if (!res.ok) throw new Error('fsGet ' + res.status + ': ' + (await res.text()).slice(0, 160));
   const d = await res.json(); return decodeFields(d.fields || {});
 }
-async function fsPatch(svc, token, path, obj) {
-  const res = await fetch(fsUrl(svc, path), { method: 'PATCH', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify({ fields: encodeFields(obj) }) });
+// Igual que fsGet pero devuelve también el updateTime del doc (para concurrencia
+// optimista, como hace ml-sync.js). No reemplaza a fsGet: los llamadores existentes
+// siguen usando fsGet (que devuelve solo los datos).
+async function fsGetWithMeta(svc, token, path) {
+  const res = await fetch(fsUrl(svc, path), { headers: { Authorization: 'Bearer ' + token } });
+  if (res.status === 404) return { exists: false, data: {}, updateTime: null };
+  if (!res.ok) throw new Error('fsGet ' + res.status + ': ' + (await res.text()).slice(0, 160));
+  const d = await res.json();
+  return { exists: true, data: decodeFields(d.fields || {}), updateTime: d.updateTime || null };
+}
+// fsPatch con precondición opcional currentDocument.updateTime (mismo patrón que
+// ml-sync.js:116-131). Sin updateTime se comporta igual que antes (lanza ante !ok).
+// Con updateTime y conflicto (409/412/precondition) devuelve { ok:false, conflict:true }
+// en vez de lanzar, para que el llamador reintente con read-modify-write.
+async function fsPatch(svc, token, path, obj, updateTime) {
+  let url = fsUrl(svc, path);
+  if (updateTime) url += '?currentDocument.updateTime=' + encodeURIComponent(updateTime);
+  const res = await fetch(url, { method: 'PATCH', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify({ fields: encodeFields(obj) }) });
+  if (updateTime && (res.status === 409 || res.status === 412 || res.status === 400)) {
+    const t = await res.text();
+    if (/precondition|updateTime|FAILED_PRECONDITION/i.test(t)) return { ok: false, conflict: true };
+    throw new Error('fsPatch ' + res.status + ': ' + t.slice(0, 160));
+  }
   if (!res.ok) throw new Error('fsPatch ' + res.status + ': ' + (await res.text()).slice(0, 160));
+  return { ok: true };
 }
 
 // ---- Envío de correo. Render bloquea el SMTP saliente, así que si está
@@ -231,4 +253,4 @@ function json(status, obj) {
   };
 }
 
-module.exports = { getSvc, getGoogleAccessToken, fsGet, fsPatch, gmailSmtpSend, sha256, emailKey, validEmail, domainHasMx, consumeCode, clientIp, checkRate, verifyFirebaseIdToken, json };
+module.exports = { getSvc, getGoogleAccessToken, fsGet, fsGetWithMeta, fsPatch, gmailSmtpSend, sha256, emailKey, validEmail, domainHasMx, consumeCode, clientIp, checkRate, verifyFirebaseIdToken, json };

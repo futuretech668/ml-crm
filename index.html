@@ -470,29 +470,58 @@
                 window.FB = {
                     ready: true,
                     clientId,
-                    // Guarda el estado completo en la nube
-                    save: (data) => setDoc(stateDocRef, {
-                        products: data.products || [],
-                        sales: data.sales || [],
-                        mappings: data.mappings || {},
-                        pendingMappings: data.pendingMappings || [],
-                        dismissedPending: data.dismissedPending || [],
-                        despachosBorrados: data.despachosBorrados || [],
-                        tasksBorradas: data.tasksBorradas || [],
-                        notifications: data.notifications || [],
-                        // Campos nuevos (Finanzas/Agenda/Metas/Logros): se sincronizan también.
-                        expenses: data.expenses || [],
-                        tasks: data.tasks || [],
-                        goals: data.goals || {},
-                        achievements: data.achievements || {},
-                        finConfig: data.finConfig || {},
-                        profile: data.profile || {},
-                        gastosFijos: data.gastosFijos || [],
-                        reportEmail: data.reportEmail || '',
-                        mlConnected: data.mlConnected || false,
-                        updatedAt: serverTimestamp(),
-                        updatedBy: clientId
-                    }),
+                    // Guarda el estado completo en la nube.
+                    //
+                    // MERGE DEFENSIVO ANTI-RACE: el cron (backend) puede agregar ventas
+                    // a `sales` MIENTRAS el usuario tiene la pestaña abierta. setDoc pisa
+                    // el doc completo, así que si guardáramos `data.sales` tal cual
+                    // borraríamos las ventas que el cron acaba de escribir y que aún no
+                    // llegaron por onSnapshot. Para evitar PERDER ventas: releemos el doc
+                    // remoto y hacemos UNIÓN POR id de `sales` (igual idea que
+                    // dismissedPending). Si la relectura falla, guardamos lo local (la app
+                    // no se rompe; el listener onSnapshot reconciliará después).
+                    save: async (data) => {
+                        let remoteSales = [];
+                        try {
+                            const snap = await getDoc(stateDocRef);
+                            if (snap.exists()) {
+                                const rd = snap.data() || {};
+                                if (Array.isArray(rd.sales)) remoteSales = rd.sales;
+                            }
+                        } catch (e) { /* sin red: seguimos con lo local */ }
+                        // Unión por id: parte de las ventas locales y agrega las remotas
+                        // que el local no tenga (las que agregó el cron). Las locales ganan
+                        // ante un mismo id (reflejan ediciones del usuario).
+                        const localSales = Array.isArray(data.sales) ? data.sales : [];
+                        const seen = new Set(localSales.map(s => String(s && s.id)));
+                        const mergedSales = localSales.slice();
+                        for (const rs of remoteSales) {
+                            const id = String(rs && rs.id);
+                            if (!seen.has(id)) { mergedSales.push(rs); seen.add(id); }
+                        }
+                        return setDoc(stateDocRef, {
+                            products: data.products || [],
+                            sales: mergedSales,
+                            mappings: data.mappings || {},
+                            pendingMappings: data.pendingMappings || [],
+                            dismissedPending: data.dismissedPending || [],
+                            despachosBorrados: data.despachosBorrados || [],
+                            tasksBorradas: data.tasksBorradas || [],
+                            notifications: data.notifications || [],
+                            // Campos nuevos (Finanzas/Agenda/Metas/Logros): se sincronizan también.
+                            expenses: data.expenses || [],
+                            tasks: data.tasks || [],
+                            goals: data.goals || {},
+                            achievements: data.achievements || {},
+                            finConfig: data.finConfig || {},
+                            profile: data.profile || {},
+                            gastosFijos: data.gastosFijos || [],
+                            reportEmail: data.reportEmail || '',
+                            mlConnected: data.mlConnected || false,
+                            updatedAt: serverTimestamp(),
+                            updatedBy: clientId
+                        });
+                    },
                     // Escucha cambios en tiempo real desde cualquier dispositivo.
                     // Si el doc aún no existe (cuenta nueva), entrega {} para que la app inicialice su nube.
                     subscribe: (cb) => onSnapshot(stateDocRef,
