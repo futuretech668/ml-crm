@@ -111,7 +111,7 @@ export function buildCrmTools(ctx) {
       description: 'Registra una venta en el CRM del usuario. profit = total − costo·cantidad − comisión − envío. Descuenta el stock del producto (de la VARIANTE si el producto las maneja). salePrice/costPrice por defecto son los del producto o de la variante. Si el producto tiene variantes (hasVariants:true en list_products), DEBES pasar variantId copiándolo EXACTO de list_products (puede ser texto como "v0-Negro", no lo inventes ni lo conviertas a número).',
       schema: z.object({
         productId: z.number(),
-        quantity: z.number(),
+        quantity: z.number().int('La cantidad debe ser un número entero.').positive('La cantidad vendida debe ser mayor que 0.'),
         variantId: z.union([z.string(), z.number()]).optional().describe('Obligatorio si el producto maneja variantes (color/talla). Cópialo EXACTO de list_products (suele ser texto, ej. "v0-Negro").'),
         salePrice: z.number().optional(),
         costPrice: z.number().optional(),
@@ -160,9 +160,9 @@ export function buildCrmTools(ctx) {
       description: 'Crea un producto en el CRM con la forma exacta de la app. Para un producto con variantes (color/talla), pasa variants[] y el stock total se calcula como la suma de las variantes.',
       schema: z.object({
         name: z.string(),
-        costPrice: z.number(),
-        salePrice: z.number(),
-        stock: z.number(),
+        costPrice: z.number().min(0, 'El precio de costo no puede ser negativo.'),
+        salePrice: z.number().min(0, 'El precio de venta no puede ser negativo.'),
+        stock: z.number().min(0, 'El stock no puede ser negativo.'),
         stockMin: z.number().optional(),
         shipping: z.number().optional(),
         commission: z.number().optional(),
@@ -668,7 +668,7 @@ export function buildCrmTools(ctx) {
         action: z.enum(['add', 'edit', 'delete']),
         id: z.number().optional(),
         nombre: z.string().optional(),
-        monto: z.number().optional(),
+        monto: z.number().min(0, 'El monto del gasto no puede ser negativo.').optional(),
         fecha: z.string().optional().describe('YYYY-MM-DD; por defecto hoy.')
       })
     }
@@ -710,7 +710,7 @@ export function buildCrmTools(ctx) {
         action: z.enum(['add', 'edit', 'delete']),
         id: z.number().optional(),
         nombre: z.string().optional(),
-        monto: z.number().optional(),
+        monto: z.number().min(0, 'El monto del gasto fijo no puede ser negativo.').optional(),
         frecuencia: z.enum(['mensual', 'semanal', 'anual']).optional(),
         desde: z.string().optional().describe('YYYY-MM')
       })
@@ -732,10 +732,13 @@ export function buildCrmTools(ctx) {
     },
     {
       name: 'set_goal',
-      description: 'Fija o cambia la meta mensual del usuario. objetivo = monto. tipoMeta: "ganancia" (default) o "ventas". mes opcional (YYYY-MM; por defecto el mes en curso).',
+      description: 'Fija o cambia la meta mensual del usuario. objetivo = monto (o cantidad de unidades si tipoMeta="unidades"). ' +
+        'tipoMeta: "ganancia" (default; suma la ganancia/profit del mes), "ventas" (suma los INGRESOS/totalPrice del mes) o ' +
+        '"unidades" (suma la CANTIDAD de unidades vendidas en el mes). mes opcional (YYYY-MM; por defecto el mes en curso).',
       schema: z.object({
-        objetivo: z.number(),
-        tipoMeta: z.enum(['ganancia', 'ventas']).optional(),
+        objetivo: z.number().min(0, 'El objetivo de la meta no puede ser negativo.'),
+        tipoMeta: z.enum(['ganancia', 'ventas', 'unidades']).optional()
+          .describe('"ganancia" (profit), "ventas" (ingresos) o "unidades" (cantidad vendida).'),
         mes: z.string().optional().describe('YYYY-MM')
       })
     }
@@ -752,18 +755,26 @@ export function buildCrmTools(ctx) {
         const mes = args.publicidadMes || ctx.today().slice(0, 7);
         fc.publicidadMensual[mes] = Number(args.publicidadMonto) || 0;
       }
+      // IVA manual del SII por mes: merge sin pisar los otros meses.
+      if (args.ivaMensualMonto !== undefined) {
+        fc.ivaMensual = (fc.ivaMensual && typeof fc.ivaMensual === 'object') ? fc.ivaMensual : {};
+        const mesIva = args.ivaMensualMes || ctx.today().slice(0, 7);
+        fc.ivaMensual[mesIva] = Number(args.ivaMensualMonto) || 0;
+      }
       mark('finConfig');
       ctx.did.push({ action: 'set_finance_config' });
-      return j({ ok: true, finConfig: { ivaEnabled: !!fc.ivaEnabled, ivaPct: Number(fc.ivaPct) || 0, publicidadMensual: fc.publicidadMensual || {} } });
+      return j({ ok: true, finConfig: { ivaEnabled: !!fc.ivaEnabled, ivaPct: Number(fc.ivaPct) || 0, publicidadMensual: fc.publicidadMensual || {}, ivaMensual: fc.ivaMensual || {} } });
     },
     {
       name: 'set_finance_config',
-      description: 'Ajusta la configuración financiera: ivaEnabled (cobra IVA o no), ivaPct (% de IVA), y la publicidad de un mes (publicidadMonto + publicidadMes YYYY-MM, por defecto el mes en curso). Solo cambia lo provisto.',
+      description: 'Ajusta la configuración financiera: ivaEnabled (cobra IVA o no), ivaPct (% de IVA, 0-100), la publicidad de un mes (publicidadMonto + publicidadMes YYYY-MM, por defecto el mes en curso) y el IVA MANUAL del SII de un mes (ivaMensualMonto + ivaMensualMes YYYY-MM). El IVA manual de un mes hace merge sin pisar los demás meses y reemplaza el cálculo automático de ese mes. Solo cambia lo provisto.',
       schema: z.object({
         ivaEnabled: z.boolean().optional(),
-        ivaPct: z.number().optional(),
-        publicidadMonto: z.number().optional(),
-        publicidadMes: z.string().optional().describe('YYYY-MM')
+        ivaPct: z.number().min(0, 'El % de IVA no puede ser negativo.').max(100, 'El % de IVA no puede superar 100.').optional(),
+        publicidadMonto: z.number().min(0, 'La publicidad no puede ser negativa.').optional(),
+        publicidadMes: z.string().optional().describe('YYYY-MM'),
+        ivaMensualMonto: z.number().min(0, 'El IVA manual no puede ser negativo.').optional().describe('Monto del IVA manual del SII para un mes.'),
+        ivaMensualMes: z.string().optional().describe('YYYY-MM del IVA manual (por defecto el mes en curso).')
       })
     }
   );
@@ -794,13 +805,190 @@ export function buildCrmTools(ctx) {
     }
   );
 
+  // ===========================================================================
+  // Notificaciones — marcar leída / descartar (mismo array que list_notifications).
+  // ===========================================================================
+
+  const mark_notification_read = tool(
+    async (args) => {
+      const n = Array.isArray(state.notifications) ? state.notifications : [];
+      const notif = n.find(x => String(x.id) === String(args.id));
+      if (!notif) return j({ error: 'No encontré una notificación con ese id. Usa list_notifications para ver los ids.' });
+      notif.read = true;
+      mark('notifications');
+      ctx.did.push({ action: 'mark_notification_read', id: notif.id });
+      return j({ ok: true, notification: { id: notif.id, read: true } });
+    },
+    {
+      name: 'mark_notification_read',
+      description: 'Marca como LEÍDA una notificación/aviso del usuario (no la borra). Pasa el id (de list_notifications).',
+      schema: z.object({ id: z.union([z.string(), z.number()]) })
+    }
+  );
+
+  const dismiss_notification = tool(
+    async (args) => {
+      state.notifications = Array.isArray(state.notifications) ? state.notifications : [];
+      const idx = state.notifications.findIndex(x => String(x.id) === String(args.id));
+      if (idx < 0) return j({ error: 'No encontré una notificación con ese id. Usa list_notifications para ver los ids.' });
+      const [removed] = state.notifications.splice(idx, 1);
+      mark('notifications');
+      ctx.did.push({ action: 'dismiss_notification', id: removed.id });
+      return j({ ok: true, dismissed: { id: removed.id } });
+    },
+    {
+      name: 'dismiss_notification',
+      description: 'Descarta (quita del listado) una notificación/aviso del usuario. Pasa el id (de list_notifications). Para solo marcarla leída sin quitarla, usa mark_notification_read.',
+      schema: z.object({ id: z.union([z.string(), z.number()]) })
+    }
+  );
+
+  // ===========================================================================
+  // Perfil de negocio (businessProfile en aiDoc) — editar texto o regenerar.
+  // ===========================================================================
+
+  const set_business_profile = tool(
+    async (args) => {
+      const text = String(args.text || '').trim();
+      if (!text) return j({ error: 'Indica el texto del perfil de negocio.' });
+      ctx.aiDoc.businessProfile = {
+        ...(ctx.aiDoc.businessProfile || {}),
+        text,
+        updatedAt: ctx.nowIso()
+      };
+      ctx.did.push({ action: 'set_business_profile' });
+      return j({ ok: true, businessProfile: ctx.aiDoc.businessProfile });
+    },
+    {
+      name: 'set_business_profile',
+      description: 'Edita/fija el TEXTO del perfil durable del negocio (lo que MIA recuerda del usuario entre conversaciones). Úsalo cuando el usuario corrija o complete la descripción de su negocio. Para reconstruirlo automáticamente desde los datos del CRM, usa regenerate_business_profile.',
+      schema: z.object({ text: z.string().describe('Texto del perfil de negocio (1-3 frases).') })
+    }
+  );
+
+  const regenerate_business_profile = tool(
+    async () => {
+      const fresh = domain.buildBusinessProfile(state);
+      ctx.aiDoc.businessProfile = { ...fresh, updatedAt: ctx.nowIso() };
+      ctx.did.push({ action: 'regenerate_business_profile' });
+      return j({ ok: true, businessProfile: ctx.aiDoc.businessProfile });
+    },
+    {
+      name: 'regenerate_business_profile',
+      description: 'Regenera el perfil de negocio desde cero a partir de los datos actuales del CRM (productos activos, top, margen típico, meta y total de ventas). Úsalo cuando el perfil quedó desactualizado y el usuario quiere refrescarlo con los datos reales.',
+      schema: z.object({})
+    }
+  );
+
+  // ===========================================================================
+  // Ventas pendientes de ML — descartar / recuperar (gestión de dismissedPending).
+  // ===========================================================================
+
+  const dismiss_pending_sale = tool(
+    async (args) => {
+      const itemId = String(args.itemId);
+      const exists = (state.pendingMappings || []).some(p => String(p.item_id) === itemId);
+      if (!exists) return j({ error: 'No hay una venta de ML en espera con ese item_id. Usa list_pending_ml_sales para ver las pendientes.' });
+      state.dismissedPending = Array.isArray(state.dismissedPending) ? state.dismissedPending : [];
+      if (!state.dismissedPending.map(String).includes(itemId)) state.dismissedPending.push(itemId);
+      mark('dismissedPending');
+      ctx.did.push({ action: 'dismiss_pending_sale', itemId });
+      return j({ ok: true, dismissed: itemId, msg: 'Venta pendiente descartada (NO se registró; sigue guardada y puedes recuperarla con restore_pending_sale).' });
+    },
+    {
+      name: 'dismiss_pending_sale',
+      description: 'Descarta una venta de ML EN ESPERA (de list_pending_ml_sales) SIN registrarla: la oculta del listado de pendientes pero NO la borra ni la registra como venta. Es reversible con restore_pending_sale. Úsalo cuando el usuario no quiere registrar esa venta pendiente.',
+      schema: z.object({ itemId: z.union([z.string(), z.number()]).describe('item_id de la publicación pendiente.') })
+    }
+  );
+
+  const restore_pending_sale = tool(
+    async (args) => {
+      const itemId = String(args.itemId);
+      state.dismissedPending = Array.isArray(state.dismissedPending) ? state.dismissedPending : [];
+      if (!state.dismissedPending.map(String).includes(itemId)) {
+        return j({ error: 'Esa venta pendiente no estaba descartada.' });
+      }
+      state.dismissedPending = state.dismissedPending.filter(x => String(x) !== itemId);
+      mark('dismissedPending');
+      ctx.did.push({ action: 'restore_pending_sale', itemId });
+      return j({ ok: true, restored: itemId, msg: 'Venta pendiente recuperada; vuelve a aparecer en list_pending_ml_sales.' });
+    },
+    {
+      name: 'restore_pending_sale',
+      description: 'Recupera una venta de ML pendiente que se había descartado con dismiss_pending_sale: la quita de dismissedPending para que vuelva a aparecer en list_pending_ml_sales.',
+      schema: z.object({ itemId: z.union([z.string(), z.number()]).describe('item_id de la publicación pendiente descartada.') })
+    }
+  );
+
+  // ===========================================================================
+  // Mapeos ML → producto — leer y re-mapear manualmente.
+  // ===========================================================================
+
+  const list_mappings = tool(
+    async () => {
+      const m = (state.mappings && typeof state.mappings === 'object') ? state.mappings : {};
+      return j(Object.keys(m).map(itemId => ({
+        item_id: itemId,
+        productId: m[itemId] && m[itemId].productId != null ? m[itemId].productId : null,
+        productName: (m[itemId] && m[itemId].productName) || null,
+        variantId: (m[itemId] && m[itemId].variantId != null) ? m[itemId].variantId : null,
+        variantLabel: (m[itemId] && m[itemId].variantLabel) || null,
+        title: (m[itemId] && m[itemId].title) || null
+      })));
+    },
+    {
+      name: 'list_mappings',
+      description: 'Lista los mapeos de publicaciones de Mercado Libre (item_id) a productos del CRM: qué producto (y variante) tiene asociada cada publicación. Úsalo antes de re-mapear con remap_item.',
+      schema: z.object({})
+    }
+  );
+
+  const remap_item = tool(
+    async (args) => {
+      const itemId = String(args.itemId);
+      const product = findProduct(args.productId);
+      if (!product) return j({ error: 'No existe un producto con ese id. Usa list_products para ver los ids.' });
+      let variant = null;
+      if (args.variantId != null) {
+        variant = domain.findVariant(product, args.variantId);
+        if (!variant) return j({ error: 'No existe esa variante en el producto.', variantes: variantSummary(product) });
+      } else if (product.hasVariants) {
+        return j({ error: 'Este producto maneja variantes; indica variantId para mapear la publicación a la variante correcta.', variantes: variantSummary(product) });
+      }
+      state.mappings = (state.mappings && typeof state.mappings === 'object') ? state.mappings : {};
+      const prev = state.mappings[itemId] || null;
+      state.mappings[itemId] = {
+        productId: product.id,
+        productName: product.name,
+        variantId: variant ? variant.id : null,
+        variantLabel: variant ? domain.variantLabelOf(variant) : '',
+        ...(prev && prev.title ? { title: prev.title } : {})
+      };
+      mark('mappings');
+      ctx.did.push({ action: 'remap_item', itemId, productId: product.id, variantId: variant ? variant.id : null });
+      return j({ ok: true, mapping: state.mappings[itemId], anterior: prev });
+    },
+    {
+      name: 'remap_item',
+      description: 'Re-mapea manualmente una publicación de Mercado Libre (item_id) a otro producto del CRM (y opcionalmente a una variante). Solo cambia el mapeo para futuras ventas; NO toca ventas ya registradas. Si el producto maneja variantes, debes indicar variantId.',
+      schema: z.object({
+        itemId: z.union([z.string(), z.number()]).describe('item_id de la publicación de ML.'),
+        productId: z.number().describe('id del producto del CRM al que apuntar.'),
+        variantId: z.union([z.string(), z.number()]).optional().describe('id de la variante (obligatorio si el producto maneja variantes; cópialo EXACTO de list_products).')
+      })
+    }
+  );
+
   return [
     query_sales, list_products, get_goal_progress, get_finance_summary,
     add_sale, delete_sale, add_product, edit_product, delete_product,
     manage_variant, ml_register_order, list_pending_ml_sales, register_pending_ml_sale,
     manage_task, save_memory, send_report,
     list_tasks, list_expenses, list_fixed_expenses, get_finance_config, list_channels, list_notifications,
-    manage_expense, manage_fixed_expense, set_goal, set_finance_config, manage_channel
+    manage_expense, manage_fixed_expense, set_goal, set_finance_config, manage_channel,
+    mark_notification_read, dismiss_notification, set_business_profile, regenerate_business_profile,
+    dismiss_pending_sale, restore_pending_sale, list_mappings, remap_item
   ];
 }
 

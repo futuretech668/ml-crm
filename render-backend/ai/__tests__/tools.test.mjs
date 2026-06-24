@@ -457,3 +457,171 @@ test('manage_channel — add y uso en add_sale.source', async () => {
   const venta = JSON.parse(await t.add_sale.invoke({ productId: 2, quantity: 1, source: 'Instagram' }));
   assert.equal(venta.sale.source, 'Instagram');
 });
+
+// ---- Validaciones endurecidas ----
+
+test('add_sale — rechaza cantidad 0/negativa sin mutar stock', async () => {
+  const state = goldenState();
+  const ctx = makeCtx(state);
+  const t = toolsByName(buildCrmTools(ctx));
+  await assert.rejects(() => t.add_sale.invoke({ productId: 2, quantity: 0 }));
+  await assert.rejects(() => t.add_sale.invoke({ productId: 2, quantity: -3 }));
+  assert.equal(state.sales.length, 3);            // no registró
+  assert.equal(state.products.find(p => p.id === 2).stock, 3); // stock intacto
+});
+
+test('add_product — rechaza precios/stock negativos', async () => {
+  const state = goldenState();
+  const t = toolsByName(buildCrmTools(makeCtx(state)));
+  await assert.rejects(() => t.add_product.invoke({ name: 'X', costPrice: -1, salePrice: 100, stock: 1 }));
+  await assert.rejects(() => t.add_product.invoke({ name: 'X', costPrice: 1, salePrice: 100, stock: -5 }));
+  assert.equal(state.products.length, 3);
+});
+
+test('manage_expense / manage_fixed_expense — rechazan monto negativo', async () => {
+  const state = goldenState();
+  const t = toolsByName(buildCrmTools(makeCtx(state)));
+  await assert.rejects(() => t.manage_expense.invoke({ action: 'add', nombre: 'X', monto: -100 }));
+  await assert.rejects(() => t.manage_fixed_expense.invoke({ action: 'add', nombre: 'Y', monto: -50 }));
+});
+
+// ---- set_goal: tipoMeta unidades ----
+
+test('set_goal — acepta tipoMeta unidades y se refleja en get_goal_progress', async () => {
+  const state = goldenState();
+  const ctx = makeCtx(state);
+  const t = toolsByName(buildCrmTools(ctx));
+  const r = JSON.parse(await t.set_goal.invoke({ objetivo: 10, tipoMeta: 'unidades' }));
+  assert.equal(r.ok, true);
+  assert.equal(state.goals.mensual.tipoMeta, 'unidades');
+  const g = JSON.parse(await t.get_goal_progress.invoke({}));
+  // Mes en curso (junio): ventas 101 (qty 2) + 102 (qty 3) = 5 unidades.
+  assert.equal(g.tipoMeta, 'unidades');
+  assert.equal(g.logrado, 5);
+});
+
+// ---- set_finance_config: IVA manual del SII por mes ----
+
+test('set_finance_config — fija ivaMensual de un mes sin pisar otros', async () => {
+  const state = goldenState();
+  state.finConfig.ivaMensual = { '2026-05': 1000 };
+  const ctx = makeCtx(state);
+  const t = toolsByName(buildCrmTools(ctx));
+  const r = JSON.parse(await t.set_finance_config.invoke({ ivaMensualMonto: 7500, ivaMensualMes: '2026-06' }));
+  assert.equal(r.ok, true);
+  assert.equal(state.finConfig.ivaMensual['2026-06'], 7500);
+  assert.equal(state.finConfig.ivaMensual['2026-05'], 1000); // no pisado
+  assert.ok(ctx.changed.has('finConfig'));
+});
+
+test('set_finance_config — rechaza ivaPct fuera de 0-100', async () => {
+  const state = goldenState();
+  const t = toolsByName(buildCrmTools(makeCtx(state)));
+  await assert.rejects(() => t.set_finance_config.invoke({ ivaPct: 150 }));
+  await assert.rejects(() => t.set_finance_config.invoke({ ivaPct: -5 }));
+});
+
+// ---- Notificaciones ----
+
+test('mark_notification_read / dismiss_notification', async () => {
+  const state = goldenState();
+  state.notifications = [
+    { id: 'n1', type: 'info', text: 'Aviso 1', read: false, createdAt: '2026-06-20T00:00:00.000Z' },
+    { id: 'n2', type: 'info', text: 'Aviso 2', read: false, createdAt: '2026-06-20T00:00:00.000Z' }
+  ];
+  const ctx = makeCtx(state);
+  const t = toolsByName(buildCrmTools(ctx));
+  const r = JSON.parse(await t.mark_notification_read.invoke({ id: 'n1' }));
+  assert.equal(r.ok, true);
+  assert.equal(state.notifications.find(x => x.id === 'n1').read, true);
+  assert.ok(ctx.changed.has('notifications'));
+  const d = JSON.parse(await t.dismiss_notification.invoke({ id: 'n2' }));
+  assert.equal(d.ok, true);
+  assert.equal(state.notifications.length, 1);
+  const bad = JSON.parse(await t.dismiss_notification.invoke({ id: 'nope' }));
+  assert.ok(bad.error);
+});
+
+// ---- Perfil de negocio ----
+
+test('set_business_profile / regenerate_business_profile', async () => {
+  const state = goldenState();
+  const ctx = makeCtx(state);
+  const t = toolsByName(buildCrmTools(ctx));
+  const s = JSON.parse(await t.set_business_profile.invoke({ text: 'Vende audio premium en Santiago.' }));
+  assert.equal(s.ok, true);
+  assert.equal(ctx.aiDoc.businessProfile.text, 'Vende audio premium en Santiago.');
+  assert.ok(ctx.aiDoc.businessProfile.updatedAt);
+  const empty = JSON.parse(await t.set_business_profile.invoke({ text: '   ' }));
+  assert.ok(empty.error);
+  const reg = JSON.parse(await t.regenerate_business_profile.invoke({}));
+  assert.equal(reg.ok, true);
+  assert.ok(reg.businessProfile.text.length > 0);
+  assert.ok(typeof reg.businessProfile.productCount === 'number');
+});
+
+// ---- Pendientes de ML: descartar / recuperar ----
+
+test('dismiss_pending_sale / restore_pending_sale', async () => {
+  const state = goldenState();
+  state.pendingMappings = [{ item_id: 'MLC9001', title: 'Lámpara', price: 15000, quantity: 1 }];
+  state.dismissedPending = [];
+  const ctx = makeCtx(state);
+  const t = toolsByName(buildCrmTools(ctx));
+  const d = JSON.parse(await t.dismiss_pending_sale.invoke({ itemId: 'MLC9001' }));
+  assert.equal(d.ok, true);
+  assert.ok(state.dismissedPending.map(String).includes('MLC9001'));
+  // No la registró como venta:
+  assert.equal(state.sales.length, 3);
+  // Ya no aparece en pendientes visibles:
+  const vis = JSON.parse(await t.list_pending_ml_sales.invoke({}));
+  assert.equal(vis.length, 0);
+  // Recuperar:
+  const r = JSON.parse(await t.restore_pending_sale.invoke({ itemId: 'MLC9001' }));
+  assert.equal(r.ok, true);
+  assert.equal(state.dismissedPending.length, 0);
+  const vis2 = JSON.parse(await t.list_pending_ml_sales.invoke({}));
+  assert.equal(vis2.length, 1);
+  // Descartar algo inexistente:
+  const bad = JSON.parse(await t.dismiss_pending_sale.invoke({ itemId: 'NADA' }));
+  assert.ok(bad.error);
+});
+
+// ---- Mapeos ML: listar y re-mapear ----
+
+test('list_mappings / remap_item', async () => {
+  const state = goldenState();
+  state.mappings = { MLC1: { productId: 1, productName: 'Audífonos Pro' } };
+  const ctx = makeCtx(state);
+  const t = toolsByName(buildCrmTools(ctx));
+  const list = JSON.parse(await t.list_mappings.invoke({}));
+  assert.equal(list.length, 1);
+  assert.equal(list[0].item_id, 'MLC1');
+  assert.equal(list[0].productId, 1);
+  // Re-mapear a otro producto:
+  const r = JSON.parse(await t.remap_item.invoke({ itemId: 'MLC1', productId: 2 }));
+  assert.equal(r.ok, true);
+  assert.equal(state.mappings.MLC1.productId, 2);
+  assert.equal(state.mappings.MLC1.productName, 'Cargador USB-C');
+  assert.ok(ctx.changed.has('mappings'));
+  // No toca ventas ya registradas:
+  assert.ok(state.sales.some(s => s.productId === 1));
+  // Producto inexistente:
+  const bad = JSON.parse(await t.remap_item.invoke({ itemId: 'MLC1', productId: 9999 }));
+  assert.ok(bad.error);
+});
+
+test('remap_item — exige variantId si el producto maneja variantes', async () => {
+  const state = goldenState();
+  state.products.push(variantProduct()); // id 50
+  state.mappings = { MLC1: { productId: 1, productName: 'Audífonos Pro' } };
+  const ctx = makeCtx(state);
+  const t = toolsByName(buildCrmTools(ctx));
+  const need = JSON.parse(await t.remap_item.invoke({ itemId: 'MLC1', productId: 50 }));
+  assert.ok(need.error);
+  assert.equal(need.variantes.length, 2);
+  const okv = JSON.parse(await t.remap_item.invoke({ itemId: 'MLC1', productId: 50, variantId: 501 }));
+  assert.equal(okv.ok, true);
+  assert.equal(state.mappings.MLC1.variantId, 501);
+  assert.equal(state.mappings.MLC1.variantLabel, 'Rojo / M');
+});

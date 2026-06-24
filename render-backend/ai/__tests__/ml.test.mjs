@@ -135,6 +135,38 @@ test('confirm-gate — firma cambiada entre propuesta y ejecución re-propone', 
   assert.equal(client._calls.filter(c => c.m === 'PUT').length, 0);
 });
 
+test('confirm-gate — token CADUCA tras varios turnos (re-propone, no ejecuta)', async () => {
+  const client = fakeClient({});
+  const ctx = mlCtx(client);
+  const t = toolMap(ctx);
+  // Propuesta en el turno 1 → TOK1.
+  const prop = JSON.parse(await t.ml_answer_question.invoke({ questionId: '101', text: 'Sí.' }));
+  assert.equal(prop.confirmToken, 'TOK1');
+  // Muchos turnos después (> TTL de 5), el token ya caducó → re-propone con token nuevo.
+  ctx.currentTurn = 10;
+  const exec = JSON.parse(await t.ml_answer_question.invoke({ questionId: '101', text: 'Sí.', confirmToken: 'TOK1' }));
+  assert.equal(exec.proposed, true);
+  assert.notEqual(exec.confirmToken, 'TOK1');
+  assert.equal(client._calls.filter(c => c.m === 'POST').length, 0);
+});
+
+test('confirm-gate — pendingConfirms se poda (caducados fuera, cap a 20)', async () => {
+  const client = fakeClient({});
+  const ctx = mlCtx(client);
+  const t = toolMap(ctx);
+  // Genera 30 propuestas distintas a lo largo de turnos consecutivos.
+  for (let i = 1; i <= 30; i++) {
+    ctx.currentTurn = i;
+    await t.ml_update_listing.invoke({ itemId: 'MLC' + i, price: 1000 + i });
+  }
+  // Tras la poda, nunca quedan más de 20 tokens pendientes vivos.
+  assert.ok(ctx.thread.pendingConfirms.length <= 20);
+  // Y los que quedan están dentro del TTL respecto al último turno.
+  for (const p of ctx.thread.pendingConfirms) {
+    assert.ok((ctx.currentTurn - p.issuedAtTurn) <= 5);
+  }
+});
+
 // ctx enriquecido para ml_register_order_by_id (necesita state/changed/nextId/fechas).
 function mlCtxFull(client, state) {
   let id = 7000;

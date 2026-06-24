@@ -93,7 +93,7 @@ Es la op por defecto si se omite `op`.
 |---|---|---|
 | `message` | sí | Texto del usuario. Vacío → `400 no_message`. |
 | `threadId` | no | Si falta o no existe, el servidor crea uno nuevo y lo devuelve. |
-| `confirmToken` | no | Solo para **confirmar** una acción de ML propuesta (ver abajo). |
+| `confirmToken` | no | **Informativo / opcional.** El servidor lo acepta en el body por compatibilidad pero NO lo lee directamente: el `confirmToken` se reenvía al LLM como parte del mensaje y el modelo lo pasa como argumento de la herramienta de ML (`ml_answer_question`/`ml_update_listing`/`ml_send_message`) en el turno de confirmación. Para confirmar basta con un `send` posterior (mismo `threadId`) cuyo `message` incluya el token (p. ej. "confirmo, token c_ab12cd34") o, más simple, "confirmo" — el modelo ya tiene el token de su turno anterior. Ver el confirm-gate abajo. |
 
 ### Response `200`
 ```json
@@ -133,6 +133,10 @@ Es la op por defecto si se omite `op`.
 - `{ action: "ml_answer_question", questionId }`
 - `{ action: "ml_update_listing", itemId, cambios }`
 - `{ action: "ml_send_message", orderId }`
+- `{ action: "mark_notification_read", id }` · `{ action: "dismiss_notification", id }`
+- `{ action: "set_business_profile" }` · `{ action: "regenerate_business_profile" }`
+- `{ action: "dismiss_pending_sale", itemId }` · `{ action: "restore_pending_sale", itemId }`
+- `{ action: "remap_item", itemId, productId, variantId }`
 
 #### `proposed[]` — confirm-gate de acciones de Mercado Libre (HACIA AFUERA)
 Las acciones que afectan a compradores reales (`ml_answer_question`,
@@ -149,14 +153,23 @@ piden: el servidor devuelve una **propuesta** con un `token`. Cada item:
 
 **UI de aprobación:** por cada `proposed[]`, muestra una tarjeta con el preview
 (`text`/`cambios`) y botones **Confirmar / Cancelar**.
-- **Confirmar** → reenvía un `send` con el MISMO `threadId` y `confirmToken: <token>`
-  (un mensaje del usuario como "confirmo"). El servidor ejecuta SOLO si pasó un
-  turno humano real desde la propuesta y la firma de la acción no cambió; al
-  ejecutar, la acción aparece en `did[]`.
+- **Confirmar** → reenvía un `send` con el MISMO `threadId` (un mensaje del usuario
+  como "confirmo"). El modelo vuelve a llamar la herramienta de ML pasando el
+  `confirmToken` que recibió en su turno anterior. El servidor ejecuta SOLO si: el
+  token existe, pasó un turno humano real desde la propuesta, la firma de la acción
+  no cambió, y el token **no ha caducado**; al ejecutar, la acción aparece en `did[]`.
 - **Cancelar** → no reenvíes nada (la propuesta caduca sola).
 
 > Importante: confirmar requiere **otro POST `send`** (turno posterior). El mismo
 > turno nunca puede auto-aprobarse.
+
+> **Caducidad del token (real):** un `confirmToken` es válido por un máximo de **5
+> turnos** desde que se propuso (`currentTurn - issuedAtTurn ≤ 5`). Pasado ese
+> margen, el servidor lo poda y vuelve a **proponer** en vez de ejecutar (el cliente
+> recibirá un nuevo `proposed[]` con un token nuevo). La lista de tokens pendientes
+> por hilo se poda en cada turno (se eliminan los caducados) y se capa a los **20**
+> más recientes, de modo que nunca crece sin límite. El token va por hilo: cancelar
+> es simplemente no volver a confirmarlo.
 
 ---
 
@@ -229,3 +242,32 @@ cronológico (máx ~40 turnos). Si el hilo no existe, `messages` es `[]`.
 
 > El cliente ya NO arma el system prompt ni el blob de stats: el servidor hace el
 > grounding. `/api/ai-proxy` (visión) queda intacto y se sigue usando aparte.
+
+---
+
+## Herramientas nuevas de MIA (escrituras del CRM, ejecución directa)
+
+Estas herramientas son del CRM (datos propios del usuario) — se ejecutan directo y
+aparecen en `did[]` (no son confirm-gated). Todas validan con Zod y devuelven errores
+en español. Ninguna borra ventas/productos del usuario.
+
+| Tool | Args | Qué hace |
+|---|---|---|
+| `mark_notification_read` | `id` (string\|number) | Marca `notifications[].read = true` (no la quita). Error si el id no existe. |
+| `dismiss_notification` | `id` (string\|number) | Quita la notificación del array `notifications`. Error si el id no existe. |
+| `set_business_profile` | `text` (string) | Fija el texto del `businessProfile` durable (aiDoc), con `updatedAt`. Error si `text` vacío. |
+| `regenerate_business_profile` | — | Reconstruye `businessProfile` desde los datos del CRM (`domain.buildBusinessProfile`). |
+| `dismiss_pending_sale` | `itemId` (string\|number) | Añade el item_id a `dismissedPending` (oculta una venta de ML EN ESPERA sin registrarla; reversible). Error si no hay pendiente con ese item_id. |
+| `restore_pending_sale` | `itemId` (string\|number) | Quita el item_id de `dismissedPending` (vuelve a list_pending_ml_sales). Error si no estaba descartada. |
+| `list_mappings` | — | Lectura: lista `mappings{}` (item_id → producto/variante). |
+| `remap_item` | `itemId` (string\|number), `productId` (number), `variantId?` (string\|number) | Re-mapea una publicación de ML a otro producto/variante en `mappings`. NO toca ventas ya registradas. Exige `variantId` si el producto maneja variantes. Error si el producto/variante no existe. |
+
+### Cambios en herramientas existentes
+- `set_goal.tipoMeta` ahora acepta `"unidades"` además de `"ganancia"` y `"ventas"`
+  (alineado con `domain.computeGoalProgress`: `ganancia`=profit, `ventas`=ingresos/totalPrice,
+  `unidades`=cantidad). `objetivo` no puede ser negativo.
+- `set_finance_config` ahora puede fijar el **IVA manual del SII por mes** vía
+  `ivaMensualMonto` + `ivaMensualMes` (YYYY-MM), con merge sin pisar otros meses; `ivaPct`
+  acotado a 0–100.
+- Validaciones endurecidas: `add_sale.quantity` entero positivo; `add_product`
+  `costPrice`/`salePrice`/`stock` ≥ 0; `manage_expense.monto` y `manage_fixed_expense.monto` ≥ 0.

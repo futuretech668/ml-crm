@@ -74,17 +74,37 @@ function normListing(it) {
 
 // ---- Confirm-gate (dos fases, server-side) ----
 // sig: firma estable de la acción+args. confirmToken: presente => intento de ejecución.
+//
+// Caducidad y poda: un token solo es válido durante CONFIRM_TTL_TURNS turnos
+// desde que se emitió (currentTurn - issuedAtTurn <= TTL). Al procesar, se podan
+// los tokens caducados y, como respaldo, se capa la lista a MAX_PENDING_CONFIRMS
+// (los más recientes) — mismo patrón que el cap de memory en tools.mjs.
+const CONFIRM_TTL_TURNS = 5;
+const MAX_PENDING_CONFIRMS = 20;
+
+function prunePendingConfirms(pend, currentTurn) {
+  // Quita los caducados (más viejos que TTL) y, si aún sobran, deja los últimos N.
+  let live = pend.filter(p => (currentTurn - (p.issuedAtTurn || 0)) <= CONFIRM_TTL_TURNS);
+  if (live.length > MAX_PENDING_CONFIRMS) live = live.slice(-MAX_PENDING_CONFIRMS);
+  return live;
+}
+
 async function confirmGate(ctx, sig, confirmToken, preview, execFn) {
-  const pend = ctx.thread.pendingConfirms = ctx.thread.pendingConfirms || [];
+  let pend = ctx.thread.pendingConfirms = ctx.thread.pendingConfirms || [];
+  // Poda al inicio para que la lista no crezca sin límite y los tokens caduquen solos.
+  pend = ctx.thread.pendingConfirms = prunePendingConfirms(pend, ctx.currentTurn);
   if (confirmToken) {
     const found = pend.find(p => p.token === confirmToken);
-    // Solo ejecuta si: token existe, la firma coincide con los args actuales, y
-    // pasó un turno HUMANO real desde la propuesta (issuedAtTurn < turno actual).
-    if (found && found.actionSig === sig && found.issuedAtTurn < ctx.currentTurn) {
+    // Solo ejecuta si: token existe (y no caducó — prune ya lo habría quitado), la
+    // firma coincide con los args actuales, y pasó un turno HUMANO real desde la
+    // propuesta (issuedAtTurn < turno actual) y sigue dentro del TTL.
+    if (found && found.actionSig === sig &&
+        found.issuedAtTurn < ctx.currentTurn &&
+        (ctx.currentTurn - found.issuedAtTurn) <= CONFIRM_TTL_TURNS) {
       ctx.thread.pendingConfirms = pend.filter(p => p.token !== confirmToken);
       return execFn();
     }
-    // token forjado / firma cambiada / mismo turno → NO ejecuta, re-propone.
+    // token forjado / firma cambiada / mismo turno / caducado → NO ejecuta, re-propone.
   }
   const token = ctx.mintToken();
   pend.push({ token, actionSig: sig, issuedAtTurn: ctx.currentTurn });
@@ -94,7 +114,8 @@ async function confirmGate(ctx, sig, confirmToken, preview, execFn) {
     confirmToken: token,
     preview,
     msg: 'Esta acción afecta a un cliente real. Muéstrale al usuario EXACTAMENTE esto y pide confirmación. ' +
-      'Para ejecutarla, vuelve a llamar esta misma herramienta con confirmToken="' + token + '" SOLO cuando el usuario confirme (en un mensaje posterior).'
+      'Para ejecutarla, vuelve a llamar esta misma herramienta con confirmToken="' + token + '" SOLO cuando el usuario confirme (en un mensaje posterior). ' +
+      'El token caduca tras unos pocos turnos: si pasó mucho, vuelve a proponer.'
   });
 }
 
