@@ -184,6 +184,11 @@ export function buildMlTools(ctx) {
         const unitPrice = it.unit_price || 0;
         const saleFee = (typeof it.sale_fee === 'number') ? it.sale_fee : undefined;
         const listingTypeId = it.listing_type_id;
+        // Color/talla EXACTO que ML manda en variation_attributes: más confiable que el
+        // título para resolver la variante. Si no viene, se cae al título como antes.
+        const mlVarText = ((it.item && it.item.variation_attributes) || [])
+          .map(a => a && (a.value_name || a.value_id)).filter(Boolean).join(' ');
+        const vText = mlVarText || title;
 
         // Resolver producto: mapeo previo → auto-mapeo por nombre (>80%).
         let mapping = state.mappings[itemId];
@@ -194,7 +199,7 @@ export function buildMlTools(ctx) {
             product = auto; state.mappings[itemId] = { productId: auto.id, productName: auto.name }; mark('mappings');
           } else if (auto && auto.hasVariants) {
             // Producto claro con variantes: solo auto-mapear si la variante es CLARA.
-            const av = domain.suggestVariant(auto, title);
+            const av = domain.suggestVariant(auto, vText);
             if (av) { product = auto; mapping = { productId: auto.id, productName: auto.name, variantId: av.id, variantLabel: domain.variantLabelOf(av) }; state.mappings[itemId] = mapping; mark('mappings'); }
             else {
               // variante ambigua -> a pendiente para que se elija
@@ -205,14 +210,14 @@ export function buildMlTools(ctx) {
         }
         if (!product) {
           const sug = domain.suggestProduct(state.products, title, 0.4);
-          const sv = (sug && sug.hasVariants) ? domain.suggestVariant(sug, title) : null;
+          const sv = (sug && sug.hasVariants) ? domain.suggestVariant(sug, vText) : null;
           pendingItems.push({ itemId, title, unitPrice, saleFee: saleFee != null ? saleFee : null, quantity: qty, sugerencia: sug ? { productId: sug.id, name: sug.name, variantId: sv ? sv.id : null, variantLabel: sv ? domain.variantLabelOf(sv) : null, needsVariant: !!sug.hasVariants } : null });
           continue;
         }
         // Variante para el descuento/venta: del mapeo, o resolver por título si es clara.
         let variantId = (mapping && mapping.variantId != null) ? mapping.variantId : null;
         if (product.hasVariants && variantId == null) {
-          const av = domain.suggestVariant(product, title);
+          const av = domain.suggestVariant(product, vText);
           if (av) { variantId = av.id; state.mappings[itemId] = { productId: product.id, productName: product.name, variantId: av.id, variantLabel: domain.variantLabelOf(av) }; mark('mappings'); }
           else {
             pendingItems.push({ itemId, title, unitPrice, saleFee: saleFee != null ? saleFee : null, quantity: qty, sugerencia: { productId: product.id, name: product.name, variantId: null, variantLabel: null, needsVariant: true } });

@@ -163,7 +163,7 @@ test('add_sale variante — descuenta la variante y product.stock = Σ (persiste
   assert.equal(r.sale.salePrice, 8000);         // precio de la variante
   assert.equal(r.sale.costPrice, 3000);
   assert.equal(r.sale.variantId, 501);
-  assert.equal(r.sale.variantLabel, 'Rojo / M');
+  assert.equal(r.sale.variantLabel, 'color Rojo / talla M');
   assert.equal(r.sale.profit, 16000 - 6000);    // 10000 (sin comisión ni envío)
   assert.equal(domain.findVariant(p, 501).stock, 2); // 4 - 2
   assert.equal(p.stock, 5);                      // 2 + 3
@@ -445,6 +445,35 @@ test('register_pending_ml_sale — producto con variantes descuenta la variante 
   assert.equal(r.ventas[0].costPrice, 3000);      // costo del producto base (forma de la app)
 });
 
+test('register_pending_ml_sale — resuelve la variante por TEXTO en lenguaje natural', async () => {
+  const state = goldenState();
+  state.products.push(variantProduct());           // Rojo/M=501, Azul/L=502
+  state.pendingMappings = [{
+    item_id: 'MLC-VAR2', title: 'Polera', price: 9000, quantity: 2,
+    suggestedVariantId: null,                       // la sync NO dejó variante sugerida
+    heldSales: [{ saleId: 5550002, orderId: '951', price: 9000, quantity: 2, commissionPerUnit: 1000, shippingTotal: 0, feeSource: 'sale_fee', date: '2026-06-18', time: '12:00' }],
+    createdAt: '2026-06-18T12:00:00.000Z'
+  }];
+  state.dismissedPending = [];
+  const ctx = makeCtx(state);
+  const t = toolsByName(buildCrmTools(ctx));
+  // El usuario solo dijo el color/talla en palabras (con prefijos): se resuelve sola a la 502.
+  const r = JSON.parse(await t.register_pending_ml_sale.invoke({ itemId: 'MLC-VAR2', productId: 50, variante: 'color azul / talla L' }));
+  assert.equal(r.registradas, 1);
+  assert.equal(r.ventas[0].variantId, 502);
+  const p = state.products.find(x => x.id === 50);
+  assert.equal(p.variants.find(v => v.id === 502).stock, 1); // 3 − 2
+});
+
+test('resolveVariant — por id exacto, por texto y ambigüedad', () => {
+  const p = variantProduct();                       // Rojo/M=501, Azul/L=502
+  assert.equal(domain.resolveVariant(p, 501).id, 501);          // por id
+  assert.equal(domain.resolveVariant(p, 'azul l').id, 502);     // por texto color+talla
+  assert.equal(domain.resolveVariant(p, 'color rojo / talla m').id, 501); // con prefijos
+  assert.equal(domain.resolveVariant(p, 'rojo'), null);         // ambigua: falta la talla -> pregunta
+  assert.equal(domain.resolveVariant(p, ''), null);             // vacío
+});
+
 test('register_pending_ml_sale — sin producto da error claro en español', async () => {
   const state = pendingState();
   const ctx = makeCtx(state);
@@ -721,5 +750,5 @@ test('remap_item — exige variantId si el producto maneja variantes', async () 
   const okv = JSON.parse(await t.remap_item.invoke({ itemId: 'MLC1', productId: 50, variantId: 501 }));
   assert.equal(okv.ok, true);
   assert.equal(state.mappings.MLC1.variantId, 501);
-  assert.equal(state.mappings.MLC1.variantLabel, 'Rojo / M');
+  assert.equal(state.mappings.MLC1.variantLabel, 'color Rojo / talla M');
 });

@@ -5758,11 +5758,11 @@
         }
 
         // ===== VARIANTES: helpers de datos y render (AGENTE 2 y 3) =====
-        // Etiqueta legible de una variante: "Rojo / M", "Rojo" o "M".
+        // Etiqueta legible de una variante con prefijo del atributo: "color Rojo / talla M", "color Rojo" o "talla M".
         function variantLabelOf(v){
             var parts = [];
-            if (v && v.color) parts.push(v.color);
-            if (v && v.talla) parts.push(v.talla);
+            if (v && v.color) parts.push('color ' + v.color);
+            if (v && v.talla) parts.push('talla ' + v.talla);
             return parts.join(' / ');
         }
         window.variantLabelOf = variantLabelOf;

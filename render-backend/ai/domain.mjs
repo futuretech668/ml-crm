@@ -475,11 +475,12 @@ export function buildProductPayload(args, opts) {
 // Variantes y stock (lógica PORTADA de index.html para ser byte-idéntica).
 // ---------------------------------------------------------------------------
 
-// Etiqueta legible de una variante: "color / talla" (index.html:5640-5645).
+// Etiqueta legible de una variante con prefijo del atributo: "color Negro / talla M",
+// "color Negro" o "talla M" (index.html:5762-5767, debe quedar idéntica).
 export function variantLabelOf(v) {
   const parts = [];
-  if (v && v.color) parts.push(v.color);
-  if (v && v.talla) parts.push(v.talla);
+  if (v && v.color) parts.push('color ' + v.color);
+  if (v && v.talla) parts.push('talla ' + v.talla);
   return parts.join(' / ');
 }
 
@@ -508,6 +509,17 @@ export function buildVariantPayload(args, opts) {
 export function findVariant(product, variantId) {
   if (!product || !Array.isArray(product.variants)) return null;
   return product.variants.find(v => String(v.id) === String(variantId)) || null;
+}
+
+// Resuelve una variante a partir de un id EXACTO o de texto en lenguaje natural del
+// usuario ("negro", "color negro / talla M", "negro m"). Primero intenta por id; si no,
+// usa el mismo matcher por color/talla de suggestVariant. Devuelve la variante o null si
+// no se puede determinar sin ambigüedad (el llamador debe entonces preguntar al usuario).
+export function resolveVariant(product, q) {
+  if (q == null || q === '') return null;
+  const byId = findVariant(product, q);
+  if (byId) return byId;
+  return suggestVariant(product, String(q));
 }
 
 // stock_total = suma de las variantes; marca agotada la que llega a 0 (index.html:5649-5655).

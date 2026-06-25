@@ -445,11 +445,16 @@ export function buildCrmTools(ctx) {
       // resuelta/sugerida en el pending. Si no se puede resolver, pedirla.
       let variantId = null;
       if (product.hasVariants) {
-        variantId = (args.variantId != null) ? args.variantId
-          : (pending.suggestedVariantId != null ? pending.suggestedVariantId : null);
-        if (variantId == null || !domain.findVariant(product, variantId)) {
-          return j({ error: 'El producto maneja variantes. Indica variantId (cuál color/talla se vendió).', variantes: variantSummary(product) });
+        // Resolución flexible: id exacto > texto en lenguaje natural (args.variante,
+        // ej. "color negro") > la variante ya sugerida en el pendiente (que ahora la
+        // sync rellena con el color/talla EXACTO que manda ML en variation_attributes).
+        let v = (args.variantId != null) ? domain.findVariant(product, args.variantId) : null;
+        if (!v && args.variante) v = domain.resolveVariant(product, args.variante);
+        if (!v && pending.suggestedVariantId != null) v = domain.findVariant(product, pending.suggestedVariantId);
+        if (!v) {
+          return j({ error: 'El producto maneja variantes y no pude determinar cuál se vendió. Dime el color/talla en palabras (campo "variante", ej. "color negro") o el variantId exacto.', variantes: variantSummary(product) });
         }
+        variantId = v.id;
       }
       state.sales = state.sales || [];
       const built = domain.buildMlSalesFromPending(pending, product, {
@@ -484,7 +489,8 @@ export function buildCrmTools(ctx) {
       schema: z.object({
         itemId: z.union([z.string(), z.number()]).describe('item_id de la publicación pendiente (de list_pending_ml_sales).'),
         productId: z.number().describe('id del producto del CRM al que corresponde (créalo antes si no existe).'),
-        variantId: z.union([z.string(), z.number()]).optional().describe('si el producto maneja variantes, id de la variante (color/talla) vendida (cópialo EXACTO de list_products; suele ser texto, ej. "v0-Negro"). Si no la das, se usa la sugerida del pending.')
+        variante: z.string().optional().describe('color/talla EN PALABRAS de lo que se vendió, ej. "negro", "color negro" o "color negro / talla M". Pasa lo que dijo el usuario; se resuelve sola a la variante. Es la forma natural (no necesitas el variantId).'),
+        variantId: z.union([z.string(), z.number()]).optional().describe('alternativa exacta a "variante": id de la variante (de list_products, ej. "v0-Negro"). Si no das ninguno, se usa la variante que ML ya identificó en el pendiente.')
       })
     }
   );
