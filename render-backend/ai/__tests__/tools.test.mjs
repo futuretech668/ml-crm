@@ -565,6 +565,21 @@ test('set_goal — fija la meta del mes', async () => {
   assert.ok(ctx.changed.has('goals'));
 });
 
+test('set_goal — meta de un mes distinto al actual incluye aviso', async () => {
+  const state = goldenState();
+  const ctx = makeCtx(state); // today() = 2026-06-20 → mes actual 2026-06
+  const t = toolsByName(buildCrmTools(ctx));
+  const r = JSON.parse(await t.set_goal.invoke({ objetivo: 500000, mes: '2026-07' }));
+  assert.equal(r.ok, true);
+  assert.equal(state.goals.mensual.mes, '2026-07');
+  assert.ok(r.aviso, 'debe incluir aviso cuando la meta no es del mes en curso');
+  assert.match(r.aviso, /2026-07/);
+  assert.match(r.aviso, /mes actual/);
+  // Sanidad: la meta del mes en curso NO trae aviso.
+  const r2 = JSON.parse(await t.set_goal.invoke({ objetivo: 500000, mes: '2026-06' }));
+  assert.equal(r2.aviso, undefined);
+});
+
 test('set_finance_config — IVA y publicidad del mes', async () => {
   const state = goldenState();
   const ctx = makeCtx(state);

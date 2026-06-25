@@ -19,6 +19,16 @@ import * as domain from './domain.mjs';
 
 const j = (o) => JSON.stringify(o);
 
+// Acota dismissedPending para evitar crecimiento ilimitado: conserva solo los últimos
+// N item_ids descartados/registrados. Los recientes son los relevantes para el cron
+// (ml-sync.js) que decide re-encolar; los más viejos ya no aparecen como pendientes.
+const DISMISSED_CAP = 500;
+const capDismissed = (state) => {
+  if (Array.isArray(state.dismissedPending) && state.dismissedPending.length > DISMISSED_CAP) {
+    state.dismissedPending = state.dismissedPending.slice(-DISMISSED_CAP);
+  }
+};
+
 export function buildCrmTools(ctx) {
   const state = ctx.state;
   const mark = (f) => ctx.changed.add(f);
@@ -478,7 +488,13 @@ export function buildCrmTools(ctx) {
       state.mappings[itemId] = { productId: product.id, productName: product.name, title: pending.title, variantId: _mv ? _mv.id : null, variantLabel: _mv ? domain.variantLabelOf(_mv) : '' };
       state.pendingMappings = (state.pendingMappings || []).filter(p => String(p.item_id) !== itemId);
       state.dismissedPending = Array.isArray(state.dismissedPending) ? state.dismissedPending : [];
+      // LOAD-BEARING: agregar el itemId a dismissedPending NO es redundante con quitarlo de
+      // pendingMappings. El cron (ml-sync.js:328) re-retiene una publicación si
+      // dismissed.has(itemId) && !mappings[itemId]; aquí SÍ creamos mappings[itemId] arriba,
+      // pero mantener el itemId en dismissedPending es la defensa para que el cron jamás
+      // vuelva a re-encolar esta venta ya registrada aunque el mapeo se borre/remapee.
       if (!state.dismissedPending.map(String).includes(itemId)) state.dismissedPending.push(itemId);
+      capDismissed(state); // acota el crecimiento ilimitado de dismissedPending
       mark('sales'); mark('products'); mark('mappings'); mark('pendingMappings'); mark('dismissedPending');
       ctx.did.push({ action: 'register_pending_ml_sale', itemId, productName: product.name, registradas: nuevas.length });
       return j({ ok: true, registradas: nuevas.length, ventas: nuevas, mapeado: { itemId, productId: product.id } });
@@ -762,7 +778,15 @@ export function buildCrmTools(ctx) {
       };
       mark('goals');
       ctx.did.push({ action: 'set_goal', objetivo: state.goals.mensual.objetivo, tipoMeta: state.goals.mensual.tipoMeta });
-      return j({ ok: true, goal: state.goals.mensual });
+      // Aviso si la meta NO es del mes en curso: computeGoalProgress solo refleja el mes
+      // actual (devuelve null en otro caso → get_goal_progress responde sinMeta:true). Sin
+      // este aviso, MIA fijaría la meta y luego diría "no tienes meta" sin explicación.
+      const mesActual = ctx.today().slice(0, 7);
+      const res = { ok: true, goal: state.goals.mensual };
+      if (mes !== mesActual) {
+        res.aviso = 'La meta es para ' + mes + ', distinto del mes en curso (' + mesActual + '); get_goal_progress solo refleja el mes actual.';
+      }
+      return j(res);
     },
     {
       name: 'set_goal',
@@ -925,6 +949,7 @@ export function buildCrmTools(ctx) {
       if (!exists) return j({ error: 'No hay una venta de ML en espera con ese item_id. Usa list_pending_ml_sales para ver las pendientes.' });
       state.dismissedPending = Array.isArray(state.dismissedPending) ? state.dismissedPending : [];
       if (!state.dismissedPending.map(String).includes(itemId)) state.dismissedPending.push(itemId);
+      capDismissed(state); // acota el crecimiento ilimitado de dismissedPending
       mark('dismissedPending');
       ctx.did.push({ action: 'dismiss_pending_sale', itemId });
       return j({ ok: true, dismissed: itemId, msg: 'Venta pendiente descartada (NO se registró; sigue guardada y puedes recuperarla con restore_pending_sale).' });
