@@ -10,15 +10,15 @@ Esta guía está escrita para ti, el vendedor. No necesitas saber nada técnico.
 
 ## Índice
 
-- [C1 — Inicio y cuenta](#c1--inicio-y-cuenta)
+- [Inicio y cuenta](#inicio-y-cuenta)
   - [Crear tu cuenta](#crear-tu-cuenta)
   - [Verificar tu correo](#verificar-tu-correo)
-  - [Iniciar sesión](#iniciar-sesión)
+  - [Iniciar y cerrar sesión](#iniciar-sesión)
   - [Recuperar tu contraseña](#recuperar-tu-contraseña)
   - [Conectar Mercado Libre](#conectar-mercado-libre)
   - [Qué pasa en la primera sincronización](#qué-pasa-en-la-primera-sincronización)
   - [El menú de NexSell](#el-menú-de-nexsell)
-- [C2 — MIA, el copiloto IA](#c2--mia-el-copiloto-ia)
+- [MIA, el copiloto IA](#mia-el-copiloto-ia)
   - [Qué es MIA](#qué-es-mia)
   - [Cómo abrir el chat](#cómo-abrir-el-chat)
   - [Ejemplos reales de preguntas](#ejemplos-reales-de-preguntas)
@@ -26,14 +26,14 @@ Esta guía está escrita para ti, el vendedor. No necesitas saber nada técnico.
   - [Ver y resolver ventas pendientes con MIA](#ver-y-resolver-ventas-pendientes-con-mia)
   - [Cuando MIA pide confirmación (acciones hacia el comprador)](#cuando-mia-pide-confirmación-acciones-hacia-el-comprador)
   - [Historial y memoria](#historial-y-memoria)
-- [C3 — Ventas de Mercado Libre](#c3--ventas-de-mercado-libre)
+- [Ventas de Mercado Libre](#ventas-de-mercado-libre)
   - [La sincronización automática](#la-sincronización-automática)
   - [Ventas "en espera"](#ventas-en-espera)
   - [Resolver una venta en espera paso a paso](#resolver-una-venta-en-espera-paso-a-paso)
   - [Conflicto de nombre de producto](#conflicto-de-nombre-de-producto)
   - [Registrar una venta de ML por número de pedido](#registrar-una-venta-de-ml-por-número-de-pedido)
   - [Agregar una venta de un día pasado](#agregar-una-venta-de-un-día-pasado)
-- [C4 — Tu CRM día a día](#c4--tu-crm-día-a-día)
+- [Tu CRM día a día](#tu-crm-día-a-día)
   - [Productos: crear, editar, archivar](#productos-crear-editar-archivar)
   - [Variantes (color y talla)](#variantes-color-y-talla)
   - [Registrar una venta manual](#registrar-una-venta-manual)
@@ -44,17 +44,18 @@ Esta guía está escrita para ti, el vendedor. No necesitas saber nada técnico.
   - [IVA y publicidad](#iva-y-publicidad)
   - [Canales de venta](#canales-de-venta)
   - [Agenda y tareas](#agenda-y-tareas)
-- [C5 — Configuración y solución de problemas](#c5--configuración-y-solución-de-problemas)
+- [Configuración y solución de problemas](#configuración-y-solución-de-problemas)
   - [Tu cuenta y correo](#tu-cuenta-y-correo)
   - [Perfil y "Mi negocio"](#perfil-y-mi-negocio)
   - [Reportes por correo](#reportes-por-correo)
   - [Exportar e importar datos](#exportar-e-importar-datos)
   - [Preguntas frecuentes](#preguntas-frecuentes)
   - [Soluciones a problemas comunes](#soluciones-a-problemas-comunes)
+  - [Contacto y soporte](#contacto-y-soporte)
 
 ---
 
-## C1 — Inicio y cuenta
+## Inicio y cuenta
 
 ### Crear tu cuenta
 
@@ -88,6 +89,10 @@ Por seguridad, tu cuenta se activa solo cuando confirmas que el correo es tuyo.
 
 Como tus datos están en la nube, puedes entrar desde el teléfono, el computador o el navegador que quieras y siempre verás la misma información actualizada.
 
+**Cerrar sesión:** al pie del menú lateral aparece tu **chip de cuenta** (con el nombre de tu empresa). Tócalo y elige **Cerrar sesión** para salir. Tus datos quedan guardados en la nube; vuelves a entrar cuando quieras con tu correo y contraseña.
+
+[SCREENSHOT: chip de cuenta al pie del menú con la opción "Cerrar sesión"]
+
 ### Recuperar tu contraseña
 
 Si olvidaste tu clave, toca **¿Olvidaste tu contraseña?** en la pantalla de inicio:
@@ -109,14 +114,14 @@ Para desconectar, vuelve a la misma pestaña y toca **Desconectar** (botón rojo
 
 [SCREENSHOT: pestaña "Mercado Libre" en Configuración con el botón "Conectar con Mercado Libre"]
 
-> Solo se piden permisos de **lectura** de tus ventas, preguntas y publicaciones. NexSell no toca tus publicaciones ni responde a tus compradores por su cuenta: eso solo ocurre si tú se lo pides a MIA y lo confirmas (ver [C2](#cuando-mia-pide-confirmación-acciones-hacia-el-comprador)).
+> Solo se piden permisos de **lectura** de tus ventas, preguntas y publicaciones. NexSell no toca tus publicaciones ni responde a tus compradores por su cuenta: eso solo ocurre si tú se lo pides a MIA y lo confirmas (ver [Cuando MIA pide confirmación](#cuando-mia-pide-confirmación-acciones-hacia-el-comprador)).
 
 ### Qué pasa en la primera sincronización
 
 Apenas conectas Mercado Libre, NexSell revisa tus pedidos pagados de los **últimos 30 días** y los empieza a registrar:
 
 - Si una publicación **coincide claramente** con un producto que ya tienes en tu catálogo (más del 80% del nombre), NexSell la asocia sola y registra la venta directo, con su comisión y envío reales.
-- Si una publicación **no calza** con ningún producto (porque ese producto todavía no existe en tu catálogo), la venta no se pierde: queda **en espera** y MIA te avisa para que le digas a qué producto corresponde (ver [C3](#ventas-en-espera)).
+- Si una publicación **no calza** con ningún producto (porque ese producto todavía no existe en tu catálogo), la venta no se pierde: queda **en espera** y MIA te avisa para que le digas a qué producto corresponde (ver [Ventas "en espera"](#ventas-en-espera)).
 
 A partir de ahí, la sincronización sigue corriendo sola cada ~30 minutos.
 
@@ -136,7 +141,7 @@ Arriba del contenido hay una **miga de pan** (por ejemplo "Productos › Inventa
 
 ---
 
-## C2 — MIA, el copiloto IA
+## MIA, el copiloto IA
 
 ### Qué es MIA
 
@@ -209,7 +214,7 @@ Si una venta de Mercado Libre quedó **en espera** (porque su producto no exist�
 - **"¿Tengo ventas de ML pendientes?"** → MIA te lista cada una con título de la publicación, precio, cantidad y fecha real.
 - Luego: **"Esa publicación es mi producto X"** o **"créame el producto y cárgala"**. Si el producto no existe, MIA te pedirá su **costo** real, lo creará y registrará la venta con su **fecha, comisión y envío reales**, descontando stock. Es a prueba de duplicados.
 
-Más detalle del flujo en [C3](#resolver-una-venta-en-espera-paso-a-paso).
+Más detalle del flujo en [Resolver una venta en espera paso a paso](#resolver-una-venta-en-espera-paso-a-paso).
 
 ### Cuando MIA pide confirmación (acciones hacia el comprador)
 
@@ -236,7 +241,7 @@ Si no confirmas, la propuesta caduca sola y no pasa nada.
 
 ---
 
-## C3 — Ventas de Mercado Libre
+## Ventas de Mercado Libre
 
 ### La sincronización automática
 
@@ -310,7 +315,7 @@ MIA trae sola de Mercado Libre la **comisión real** y el **envío real** de ese
 
 ---
 
-## C4 — Tu CRM día a día
+## Tu CRM día a día
 
 ### Productos: crear, editar, archivar
 
@@ -403,7 +408,7 @@ También en **Finanzas**:
 - **IVA:** actívalo solo si tu empresa lo paga. Una vez activo, el **19%** se calcula automáticamente sobre tu **ganancia neta** (ventas − comisiones − envíos) de cada mes. Si el SII te cobró un monto distinto, puedes registrar el **IVA manual** de ese mes y reemplaza al automático **solo de ese mes**.
 - **Publicidad:** registra cuánto gastaste en publicidad **cada mes**. Se resta de tu **ganancia neta** en el Dashboard.
 
-> El **tipo de negocio / si pagas IVA** se define en **Configuración › Mi negocio** (ver [C5](#perfil-y-mi-negocio)), y el detalle de IVA y publicidad por mes se lleva aquí en Finanzas.
+> El **tipo de negocio / si pagas IVA** se define en **Configuración › Mi negocio** (ver [Perfil y "Mi negocio"](#perfil-y-mi-negocio)), y el detalle de IVA y publicidad por mes se lleva aquí en Finanzas.
 
 ### Canales de venta
 
@@ -429,14 +434,14 @@ También tienes acciones rápidas: **Generar despachos**, **Ordenar por priorida
 
 ---
 
-## C5 — Configuración y solución de problemas
+## Configuración y solución de problemas
 
 La sección **Configuración** tiene cinco pestañas: **Perfil · Mi negocio · Notificaciones · Mercado Libre · Datos**.
 
 ### Tu cuenta y correo
 
 - **Perfil de la empresa** (pestaña **Perfil**): **Nombre de la empresa** (requerido), **Moneda** (CLP / USD / EUR) y **Logo** (máx 1.5 MB). Toca **Guardar perfil**.
-- **Mercado Libre** (pestaña **Mercado Libre**): conectar o desconectar tu cuenta (ver [C1](#conectar-mercado-libre)).
+- **Mercado Libre** (pestaña **Mercado Libre**): conectar o desconectar tu cuenta (ver [Conectar Mercado Libre](#conectar-mercado-libre)).
 
 ### Perfil y "Mi negocio"
 
@@ -473,13 +478,13 @@ En la pestaña **Datos** ("Datos y respaldo"):
 En la nube, asociados a tu cuenta. Entras con tu correo y contraseña desde cualquier dispositivo y ves siempre lo mismo. No los pierdes al cambiar de equipo.
 
 **Vendí algo en Mercado Libre y no aparece en NexSell, ¿se perdió?**
-No. O todavía no ha corrido el sync (corre cada ~30 min), o quedó **en espera** porque su producto no existía. Pídele a MIA "¿cuáles son mis últimas ventas en ML?" (mira en vivo) o "¿tengo ventas pendientes?" y resuélvela ([C3](#ventas-en-espera)).
+No. O todavía no ha corrido el sync (corre cada ~30 min), o quedó **en espera** porque su producto no existía. Pídele a MIA "¿cuáles son mis últimas ventas en ML?" (mira en vivo) o "¿tengo ventas pendientes?" y resuélvela ([Ventas "en espera"](#ventas-en-espera)).
 
 **El número de mi venta de ML no coincide con lo que veo en NexSell.**
 NexSell usa la **comisión y el envío reales** que informa Mercado Libre, y la **ganancia** descuenta costo + comisión + envío. Revisa que el **costo** del producto esté bien cargado. Si una publicación quedó asociada al producto equivocado, corrígelo en **Productos › Mapeos ML**.
 
 **¿MIA puede responderle a un comprador o cambiar mis precios sola?**
-No sin tu permiso. Esas acciones siempre te muestran exactamente qué hará y esperan tu confirmación ([C2](#cuando-mia-pide-confirmación-acciones-hacia-el-comprador)).
+No sin tu permiso. Esas acciones siempre te muestran exactamente qué hará y esperan tu confirmación ([Cuando MIA pide confirmación](#cuando-mia-pide-confirmación-acciones-hacia-el-comprador)).
 
 **¿Por qué el stock de un producto no me deja editarlo directo?**
 Porque tiene **variantes**: el stock total es la suma de las variantes. Ajusta el stock de cada **variante** (color/talla) y el total se recalcula solo.
@@ -509,3 +514,13 @@ En la tarjeta de la venta en espera (en el chat de MIA) toca **✕ Descartar**, 
 
 **Quiero deshacer una venta mal registrada.**
 Bórrala desde el **Historial de ventas**, o pídele a MIA "borra esa venta": al eliminarla, NexSell **devuelve el stock** al producto (o a la variante).
+
+### Contacto y soporte
+
+Si algo no funciona como esperas o tienes dudas que esta guía no resuelve, escríbele al **equipo de NexSell**.
+
+- Antes de escribir, ten a mano: tu **correo de la cuenta**, qué estabas haciendo, y (si aparece) el **mensaje de error** exacto.
+- Para problemas con tus datos, recuerda que puedes hacer un **respaldo** en **Configuración › Datos → Exportar datos** antes de cualquier cambio grande.
+- Muchas dudas del día a día las resuelve **MIA** al instante: ábrela (botón verde) y pregúntale directamente.
+
+[SCREENSHOT: dónde encontrar el contacto de soporte de NexSell]

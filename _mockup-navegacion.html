@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NexSell · Antes y Después</title>
+<style>
+  :root{
+    --bg:#0d0f12; --bg-2:#15181d; --bg-3:#1b1f26;
+    --line:#262b33; --line-soft:#1f242b;
+    --txt:#e6e9ee; --muted:#8b94a3; --muted-2:#5d6573;
+    --accent:#5b8cff; --accent-soft:rgba(91,140,255,.14);
+    --green:#3ecf8e; --red:#ff6b6b; --redsoft:rgba(255,107,107,.12);
+    --greensoft:rgba(62,207,142,.12);
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  body{
+    background:var(--bg); color:var(--txt);
+    font-family:'Segoe UI',system-ui,-apple-system,sans-serif;
+    padding:30px 20px 60px; line-height:1.5;
+  }
+  h1{font-size:23px; font-weight:600; margin-bottom:4px}
+  .sub{color:var(--muted); font-size:14px; margin-bottom:30px}
+
+  .row{display:flex; gap:34px; flex-wrap:wrap; align-items:flex-start}
+  .col{flex:1; min-width:320px}
+  .col-head{display:flex; align-items:center; gap:9px; margin-bottom:14px}
+  .chip{font-size:12.5px; font-weight:700; padding:4px 12px; border-radius:20px}
+  .chip.bad{background:var(--redsoft); color:var(--red)}
+  .chip.good{background:var(--greensoft); color:var(--green)}
+  .col-head h2{font-size:15px; font-weight:600; color:var(--muted)}
+
+  /* ventana app */
+  .window{background:var(--bg); border:1px solid var(--line); border-radius:13px;
+    overflow:hidden; box-shadow:0 10px 40px rgba(0,0,0,.4); display:flex; height:440px}
+  .rail{width:185px; background:var(--bg-2); border-right:1px solid var(--line);
+    padding:14px 10px; display:flex; flex-direction:column; font-size:13.5px}
+  .brand{display:flex; align-items:center; gap:8px; padding:3px 7px 15px; font-weight:600; font-size:14px}
+  .dot{width:16px;height:16px;border-radius:5px;background:linear-gradient(135deg,var(--accent),#9b6bff)}
+
+  .nav{display:flex; align-items:center; gap:9px; padding:8px 10px; border-radius:8px; color:var(--muted); margin-bottom:1px}
+  .nav .ico{width:14px;height:14px;border:1.5px solid currentColor;border-radius:4px;opacity:.6;flex:none}
+  .nav.active{background:var(--accent-soft); color:var(--txt); font-weight:600}
+  .nav.active .ico{border-color:var(--accent); opacity:1}
+  .nav.caret::after{content:'⌄'; margin-left:auto; font-size:12px; opacity:.55}
+  .nav.caret.open::after{content:'⌃'}
+  .nav.ghosted{opacity:.55}
+
+  .sub-i{display:flex; align-items:center; gap:8px; padding:6px 10px 6px 30px; color:var(--muted); font-size:12.5px; border-radius:7px}
+  .sub-i::before{content:''; width:4px;height:4px;border-radius:50%;background:currentColor;opacity:.5}
+  .sub-i.active{color:var(--txt); background:var(--bg-3); font-weight:500}
+  .sub-i.active::before{background:var(--accent); opacity:1}
+
+  .foot{margin-top:auto; border-top:1px solid var(--line-soft); padding-top:8px}
+
+  .content{flex:1; display:flex; flex-direction:column}
+  .topbar{padding:13px 18px 0; background:var(--bg-2)}
+  .crumb{color:var(--muted); font-size:12.5px} .crumb b{color:var(--txt)} .crumb .sep{color:var(--muted-2); margin:0 6px}
+  .tabbar{display:flex; gap:3px; padding:10px 18px 0; border-bottom:1px solid var(--line); background:var(--bg-2)}
+  .tab{padding:8px 13px; font-size:12.5px; color:var(--muted); border-bottom:2px solid transparent}
+  .tab.active{color:var(--txt); border-bottom-color:var(--accent); font-weight:600}
+  .plainbar{padding:13px 18px; border-bottom:1px solid var(--line); background:var(--bg-2); font-size:13px; color:var(--txt); font-weight:600}
+  .canvas{flex:1; padding:18px; display:flex; align-items:center; justify-content:center}
+  .ghost{width:100%}
+  .ghost .bar{height:9px; background:var(--bg-3); border-radius:5px; margin-bottom:9px}
+  .ghost .bar.s{width:55%} .ghost .bar.m{width:78%}
+  .ghost .cards{display:flex; gap:9px; margin-bottom:14px}
+  .ghost .kpi{flex:1; height:50px; background:var(--bg-2); border:1px solid var(--line); border-radius:8px}
+
+  /* notas señaladoras */
+  .notes{margin-top:14px; font-size:13px}
+  .note{display:flex; gap:9px; align-items:flex-start; margin:8px 0; color:var(--muted)}
+  .note .mk{flex:none; width:18px;height:18px; border-radius:50%; font-size:11px; font-weight:700;
+    display:flex; align-items:center; justify-content:center; margin-top:1px}
+  .note.bad .mk{background:var(--redsoft); color:var(--red)}
+  .note.good .mk{background:var(--greensoft); color:var(--green)}
+  .note b{color:var(--txt)}
+
+  .summary{max-width:760px; margin:42px auto 0; background:var(--bg-2); border:1px solid var(--line);
+    border-radius:13px; padding:22px 24px}
+  .summary h3{font-size:16px; margin-bottom:12px}
+  .summary table{width:100%; border-collapse:collapse; font-size:13.5px}
+  .summary td{padding:9px 6px; border-bottom:1px solid var(--line-soft); vertical-align:top}
+  .summary tr:last-child td{border-bottom:none}
+  .summary .a{color:var(--muted); width:44%}
+  .summary .b{color:var(--txt)}
+  .summary .b::before{content:'→ '; color:var(--green)}
+</style>
+</head>
+<body>
+
+  <h1>NexSell · Cómo se ve hoy vs. cómo quedará</h1>
+  <div class="sub">Mismo dato (estás en Productos). Lo único que cambia es <b>cómo te mueves por la app</b>. El contenido de cada pantalla es el mismo.</div>
+
+  <div class="row">
+
+    <!-- ===================== ANTES ===================== -->
+    <div class="col">
+      <div class="col-head"><span class="chip bad">ANTES · hoy</span><h2>Cosas escondidas</h2></div>
+      <div class="window">
+        <aside class="rail">
+          <div class="brand"><span class="dot"></span> NexSell</div>
+          <div class="nav"><span class="ico"></span> Dashboard</div>
+          <div class="nav"><span class="ico"></span> Ventas</div>
+          <div class="nav active"><span class="ico"></span> Productos</div>
+          <div class="nav"><span class="ico"></span> Finanzas</div>
+          <div class="nav"><span class="ico"></span> Rendimiento</div>
+          <div class="nav"><span class="ico"></span> Agenda</div>
+          <div class="foot">
+            <div class="nav ghosted"><span class="ico"></span> 👤 Mi cuenta</div>
+          </div>
+        </aside>
+        <div class="content">
+          <div class="plainbar">Productos</div>
+          <div class="canvas"><div class="ghost">
+            <div class="bar m"></div>
+            <div class="cards"><div class="kpi"></div><div class="kpi"></div><div class="kpi"></div></div>
+            <div class="bar"></div><div class="bar s"></div>
+          </div></div>
+        </div>
+      </div>
+      <div class="notes">
+        <div class="note bad"><span class="mk">✕</span><span><b>Inventario</b> no se ve: está escondido como una pestañita dentro de Productos.</span></div>
+        <div class="note bad"><span class="mk">✕</span><span><b>Análisis, Metas, Logros, Reportes, Alertas</b> están todos metidos dentro de “Rendimiento” (hay que entrar y buscar pestaña = 2 clics).</span></div>
+        <div class="note bad"><span class="mk">✕</span><span><b>Configuración</b> está escondida dentro de “Mi cuenta”, abajo.</span></div>
+        <div class="note bad"><span class="mk">✕</span><span>No sabes dónde estás parado.</span></div>
+      </div>
+    </div>
+
+    <!-- ===================== DESPUÉS ===================== -->
+    <div class="col">
+      <div class="col-head"><span class="chip good">DESPUÉS · como quedará</span><h2>Todo a la vista</h2></div>
+      <div class="window">
+        <aside class="rail">
+          <div class="brand"><span class="dot"></span> NexSell</div>
+          <div class="nav"><span class="ico"></span> Dashboard</div>
+          <div class="nav"><span class="ico"></span> Ventas</div>
+          <div class="nav caret open active"><span class="ico"></span> Productos</div>
+          <div class="sub-i active">Catálogo</div>
+          <div class="sub-i">Inventario</div>
+          <div class="nav"><span class="ico"></span> Finanzas</div>
+          <div class="nav caret"><span class="ico"></span> Rendimiento</div>
+          <div class="nav"><span class="ico"></span> Agenda</div>
+          <div class="foot">
+            <div class="nav"><span class="ico"></span> ⚙ Configuración</div>
+            <div class="nav ghosted"><span class="ico"></span> 👤 Mi cuenta</div>
+          </div>
+        </aside>
+        <div class="content">
+          <div class="topbar"><span class="crumb"><b>Productos</b><span class="sep">›</span>Catálogo</span></div>
+          <div class="tabbar"><div class="tab active">Catálogo</div><div class="tab">Inventario</div></div>
+          <div class="canvas"><div class="ghost">
+            <div class="bar m"></div>
+            <div class="cards"><div class="kpi"></div><div class="kpi"></div><div class="kpi"></div></div>
+            <div class="bar"></div><div class="bar s"></div>
+          </div></div>
+        </div>
+      </div>
+      <div class="notes">
+        <div class="note good"><span class="mk">✓</span><span>Al abrir <b>Productos</b> se despliega y ves <b>Catálogo</b> e <b>Inventario</b> ahí mismo.</span></div>
+        <div class="note good"><span class="mk">✓</span><span>Arriba sale una <b>barra de pestañas</b> para cambiar de Catálogo a Inventario con 1 clic.</span></div>
+        <div class="note good"><span class="mk">✓</span><span><b>Rendimiento</b> también se despliega (Análisis, Metas, Logros, Reportes, Alertas).</span></div>
+        <div class="note good"><span class="mk">✓</span><span><b>Configuración</b> ahora es un botón fijo, fácil de encontrar.</span></div>
+        <div class="note good"><span class="mk">✓</span><span>La <b>miga de pan</b> (Productos › Catálogo) te dice siempre dónde estás.</span></div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="summary">
+    <h3>En una frase</h3>
+    <table>
+      <tr><td class="a">Hoy ves 6 botones, pero hay 12 pantallas.</td><td class="b">Verás las 12, ordenadas y con jerarquía clara.</td></tr>
+      <tr><td class="a">Para llegar a “Metas” haces 2 clics a ciegas.</td><td class="b">La ves desplegada bajo Rendimiento, a 1 clic.</td></tr>
+      <tr><td class="a">No sabes en qué pantalla estás.</td><td class="b">La miga de pan arriba te lo dice siempre.</td></tr>
+      <tr><td class="a">El contenido de cada pantalla…</td><td class="b">queda EXACTAMENTE igual. Solo cambia el menú.</td></tr>
+    </table>
+  </div>
+
+</body>
+</html>

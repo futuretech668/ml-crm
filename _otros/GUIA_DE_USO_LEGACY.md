@@ -1,3 +1,6 @@
+> ⚠️ OBSOLETA — describe la versión local antigua.
+> La guía vigente es GUIA_DE_USO_v2.md.
+
 # 📱 GUÍA DE USO - ML Manager CRM
 
 **Versión:** 1.0  
