@@ -95,6 +95,18 @@ REGISTRAR UNA VENTA DE ML QUE NO SE REGISTRÓ (el producto no existía cuando se
   ser el mismo producto que '[suggestedProductName]'. ¿Es el mismo? (Sí / No / Ver ambos)". Solo con un
   "Sí" llamas register_pending_ml_sale con ese productId; con "No" creas el producto nuevo o pides cuál es.
 
+AL CREAR O EDITAR UN PRODUCTO: RE-ASOCIACIÓN AUTOMÁTICA DE PENDIENTES
+· Cuando creas (add_product) o editas (edit_product que cambia el nombre) o agregas una variante (manage_variant),
+  el sistema barre SOLO las ventas de ML en espera de ESE producto y devuelve dos listas en la respuesta de la tool:
+  - "loaded": las de ALTA confianza que YA se auto-cargaron (entraron a ventas, descontaron stock, salieron de pendientes).
+  - "suggested": las de confianza media o variante ambigua, que NO se tocaron y quedan a tu criterio ofrecerlas.
+· Por eso, tras crear/editar el producto DEBES:
+  (a) AVISAR cuántas ventas se auto-cargaron (loaded) y resumirlas brevemente (título, cantidad, fecha). Si fueron 0, no inventes nada.
+  (b) OFRECER explícitamente las "suggested" preguntándole al usuario si las carga (NUNCA las cargues solo). Para variante
+      ambigua, muéstrale las variantes y pídele cuál es. Solo con un "sí" llamas register_pending_ml_sale por cada item_id.
+· Bajo ORDEN EXPLÍCITA del usuario (ej. "agrega estas 3 ventas del 21 de junio"), ejecuta de inmediato sin pedir
+  confirmaciones innecesarias. Solo detente a preguntar si falta el COSTO del producto o si la variante es genuinamente ambigua.
+
 REGISTRO RETROACTIVO ("agrega la venta de ML del día X de [producto]")
 · Una venta vieja NUNCA se pierde. Cuando el usuario pida agregar una venta de un día pasado:
   1) Primero MÍRALA en ml_orders (puedes acotar con from=YYYY-MM-DD). Identifica el pedido por fecha,
@@ -435,6 +447,12 @@ async function opSend({ svc, gtoken, uid, email, statePath, state, aiDoc, body, 
   const idx = aiDoc.threadIndex.find(t => t.id === threadId);
   if (idx) { idx.updatedAt = nowIso; idx.preview = reply.slice(0, 80); if (idx.title === 'Nueva conversación') idx.title = message.slice(0, 40); }
 
+  // Log de auditoría persistente (contrato 3-E): por cada tool-call de ESCRITURA de
+  // este turno (cada entrada de ctx.did) se append un registro con el uid de la sesión.
+  // Solo se persiste si el turno además tocó el state (ctx.changed); auditLog es INTERNO
+  // del state (no se devuelve en la respuesta → no cambia el contrato del endpoint).
+  appendAuditLog(ctx, uid, nowIso);
+
   // Persistencia de SOLO lo que cambió, con merge anti-clobber: el cron (u otro
   // dispositivo) pudo AGREGAR ventas entre la carga del turno y este guardado. El merge
   // se ejecuta en cada (re)intento sobre los datos remotos frescos y une por id las
@@ -472,6 +490,36 @@ async function opSend({ svc, gtoken, uid, email, statePath, state, aiDoc, body, 
 function createThread(aiDoc, { id, title, preview, seedMessages, briefingAt, nowIso }) {
   aiDoc.threads[id] = { messages: seedMessages || [], pendingConfirms: [], turn: 0, briefingAt: briefingAt || null };
   aiDoc.threadIndex.unshift({ id, title, createdAt: nowIso, updatedAt: nowIso, preview: preview || '' });
+}
+
+const MAX_AUDIT_LOG = 1000;
+
+// Append a state.auditLog un registro por cada entrada de ctx.did (cada tool-call de
+// escritura del turno), con el uid de la sesión. Acota a los últimos MAX_AUDIT_LOG y
+// marca 'auditLog' como cambiado para que persista. No-op si el turno no escribió nada.
+function appendAuditLog(ctx, uid, nowIso) {
+  const did = Array.isArray(ctx.did) ? ctx.did : [];
+  if (!did.length) return;
+  const state = ctx.state;
+  if (!Array.isArray(state.auditLog)) state.auditLog = [];
+  for (const d of did) {
+    if (!d || !d.action) continue;
+    state.auditLog.push({ ts: nowIso, uid, action: String(d.action), summary: auditSummary(d) });
+  }
+  if (state.auditLog.length > MAX_AUDIT_LOG) state.auditLog = state.auditLog.slice(-MAX_AUDIT_LOG);
+  ctx.changed.add('auditLog');
+}
+
+// Resumen legible y compacto de una entrada de ctx.did (sin el 'action', que va aparte).
+function auditSummary(d) {
+  const parts = [];
+  for (const k of Object.keys(d)) {
+    if (k === 'action') continue;
+    const v = d[k];
+    if (v == null || v === '') continue;
+    parts.push(k + '=' + (typeof v === 'object' ? JSON.stringify(v) : String(v)));
+  }
+  return parts.join(' ').slice(0, 300);
 }
 
 function pruneThreads(aiDoc) {

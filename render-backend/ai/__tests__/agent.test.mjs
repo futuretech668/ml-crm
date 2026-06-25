@@ -81,6 +81,14 @@ test('op:send — add_sale escribe en el doc de estado y descuenta stock', async
     const st = fs.db['crm_users/uid1'];
     assert.equal(st.sales.length, 4); // 3 + 1
     assert.equal(st.products.find(p => p.id === 2).stock, 2); // 3 - 1
+    // Auditoría persistente (contrato 3-E): el tool-call de escritura quedó registrado
+    // con el uid de la sesión y la acción, sin alterar la respuesta del endpoint.
+    assert.ok(Array.isArray(st.auditLog) && st.auditLog.length >= 1);
+    const last = st.auditLog[st.auditLog.length - 1];
+    assert.equal(last.action, 'add_sale');
+    assert.ok(last.uid && typeof last.uid === 'string');
+    assert.ok(typeof last.ts === 'string' && last.ts.length > 0);
+    assert.equal(r.json.auditLog, undefined); // interno: NO se devuelve en la respuesta
   } finally { restore(); }
 });
 

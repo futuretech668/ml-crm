@@ -4734,6 +4734,9 @@
                     formData.commissionType = rep.comisionTipo || 'percentage';
                 }
 
+                // Producto vivo dentro de STATE.products tras guardar (alta o edición),
+                // para barrer las pendientes ML en espera y auto-cargar las que calcen.
+                let _savedProduct = null;
                 if (editingProductId) {
                     const product = STATE.products.find(p => p.id === editingProductId);
                     if (product) {
@@ -4747,6 +4750,7 @@
                         submitBtn.innerHTML = '<i data-lucide="save"></i>Guardar producto';
                         submitBtn.classList.remove('editing');
                         refreshIcons();
+                        _savedProduct = product;
                     }
                 } else {
                     const product = {
@@ -4758,14 +4762,37 @@
                     };
                     STATE.products.push(product);
                     showToast('✅ Producto agregado');
+                    _savedProduct = product;
                 }
-                
+
+                // Re-asociar las ventas ML en espera que correspondan a este producto
+                // (auto-carga alta confianza con registerMLSale → importes idénticos al
+                // backend; deja lo dudoso como oferta en el chat). Espejo de domain.mjs.
+                let _reassoc = { loaded: [], suggested: [] };
+                if (_savedProduct) {
+                    try { _reassoc = reassociatePendingForProduct(_savedProduct); }
+                    catch (e) { console.error('reassociatePendingForProduct', e); }
+                }
+
                 saveToLocalStorage();
                 updateDropdowns();
                 renderProductsList();
                 renderInventory();
                 document.getElementById('productForm').reset();
                 if (window.varReset) window.varReset();
+
+                // Refrescar vistas afectadas por las ventas auto-cargadas + el chat.
+                if (_reassoc.loaded.length) {
+                    if (typeof renderSalesList === 'function') renderSalesList();
+                    if (typeof renderDashboard === 'function') renderDashboard();
+                    if (typeof renderAlerts === 'function') renderAlerts();
+                    const _nVentas = _reassoc.loaded.reduce((a, x) => a + (x.registradas || 0), 0);
+                    showToast('✅ Producto guardado · ' + _nVentas + ' venta(s) en espera cargada(s)');
+                }
+                // Las suggested siguen como pendientes activas; flushChatNotifications
+                // pinta sus burbujas de oferta (NO se meten a dismissedPending).
+                if (typeof flushChatNotifications === 'function') flushChatNotifications();
+                if (typeof updateChatBadge === 'function') updateChatBadge();
             });
 
             document.getElementById('salesForm').addEventListener('submit', (e) => {
@@ -7628,6 +7655,152 @@
             });
             return registradas;
         }
+
+        // ============================================================================
+        // RE-ASOCIACIÓN de ventas ML en espera al crear/editar un producto.
+        // Espejo VERBATIM de domain.mjs (reassociatePendingForProduct + scoreProductTitle
+        // + suggestVariant con tolerancia de género/nombre). Reusa registerMLSale para
+        // que los IMPORTES sean byte-idénticos al backend/cron (paridad de cifras).
+        // ============================================================================
+
+        // Normalización canónica de tokens (idéntica a domain.mjs normTokens):
+        // minúsculas + NFD sin tildes + solo a-z0-9, split y filtro de STOPWORDS.
+        function _reassocNormTokens(s) {
+            return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+                .replace(/[^a-z0-9 ]/g, ' ').split(/\s+/)
+                .filter(function (w) { return w && !__ML_STOPWORDS.has(w); });
+        }
+
+        // Score 0..1 del título contra UN producto: palabras del nombre del producto
+        // presentes en el título / total de palabras del nombre. VERBATIM domain.mjs:583.
+        function scoreProductTitle(product, title) {
+            var pWords = _reassocNormTokens(product && product.name);
+            if (!pWords.length) return 0;
+            var tWords = new Set(_reassocNormTokens(title));
+            var m = 0; for (var i = 0; i < pWords.length; i++) if (tWords.has(pWords[i])) m++;
+            return m / pWords.length;
+        }
+        window.scoreProductTitle = scoreProductTitle;
+
+        // Variante por título CON tolerancia de género/nombre (espejo de la versión
+        // ACTUALIZADA de domain.mjs:639, más completa que la suggestVariant histórica
+        // de index.html). Se usa SOLO para la re-asociación para no romper paridad con A.
+        function _reassocSuggestVariant(product, title) {
+            if (!product || !product.hasVariants || !Array.isArray(product.variants) || !product.variants.length) return null;
+            var sing = function (w) { return (w.length > 3 && w.charAt(w.length - 1) === 's') ? w.slice(0, -1) : w; };
+            var genderVariants = function (w) {
+                var out = new Set([w]);
+                if (w.length > 3 && w.charAt(w.length - 1) === 'a') out.add(w.slice(0, -1) + 'o');
+                if (w.length > 3 && w.charAt(w.length - 1) === 'o') out.add(w.slice(0, -1) + 'a');
+                return Array.from(out);
+            };
+            var norm = function (s) {
+                return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+                    .replace(/[^a-z0-9 ]/g, ' ').split(/\s+/)
+                    .filter(function (w) { return w && !__ML_STOPWORDS.has(w); }).map(sing);
+            };
+            var tWords = new Set();
+            norm(title).forEach(function (w) { genderVariants(w).forEach(function (g) { tWords.add(g); }); });
+            var matches = [];
+            product.variants.forEach(function (v) {
+                var nameField = v.nombre || v.label || v.name || '';
+                var vTokens = norm(v.color).concat(norm(v.talla)).concat(norm(nameField));
+                if (!vTokens.length) return;
+                var ok = vTokens.every(function (w) {
+                    return genderVariants(w).some(function (g) { return tWords.has(g); });
+                });
+                if (ok) matches.push(v);
+            });
+            return matches.length === 1 ? matches[0] : null;
+        }
+
+        // variantSummary(product) — misma forma que domain.mjs (para ofrecer al usuario).
+        function _reassocVariantSummary(product) {
+            return (product && Array.isArray(product.variants) ? product.variants : []).map(function (v) {
+                return { variantId: v.id, label: variantLabelOf(v) || '(sin etiqueta)', stock: Number(v.stock) || 0 };
+            });
+        }
+
+        // Barre STATE.pendingMappings buscando ventas ML en espera que correspondan a
+        // `product`, auto-carga las de ALTA confianza (score>=0.8 + variante inequívoca,
+        // o producto sin variantes) reusando registerMLSale, y reporta las de confianza
+        // media / variante ambigua. MUTA STATE igual que confirmMapping por ítem.
+        // Devuelve { loaded, suggested } (paridad con domain.mjs:815).
+        function reassociatePendingForProduct(product, opts) {
+            opts = opts || {};
+            var autoThreshold = (typeof opts.autoThreshold === 'number') ? opts.autoThreshold : 0.8;
+            var suggestThreshold = (typeof opts.suggestThreshold === 'number') ? opts.suggestThreshold : 0.4;
+            var loaded = [], suggested = [];
+            if (!product) return { loaded: loaded, suggested: suggested };
+
+            var dismissed = new Set((Array.isArray(STATE.dismissedPending) ? STATE.dismissedPending : []).map(String));
+            STATE.mappings = STATE.mappings || {};
+            // Copia: registerMLSale + el filtrado de abajo mutan STATE.pendingMappings.
+            var pendings = (Array.isArray(STATE.pendingMappings) ? STATE.pendingMappings : []).slice();
+
+            pendings.forEach(function (pending) {
+                var itemId = String(pending.item_id);
+                // 1. Respeta descartes: nunca auto-cargar un descartado.
+                if (dismissed.has(itemId)) return;
+                // 2. No re-mapear lo ya mapeado.
+                if (STATE.mappings[itemId]) return;
+                // 3. Score del título contra ESTE producto (normalización canónica).
+                var score = scoreProductTitle(product, pending.title);
+                if (score < suggestThreshold) return; // no_match
+
+                // 4. Resolución de variante (solo si el producto maneja variantes).
+                var variantId = null;
+                if (product.hasVariants) {
+                    var v = _reassocSuggestVariant(product, pending.title);
+                    if (v) variantId = v.id;
+                    else if (pending.suggestedVariantId != null) {
+                        var sv = (product.variants || []).find(function (x) { return String(x.id) === String(pending.suggestedVariantId); });
+                        if (sv) variantId = sv.id;
+                    }
+                }
+
+                if (score < autoThreshold) {
+                    // Confianza media: NO se toca el estado, se ofrece al usuario.
+                    suggested.push({
+                        item_id: pending.item_id, title: pending.title, reason: 'medium_match',
+                        suggestedVariantId: (pending.suggestedVariantId != null ? pending.suggestedVariantId : null),
+                        suggestedVariantLabel: pending.suggestedVariantLabel || ''
+                    });
+                    return;
+                }
+
+                // score >= autoThreshold: candidato a auto-carga.
+                if (product.hasVariants && variantId == null) {
+                    // Variante ambigua: NO auto-cargar aunque el score sea alto (paridad con el cron).
+                    suggested.push({
+                        item_id: pending.item_id, title: pending.title, reason: 'ambiguous_variant',
+                        suggestedVariantId: (pending.suggestedVariantId != null ? pending.suggestedVariantId : null),
+                        suggestedVariantLabel: pending.suggestedVariantLabel || '',
+                        variantes: _reassocVariantSummary(product)
+                    });
+                    return;
+                }
+
+                // 5. Auto-carga: reusar registerMLSale (importes byte-idénticos al backend)
+                // + replicar lo que hace confirmMapping para ese ítem.
+                var registradas = registerMLSale(pending, product, variantId);
+                var mv = variantId != null ? (product.variants || []).find(function (x) { return String(x.id) === String(variantId); }) : null;
+                STATE.mappings[itemId] = {
+                    productId: product.id, productName: product.name, title: pending.title || '',
+                    variantId: mv ? mv.id : null, variantLabel: mv ? variantLabelOf(mv) : ''
+                };
+                STATE.pendingMappings = (STATE.pendingMappings || []).filter(function (p) { return String(p.item_id) !== itemId; });
+                if (!STATE.dismissedPending) STATE.dismissedPending = [];
+                if (STATE.dismissedPending.map(String).indexOf(itemId) < 0) STATE.dismissedPending.push(itemId);
+                loaded.push({
+                    item_id: pending.item_id, title: pending.title,
+                    variantLabel: mv ? variantLabelOf(mv) : '', registradas: registradas
+                });
+            });
+
+            return { loaded: loaded, suggested: suggested };
+        }
+        window.reassociatePendingForProduct = reassociatePendingForProduct;
 
         // ---- PASO 5: notificaciones en el chat ----
         function _seenSet(key) {

@@ -326,8 +326,12 @@ test('register_pending_ml_sale — registra con datos reales, mapea y limpia pen
   const state = pendingState();
   const ctx = makeCtx(state);
   const t = toolsByName(buildCrmTools(ctx));
-  // El usuario recién creó el producto faltante.
+  // El usuario recién creó el producto faltante. Aislamos el PRIMITIVO manual:
+  // descartamos la pendiente para que el auto-barrido de add_product la respete
+  // (paso 1: nunca auto-cargar un descartado) y la recuperamos antes de registrarla.
+  await t.dismiss_pending_sale.invoke({ itemId: 'MLC9001' });
   const prod = JSON.parse(await t.add_product.invoke({ name: 'Lámpara LED escritorio', costPrice: 6000, salePrice: 15000, stock: 10 }));
+  await t.restore_pending_sale.invoke({ itemId: 'MLC9001' });
   const r = JSON.parse(await t.register_pending_ml_sale.invoke({ itemId: 'MLC9001', productId: prod.product.id }));
   assert.equal(r.ok, true);
   assert.equal(r.registradas, 1);
@@ -368,7 +372,10 @@ test('register_pending_ml_sale — usa la fecha REAL del pedido (7 días atrás,
   }];
   const ctx = makeCtx(state);
   const t = toolsByName(buildCrmTools(ctx));
+  // Aislamos el primitivo manual del auto-barrido de add_product (ver test anterior).
+  await t.dismiss_pending_sale.invoke({ itemId: 'MLC9001' });
   const prod = JSON.parse(await t.add_product.invoke({ name: 'Lámpara LED escritorio', costPrice: 6000, salePrice: 15000, stock: 10 }));
+  await t.restore_pending_sale.invoke({ itemId: 'MLC9001' });
   const r = JSON.parse(await t.register_pending_ml_sale.invoke({ itemId: 'MLC9001', productId: prod.product.id }));
   assert.equal(r.registradas, 1);
   const sale = r.ventas[0];
@@ -407,7 +414,10 @@ test('register_pending_ml_sale — anti-duplicado SIMÉTRICO (source+item_id+id)
   const state = pendingState();
   const ctx = makeCtx(state);
   const t = toolsByName(buildCrmTools(ctx));
+  // Aislamos el primitivo manual del auto-barrido de add_product (ver test anterior).
+  await t.dismiss_pending_sale.invoke({ itemId: 'MLC9001' });
   const prod = JSON.parse(await t.add_product.invoke({ name: 'Lámpara LED escritorio', costPrice: 6000, salePrice: 15000, stock: 10 }));
+  await t.restore_pending_sale.invoke({ itemId: 'MLC9001' });
   // Simula que el cron ya registró ESTA venta (mismo id/item_id de la heldSale).
   state.sales.push({ id: 88800001, source: 'mercadolibre', item_id: 'MLC9001', quantity: 1, productId: prod.product.id });
   const stockAntes = state.products.find(p => p.id === prod.product.id).stock;

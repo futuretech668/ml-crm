@@ -93,6 +93,29 @@ export function buildCrmTools(ctx) {
     variantId: v.id, label: domain.variantLabelOf(v) || '(sin etiqueta)', stock: v.stock
   }));
 
+  // Barre las ventas ML en espera y auto-carga las que coinciden con `product` (alta
+  // confianza + variante inequívoca). Reusa domain.reassociatePendingForProduct (misma
+  // matemática que register_pending_ml_sale y el cron — paridad). nextId se pasa como
+  // FUNCIÓN porque la re-asociación puede necesitar varios ids (uno por venta cargada).
+  // Si cargó algo, marca los campos cambiados y empuja UN resumen a ctx.did. Devuelve el
+  // bloque `reassociated:{loaded,suggested}` (resumido) para incluir en el JSON de retorno
+  // y que MIA avise lo cargado y ofrezca lo sugerido.
+  const runReassoc = (product) => {
+    const r = domain.reassociatePendingForProduct(state, product, {
+      nowIso: ctx.nowIso(), today: ctx.today(), time: ctx.time(),
+      nextId: ctx.nextId, registeredBy: 'mia'
+    });
+    if (r.loaded.length > 0) {
+      mark('sales'); mark('products'); mark('mappings'); mark('pendingMappings'); mark('dismissedPending');
+      const registradas = r.loaded.reduce((a, l) => a + (l.registradas || 0), 0);
+      ctx.did.push({ action: 'reassociate_pending', productId: product.id, productName: product.name, registradas, items: r.loaded.length });
+    }
+    return {
+      loaded: r.loaded.map(l => ({ item_id: l.item_id, title: l.title, registradas: l.registradas, variantLabel: l.variantLabel })),
+      suggested: r.suggested.map(s => ({ item_id: s.item_id, title: s.title, reason: s.reason, suggestedVariantLabel: s.suggestedVariantLabel, variantes: s.variantes }))
+    };
+  };
+
   const add_sale = tool(
     async (args) => {
       const product = findProduct(args.productId);
@@ -163,7 +186,8 @@ export function buildCrmTools(ctx) {
       state.products.push(product);
       mark('products');
       ctx.did.push({ action: 'add_product', productId: product.id, name: product.name });
-      return j({ ok: true, product });
+      const reassociated = runReassoc(product);
+      return j({ ok: true, product, reassociated });
     },
     {
       name: 'add_product',
@@ -204,11 +228,15 @@ export function buildCrmTools(ctx) {
         return j({ error: 'Este producto maneja stock por variante; no edites product.stock. Usa manage_variant para ajustar el stock de cada variante.' });
       }
       const fields = ['name', 'costPrice', 'salePrice', 'stock', 'stockMin', 'shipping', 'commission', 'commissionType', 'archived'];
+      // Un rename puede habilitar nuevos matches por título → re-asociar tras editar.
+      const nameChanged = (args.name !== undefined && args.name !== product.name);
       for (const f of fields) if (args[f] !== undefined) product[f] = args[f];
       product.lastModified = ctx.nowIso();
       mark('products');
       ctx.did.push({ action: 'edit_product', productId: product.id, name: product.name, archived: product.archived });
-      return j({ ok: true, product });
+      const out = { ok: true, product };
+      if (nameChanged) out.reassociated = runReassoc(product);
+      return j(out);
     },
     {
       name: 'edit_product',
@@ -272,7 +300,9 @@ export function buildCrmTools(ctx) {
         product.lastModified = ctx.nowIso();
         mark('products');
         ctx.did.push({ action: 'variant_add', productId: product.id, variantId: variant.id, label: domain.variantLabelOf(variant) });
-        return j({ ok: true, variant, stockTotal: product.stock });
+        // Una variante nueva puede resolver pendientes que antes eran ambiguas.
+        const reassociated = runReassoc(product);
+        return j({ ok: true, variant, stockTotal: product.stock, reassociated });
       }
       const variant = domain.findVariant(product, args.variantId);
       if (!variant) return j({ error: 'No existe esa variante.', variantes: variantSummary(product) });
@@ -466,6 +496,13 @@ export function buildCrmTools(ctx) {
         }
         variantId = v.id;
       }
+      // Backfill de costo: si MIA entrega el costo real y el producto aún no tiene uno,
+      // ponlo ANTES de construir las ventas para que `profit` salga bien. Nunca pisa un
+      // costo ya registrado.
+      if (args.cost != null && args.cost >= 0 && (!product.costPrice || product.costPrice === 0)) {
+        product.costPrice = args.cost;
+        product.lastModified = ctx.nowIso();
+      }
       state.sales = state.sales || [];
       const built = domain.buildMlSalesFromPending(pending, product, {
         baseId: ctx.nextId(), nowIso: ctx.nowIso(), today: ctx.today(), time: ctx.time(), variantId,
@@ -506,7 +543,8 @@ export function buildCrmTools(ctx) {
         itemId: z.union([z.string(), z.number()]).describe('item_id de la publicación pendiente (de list_pending_ml_sales).'),
         productId: z.number().describe('id del producto del CRM al que corresponde (créalo antes si no existe).'),
         variante: z.string().optional().describe('color/talla EN PALABRAS de lo que se vendió, ej. "negro", "color negro" o "color negro / talla M". Pasa lo que dijo el usuario; se resuelve sola a la variante. Es la forma natural (no necesitas el variantId).'),
-        variantId: z.union([z.string(), z.number()]).optional().describe('alternativa exacta a "variante": id de la variante (de list_products, ej. "v0-Negro"). Si no das ninguno, se usa la variante que ML ya identificó en el pendiente.')
+        variantId: z.union([z.string(), z.number()]).optional().describe('alternativa exacta a "variante": id de la variante (de list_products, ej. "v0-Negro"). Si no das ninguno, se usa la variante que ML ya identificó en el pendiente.'),
+        cost: z.number().min(0, 'El costo no puede ser negativo.').optional().describe('costo unitario real del producto; solo se usa si el producto aún no tiene costo registrado.')
       })
     }
   );

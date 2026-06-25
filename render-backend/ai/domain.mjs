@@ -568,21 +568,36 @@ export function unitCommissionFor(it) {
 // Conectores en español que NO aportan a la comparación (ml-sync.js:259).
 const STOPWORDS = new Set(['de', 'la', 'el', 'los', 'las', 'con', 'para', 'por', 'y', 'a', 'en', 'un', 'una', 'del', 'al', 'o']);
 
+// Normalización canónica de tokens (minúsculas + NFD sin tildes + solo a-z0-9,
+// split por espacios y filtro de STOPWORDS). ÚNICA fuente de tokenizado para
+// suggestProduct / scoreProductTitle / fuzzyMatchProducts (paridad garantizada).
+function normTokens(s) {
+  return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter((w) => w && !STOPWORDS.has(w));
+}
+
+// Score 0..1 del título de una publicación de ML contra UN producto, con la MISMA
+// normalización que suggestProduct: (palabras del nombre del producto presentes en
+// el título) / (palabras del nombre del producto). 0 si el producto no tiene nombre.
+// Helper canónico para garantizar paridad entre suggestProduct y la re-asociación.
+export function scoreProductTitle(product, title) {
+  const pWords = normTokens(product && product.name);
+  if (!pWords.length) return 0;
+  const tWords = new Set(normTokens(title));
+  let m = 0; for (const w of pWords) if (tWords.has(w)) m++;
+  return m / pWords.length;
+}
+
 // Compara el nombre de una publicación de ML con los productos registrados y
 // devuelve el mejor match si supera minScore (VERBATIM de ml-sync.js:262-277).
 // minScore 0.4 = sugerencia; 0.8 = auto-mapeo confiable.
 export function suggestProduct(products, title, minScore) {
   minScore = (typeof minScore === 'number') ? minScore : 0.4;
-  const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter((w) => w && !STOPWORDS.has(w));
-  const tWords = new Set(norm(title));
   let best = null, bestScore = 0;
   for (const p of (products || [])) {
     if (p.archived) continue;
-    const pWords = norm(p.name);
-    if (!pWords.length) continue;
-    let m = 0; for (const w of pWords) if (tWords.has(w)) m++;
-    const score = m / pWords.length;
+    if (!normTokens(p.name).length) continue;
+    const score = scoreProductTitle(p, title);
     if (score > bestScore) { bestScore = score; best = p; }
   }
   return bestScore >= minScore ? best : null;
@@ -623,17 +638,47 @@ export function fuzzyMatchProducts(products, title) {
 // Replicado VERBATIM en ml-sync.js y en index.html.
 export function suggestVariant(product, title) {
   if (!product || !product.hasVariants || !Array.isArray(product.variants) || !product.variants.length) return null;
+  // Singularización (negros->negro) + neutralización de género conservadora
+  // (negra->negro, blanca->blanco, roja->rojo, …): si la palabra (ya singular)
+  // termina en 'a', se prueba también la forma en 'o'. Esto NO vuelve ambiguo lo
+  // que antes era claro: solo agrega un alias por token al conjunto del título y al
+  // del color; el contrato de "exactamente 1 variante" se mantiene intacto abajo.
   const sing = (w) => (w.length > 3 && w.endsWith('s')) ? w.slice(0, -1) : w;
+  const genderVariants = (w) => {
+    const out = new Set([w]);
+    if (w.length > 3 && w.endsWith('a')) out.add(w.slice(0, -1) + 'o');
+    if (w.length > 3 && w.endsWith('o')) out.add(w.slice(0, -1) + 'a');
+    return [...out];
+  };
   const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
     .replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter((w) => w && !STOPWORDS.has(w)).map(sing);
-  const tWords = new Set(norm(title));
+  // El conjunto del título se expande con los alias de género para tolerar
+  // "negra"/"negro" al comparar contra el color de la variante.
+  const tWords = new Set();
+  for (const w of norm(title)) for (const g of genderVariants(w)) tWords.add(g);
   const matches = [];
   for (const v of product.variants) {
-    const vTokens = [...norm(v.color), ...norm(v.talla)];
+    // Tokens identificadores de la variante: color, talla y — si existe — su nombre
+    // libre (v.nombre / v.label / v.name). El nombre solo aporta tokens; no relaja la
+    // exigencia de que TODOS estén presentes en el título.
+    const nameField = v.nombre || v.label || v.name || '';
+    const vTokens = [...norm(v.color), ...norm(v.talla), ...norm(nameField)];
     if (!vTokens.length) continue;
-    if (vTokens.every((w) => tWords.has(w))) matches.push(v);
+    // Cada token de la variante debe estar en el título; para el color se acepta
+    // el alias de género (negra≡negro) generando los alias del propio token.
+    const ok = vTokens.every((w) => genderVariants(w).some((g) => tWords.has(g)));
+    if (ok) matches.push(v);
   }
   return matches.length === 1 ? matches[0] : null;
+}
+
+// Lista compacta de variantes de un producto (variantId/label/stock) para que la
+// capa de presentación ofrezca la elección cuando la variante es ambigua. Misma
+// forma que el variantSummary de tools.mjs (paridad de la oferta al usuario).
+export function variantSummary(product) {
+  return (product && Array.isArray(product.variants) ? product.variants : []).map(v => ({
+    variantId: v.id, label: variantLabelOf(v) || '(sin etiqueta)', stock: Number(v.stock) || 0
+  }));
 }
 
 // Construye las ventas de ML RETENIDAS de una publicación pendiente al mapearla a un
@@ -705,6 +750,131 @@ export function buildMlSalesFromPending(pending, product, opts) {
       nameConflictResolved
     };
   });
+}
+
+// Cap defensivo de dismissedPending (espejo de tools.mjs capDismissed): conserva
+// solo los últimos 500 item_id para evitar crecimiento ilimitado del documento.
+const DISMISSED_CAP = 500;
+function capDismissedPending(state) {
+  if (Array.isArray(state.dismissedPending) && state.dismissedPending.length > DISMISSED_CAP) {
+    state.dismissedPending = state.dismissedPending.slice(-DISMISSED_CAP);
+  }
+}
+
+// Carga UN pending ya resuelto (producto + variante) en el estado: construye las
+// ventas con buildMlSalesFromPending, deduplica (source+item_id+id), las empuja,
+// descuenta stock por variante, crea el mapeo, saca de pendingMappings y blinda con
+// dismissedPending. Helper interno compartido por la re-asociación (espejo exacto
+// del cuerpo de register_pending_ml_sale en tools.mjs) — NO recalcula importes.
+function loadResolvedPending(state, pending, product, variantId, opts) {
+  const itemId = String(pending.item_id);
+  const built = buildMlSalesFromPending(pending, product, {
+    variantId,
+    baseId: opts.nextId ? opts.nextId() : undefined,
+    nowIso: opts.nowIso, today: opts.today, time: opts.time,
+    registeredBy: opts.registeredBy || 'reassoc', registeredAt: opts.nowIso
+  });
+  state.sales = Array.isArray(state.sales) ? state.sales : [];
+  const nuevas = [];
+  for (const sale of built) {
+    // Dedupe SIMÉTRICO con el cron y register_pending_ml_sale: source+item_id+id.
+    if (state.sales.some(s => s.source === 'mercadolibre' && String(s.item_id) === String(sale.item_id) && s.id === sale.id)) continue;
+    state.sales.push(sale);
+    applyStockDelta(product, sale.variantId, -sale.quantity);
+    nuevas.push(sale);
+  }
+  const mv = variantId != null ? findVariant(product, variantId) : null;
+  state.mappings = state.mappings || {};
+  state.mappings[itemId] = {
+    productId: product.id, productName: product.name, title: pending.title || '',
+    variantId: mv ? mv.id : null, variantLabel: mv ? variantLabelOf(mv) : ''
+  };
+  state.pendingMappings = (state.pendingMappings || []).filter(p => String(p.item_id) !== itemId);
+  state.dismissedPending = Array.isArray(state.dismissedPending) ? state.dismissedPending : [];
+  if (!state.dismissedPending.map(String).includes(itemId)) state.dismissedPending.push(itemId);
+  capDismissedPending(state);
+  product.lastModified = opts.nowIso;
+  return { ventas: nuevas, registradas: nuevas.length, variantId: mv ? mv.id : null, variantLabel: mv ? variantLabelOf(mv) : '' };
+}
+
+/**
+ * Barre state.pendingMappings buscando las ventas ML en espera que correspondan a
+ * `product`, auto-carga las de ALTA confianza (score >= autoThreshold, y variante
+ * inequívoca si el producto la maneja) y reporta las de confianza media o variante
+ * ambigua para que la capa de presentación las ofrezca al usuario.
+ *
+ * MUTA `state` (sales, products[].stock, mappings, pendingMappings, dismissedPending)
+ * EXACTAMENTE como register_pending_ml_sale lo hace por ítem, pero en lote. NO hace
+ * I/O. Idempotente por el dedupe source+item_id+id y por la salida de pendingMappings.
+ *
+ * @param {object} state    Documento CRM ya acotado al dueño (NUNCA recibe uid).
+ * @param {object} product  Producto recién creado/editado (objeto vivo de state.products).
+ * @param {object} [opts]   { nowIso, today, time, nextId, registeredBy='reassoc', autoThreshold=0.8, suggestThreshold=0.4 }
+ * @returns {{ loaded: object[], suggested: object[], skipped: object[] }}
+ */
+export function reassociatePendingForProduct(state, product, opts) {
+  opts = opts || {};
+  const autoThreshold = (typeof opts.autoThreshold === 'number') ? opts.autoThreshold : 0.8;
+  const suggestThreshold = (typeof opts.suggestThreshold === 'number') ? opts.suggestThreshold : 0.4;
+  const loaded = [], suggested = [], skipped = [];
+  if (!state || !product) return { loaded, suggested, skipped };
+
+  const dismissed = new Set((Array.isArray(state.dismissedPending) ? state.dismissedPending : []).map(String));
+  // Copia de la lista: loadResolvedPending muta state.pendingMappings al auto-cargar.
+  const pendings = (Array.isArray(state.pendingMappings) ? state.pendingMappings : []).slice();
+
+  for (const pending of pendings) {
+    const itemId = String(pending.item_id);
+    // 1. Respeta descartes: nunca auto-cargar un descartado.
+    if (dismissed.has(itemId)) { skipped.push({ item_id: pending.item_id, reason: 'dismissed' }); continue; }
+    // 2. No re-mapear lo ya mapeado.
+    if (state.mappings && state.mappings[itemId]) { skipped.push({ item_id: pending.item_id, reason: 'already_mapped' }); continue; }
+    // 3. Score del título contra ESTE producto (normalización canónica).
+    const score = scoreProductTitle(product, pending.title);
+    if (score < suggestThreshold) { skipped.push({ item_id: pending.item_id, reason: 'no_match' }); continue; }
+
+    // 4. Resolución de variante (solo si el producto maneja variantes).
+    let variantId = null;
+    if (product.hasVariants) {
+      const v = suggestVariant(product, pending.title);
+      if (v) variantId = v.id;
+      else if (pending.suggestedVariantId != null && findVariant(product, pending.suggestedVariantId)) {
+        variantId = findVariant(product, pending.suggestedVariantId).id;
+      }
+    }
+
+    if (score < autoThreshold) {
+      // Confianza media: no se toca el estado, se ofrece al usuario.
+      suggested.push({
+        item_id: pending.item_id, title: pending.title, score, reason: 'medium_match',
+        suggestedVariantId: (pending.suggestedVariantId != null ? pending.suggestedVariantId : null),
+        suggestedVariantLabel: pending.suggestedVariantLabel || ''
+      });
+      continue;
+    }
+
+    // score >= autoThreshold: candidato a auto-carga.
+    if (product.hasVariants && variantId == null) {
+      // Variante ambigua: NO auto-cargar aunque el score sea alto (paridad con el cron).
+      suggested.push({
+        item_id: pending.item_id, title: pending.title, score, reason: 'ambiguous_variant',
+        suggestedVariantId: (pending.suggestedVariantId != null ? pending.suggestedVariantId : null),
+        suggestedVariantLabel: pending.suggestedVariantLabel || '',
+        variantes: variantSummary(product)
+      });
+      continue;
+    }
+
+    // 5. Auto-carga (alta confianza y, si aplica, variante inequívoca).
+    const res = loadResolvedPending(state, pending, product, variantId, opts);
+    loaded.push({
+      item_id: pending.item_id, title: pending.title, score,
+      ventas: res.ventas, registradas: res.registradas,
+      variantId: res.variantId, variantLabel: res.variantLabel
+    });
+  }
+
+  return { loaded, suggested, skipped };
 }
 
 // ---------------------------------------------------------------------------
