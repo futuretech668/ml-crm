@@ -482,11 +482,13 @@
                     // no se rompe; el listener onSnapshot reconciliará después).
                     save: async (data) => {
                         let remoteSales = [];
+                        let remotePending = [];
                         try {
                             const snap = await getDoc(stateDocRef);
                             if (snap.exists()) {
                                 const rd = snap.data() || {};
                                 if (Array.isArray(rd.sales)) remoteSales = rd.sales;
+                                if (Array.isArray(rd.pendingMappings)) remotePending = rd.pendingMappings;
                             }
                         } catch (e) { /* sin red: seguimos con lo local */ }
                         // Unión por id: parte de las ventas locales y agrega las remotas
@@ -499,11 +501,27 @@
                             const id = String(rs && rs.id);
                             if (!seen.has(id)) { mergedSales.push(rs); seen.add(id); }
                         }
+                        // Unión por item_id de pendingMappings: el cron puede crear una venta
+                        // pendiente (publicación nueva) mientras la pestaña está abierta; si
+                        // guardáramos solo lo local la perderíamos hasta el próximo onSnapshot.
+                        // Se agregan las remotas que el local no tenga, EXCEPTO las que el
+                        // local ya descartó (dismissedPending) o ya mapeó (mappings), para no
+                        // resucitar una pendiente recién registrada/descartada por el usuario.
+                        const localPending = Array.isArray(data.pendingMappings) ? data.pendingMappings : [];
+                        const localMappings = data.mappings || {};
+                        const localDismissed = new Set((Array.isArray(data.dismissedPending) ? data.dismissedPending : []).map(String));
+                        const seenP = new Set(localPending.map(p => String(p && p.item_id)));
+                        const mergedPending = localPending.slice();
+                        for (const rp of remotePending) {
+                            const iid = String(rp && rp.item_id);
+                            if (seenP.has(iid) || localDismissed.has(iid) || localMappings[iid]) continue;
+                            mergedPending.push(rp); seenP.add(iid);
+                        }
                         return setDoc(stateDocRef, {
                             products: data.products || [],
                             sales: mergedSales,
                             mappings: data.mappings || {},
-                            pendingMappings: data.pendingMappings || [],
+                            pendingMappings: mergedPending,
                             dismissedPending: data.dismissedPending || [],
                             despachosBorrados: data.despachosBorrados || [],
                             tasksBorradas: data.tasksBorradas || [],
@@ -7181,6 +7199,25 @@
         // (intent-driven, Fase 2). El flujo de visión (visionIdentifyFromFile / askVision) queda intacto.
 
 
+        // Parsea un monto escrito en formato chileno. Acepta separador de miles con punto
+        // y decimal con coma ("1.234,56" -> 1234.56), miles con punto ("1.234" -> 1234, ya
+        // que en CLP el grupo de 3 tras el punto son miles), y decimal simple ("12.50").
+        function parseMontoCL(str) {
+            let s = String(str == null ? '' : str).replace(/[^0-9.,]/g, '').trim();
+            if (!s) return NaN;
+            if (s.indexOf(',') >= 0) {
+                // coma presente => coma es decimal, puntos son miles
+                s = s.replace(/\./g, '').replace(',', '.');
+            } else {
+                const parts = s.split('.');
+                if (parts.length > 2) s = parts.join('');                 // varios puntos => miles
+                else if (parts.length === 2 && parts[1].length === 3) s = parts.join(''); // "1.234" => miles
+                // si parts.length===2 con !=3 decimales => decimal real, se deja tal cual
+            }
+            return parseFloat(s);
+        }
+        window.parseMontoCL = parseMontoCL;
+
         // ---- PASO 4: confirmar mapeo item_id -> producto y registrar la venta retenida ----
         function confirmMapping(itemId, productName, variantId) {
             const pending = (STATE.pendingMappings || []).find(p => String(p.item_id) === String(itemId));
@@ -7189,9 +7226,15 @@
             let product = null;
             if (productName) {
                 const target = productName.toLowerCase().trim();
-                product = STATE.products.find(p => !p.archived && p.name.toLowerCase() === target)
-                       || STATE.products.find(p => !p.archived && p.name.toLowerCase().includes(target))
-                       || STATE.products.find(p => !p.archived && target.includes(p.name.toLowerCase()));
+                // 1) match exacto (seguro). 2) si no, match parcial bidireccional PERO solo
+                // si hay un único candidato: con 2+ candidatos ambiguos NO adivinamos (un
+                // "cargador" no debe mapearse silenciosamente a "cargador inalámbrico premium").
+                product = STATE.products.find(p => !p.archived && p.name.toLowerCase() === target);
+                if (!product) {
+                    const partials = STATE.products.filter(p => !p.archived &&
+                        (p.name.toLowerCase().includes(target) || target.includes(p.name.toLowerCase())));
+                    if (partials.length === 1) product = partials[0];
+                }
             }
             if (!product && pending.suggestedProductId) {
                 product = STATE.products.find(p => p.id === pending.suggestedProductId && !p.archived);
@@ -7238,7 +7281,7 @@
             const unitPrice = held.price || p.price || 0;
             const costoStr = prompt('Registrar PRODUCTO NUEVO:\n"' + (p.title || '') + '"\nPrecio de venta (de ML): ' + formatCurrency(unitPrice) + '\n\n¿Cuál es el COSTO de este producto (lo que te cuesta a ti)?');
             if (costoStr === null) return; // canceló
-            const costo = parseFloat(String(costoStr).replace(/[^0-9.,]/g, '').replace(',', '.'));
+            const costo = parseMontoCL(costoStr);
             if (isNaN(costo) || costo < 0) { showToast('❌ Costo inválido'); return; }
             // Comisión en % a partir del sale_fee REAL por unidad que dejó ML.
             const commPerUnit = held.commissionPerUnit != null ? held.commissionPerUnit : (p.commissionPerUnit || 0);
@@ -7843,7 +7886,9 @@
         // queda consistente entre dispositivos: lo descartado no vuelve a contar nunca.
         window.pendingChatItemsCount = function(){
             const seenN = _seenSet('chat_seen_notifs');
-            const unreadNotifs = (STATE.notifications || []).filter(n => !seenN.has(n.id)).length;
+            // Excluye type==='sale' igual que flushChatNotifications (que NO renderiza las
+            // ventas como burbuja); así el badge coincide con lo realmente visible.
+            const unreadNotifs = (STATE.notifications || []).filter(n => n && n.type !== 'sale' && !seenN.has(n.id)).length;
             const activas = (window.activePendings ? activePendings() : (STATE.pendingMappings || [])).length;
             return unreadNotifs + activas;
         };
