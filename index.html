@@ -2423,6 +2423,11 @@
                     <div class="page-head">
                         <div class="page-title"><i data-lucide="layout-dashboard"></i>Dashboard</div>
                         <div class="page-sub">Resumen de rendimiento de tu tienda</div>
+                        <!-- Indicador de última sincronización con Mercado Libre (se rellena por JS). -->
+                        <div id="mlSyncIndicator" style="display:none;align-items:center;gap:8px;margin-top:6px;font-size:12px;color:var(--text-secondary);">
+                            <i data-lucide="refresh-cw" style="width:14px;height:14px;"></i>
+                            <span id="mlSyncText">—</span>
+                        </div>
                     </div>
                     <!-- 5 MÉTRICAS PRINCIPALES -->
                     <div class="grid grid-5" style="gap: 16px; margin-bottom: 32px;">
@@ -5348,7 +5353,18 @@
             const _biz = (window.ensureBusinessConfig ? window.ensureBusinessConfig() : {});
             const _showComision = _biz.comision !== 'no';
 
-            let html = `<div class="table-container"><table><thead><tr>
+            // Resumen rápido del conjunto mostrado (ingresos, unidades, ganancia) en 1 fila.
+            const _sum = filtered.reduce((a, s) => {
+                const tv = (s.totalPrice != null) ? s.totalPrice : (s.salePrice * s.quantity);
+                const gan = (s.profit != null) ? s.profit : (tv - (Number(s.commission) || 0) - (Number(s.shipping) || 0) - (Number(s.costPrice) || 0) * (Number(s.quantity) || 0));
+                a.ingresos += tv; a.unidades += (Number(s.quantity) || 0); a.ganancia += gan; return a;
+            }, { ingresos: 0, unidades: 0, ganancia: 0 });
+            let html = `<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px;">
+                <div class="badge" style="background:var(--bg-tertiary);color:var(--text-secondary);font-size:12px;padding:6px 12px;">Ingresos: <strong style="color:var(--text-primary);">${formatCurrency(_sum.ingresos)}</strong></div>
+                <div class="badge" style="background:var(--bg-tertiary);color:var(--text-secondary);font-size:12px;padding:6px 12px;">Unidades: <strong style="color:var(--text-primary);">${_sum.unidades}</strong></div>
+                <div class="badge" style="background:var(--bg-tertiary);color:var(--text-secondary);font-size:12px;padding:6px 12px;">Ganancia: <strong style="color:${_sum.ganancia >= 0 ? 'var(--success)' : 'var(--accent-danger)'};">${formatCurrency(_sum.ganancia)}</strong></div>
+            </div>`;
+            html += `<div class="table-container"><table><thead><tr>
                 <th>Fecha</th><th>Producto</th><th>Cant</th><th>Canal</th><th>Precio Venta</th>${_showComision ? '<th>Comisión</th>' : ''}<th>Envío</th><th>Total Neto</th><th>Ganancia</th><th>Acciones</th>
             </tr></thead><tbody>`;
 
@@ -6264,6 +6280,47 @@
             renderHighestMargin(highestMargin);
             renderGastosAdicionales();
             renderStockAlerts();
+            try { updateMlSyncIndicator(); } catch (e) {}
+        }
+
+        // Indicador "última sincronización con Mercado Libre" en el Dashboard.
+        // Consulta GET /api/sync-status (auth Firebase). Throttle de 60s para no pegarle
+        // al backend en cada re-render. Aditivo: si falla o no hay conexión, queda oculto.
+        let _mlSyncLastFetch = 0, _mlSyncCache = null;
+        async function updateMlSyncIndicator() {
+            const box = document.getElementById('mlSyncIndicator');
+            const txt = document.getElementById('mlSyncText');
+            if (!box || !txt) return;
+            const paint = (st) => {
+                if (!st || !st.connected) { box.style.display = 'none'; return; }
+                const rel = st.lastSyncAt ? _relTime(st.lastSyncAt) : 'sin datos aún';
+                const pend = st.pendingCount > 0 ? ` · ${st.pendingCount} venta(s) por revisar` : '';
+                txt.textContent = `Mercado Libre: sincronizado ${rel}${pend}`;
+                box.style.display = 'flex';
+                if (window.refreshIcons) try { refreshIcons(); } catch (e) {}
+            };
+            const now = Date.now();
+            if (_mlSyncCache && (now - _mlSyncLastFetch) < 60000) { paint(_mlSyncCache); return; }
+            try {
+                if (!window.FB || !FB.getIdToken) return;
+                const token = await FB.getIdToken();
+                if (!token) return;
+                const res = await fetch(window.API_BASE + '/api/sync-status', { headers: { Authorization: 'Bearer ' + token } });
+                if (!res.ok) return;
+                const st = await res.json();
+                _mlSyncCache = st; _mlSyncLastFetch = now;
+                paint(st);
+            } catch (e) { /* aditivo: sin red, el indicador simplemente no aparece */ }
+        }
+        // Tiempo relativo en español ("hace 5 min", "hace 2 h", "hace 3 días").
+        function _relTime(iso) {
+            const t = new Date(iso).getTime();
+            if (isNaN(t)) return 'recién';
+            const s = Math.max(0, Math.floor((Date.now() - t) / 1000));
+            if (s < 60) return 'hace un momento';
+            const m = Math.floor(s / 60); if (m < 60) return 'hace ' + m + ' min';
+            const h = Math.floor(m / 60); if (h < 24) return 'hace ' + h + ' h';
+            const d = Math.floor(h / 24); return 'hace ' + d + (d === 1 ? ' día' : ' días');
         }
 
         // Sección Dashboard: alertas de stock por niveles (sin stock / crítico / en riesgo).
