@@ -379,6 +379,11 @@ async function opSend({ svc, gtoken, uid, email, statePath, state, aiDoc, body, 
   const thread = aiDoc.threads[threadId];
   const currentTurn = (thread.turn || 0) + 1;
 
+  // Snapshot de los id de ventas al cargar el turno. Se usa al guardar para distinguir
+  // las ventas que el usuario BORRÓ en este turno (delete_sale) de las que el cron pudo
+  // AGREGAR en paralelo, y así no resucitar lo borrado al fusionar (ver merge en el save).
+  const _initialSaleIds = new Set((Array.isArray(state.sales) ? state.sales : []).map(s => String(s.id)));
+
   // Contexto enlazado en el servidor para las herramientas.
   const ctx = {
     state,
@@ -430,9 +435,25 @@ async function opSend({ svc, gtoken, uid, email, statePath, state, aiDoc, body, 
   const idx = aiDoc.threadIndex.find(t => t.id === threadId);
   if (idx) { idx.updatedAt = nowIso; idx.preview = reply.slice(0, 80); if (idx.title === 'Nueva conversación') idx.title = message.slice(0, 40); }
 
-  // Persistencia de SOLO lo que cambió.
+  // Persistencia de SOLO lo que cambió, con merge anti-clobber: el cron (u otro
+  // dispositivo) pudo AGREGAR ventas entre la carga del turno y este guardado. El merge
+  // se ejecuta en cada (re)intento sobre los datos remotos frescos y une por id las
+  // ventas remotas que no tenemos localmente, EXCEPTO las que el usuario borró en este
+  // turno (delete_sale), para no resucitarlas. Las ventas solo se agregan o borran (no
+  // hay edición in-place), por lo que la unión por id es segura.
   if (ctx.changed.size) {
-    try { await store.saveStateFields(svc, gtoken, statePath, state, [...ctx.changed]); }
+    const mergeRemote = (remote) => {
+      if (!ctx.changed.has('sales') || !Array.isArray(remote.sales)) return;
+      if (!Array.isArray(state.sales)) state.sales = [];
+      const localIds = new Set(state.sales.map(s => String(s.id)));
+      const deleted = new Set([..._initialSaleIds].filter(id => !localIds.has(id)));
+      for (const rs of remote.sales) {
+        const rid = rs && String(rs.id);
+        if (!rid || localIds.has(rid) || deleted.has(rid)) continue;
+        state.sales.push(rs); localIds.add(rid);
+      }
+    };
+    try { await store.saveStateFields(svc, gtoken, statePath, state, [...ctx.changed], mergeRemote); }
     catch (e) { console.error('ai-agent saveState:', e && e.message); }
   }
   // Token ML refrescado durante el turno → persistir.

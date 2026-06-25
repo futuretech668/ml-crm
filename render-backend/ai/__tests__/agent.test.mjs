@@ -193,6 +193,51 @@ test('contrato — método GET (no POST) en handle() es 405 method', async () =>
   } finally { restore(); }
 });
 
+test('op:send — merge anti-clobber: no pisa una venta que el cron agrega a mitad de turno', async () => {
+  let fsRef = null;
+  // El cerebro agrega una venta local Y simula que el cron escribió OTRA venta en el
+  // doc remoto entre la carga del turno y el guardado (race real cron↔MIA).
+  const brain = async (msg, byName) => {
+    await byName.add_sale.invoke({ productId: 2, quantity: 1 });
+    fsRef.db['crm_users/uid1'].sales = [
+      ...fsRef.db['crm_users/uid1'].sales,
+      { id: 999001, date: '2026-06-20', time: '11:30', productId: 1, productName: 'Audífonos Pro',
+        quantity: 1, salePrice: 25000, costPrice: 10000, commission: 2500, shipping: 2000,
+        totalPrice: 25000, profit: 10500, source: 'mercadolibre', item_id: 'MLC999', order_id: '999' }
+    ];
+    return { reply: 'venta agregada' };
+  };
+  const { fs, restore } = setupAgent({ initialDb: userDb(), brain });
+  fsRef = fs;
+  try {
+    const r = await call({ op: 'send', message: 'agrega una venta del producto 2' }, TOKEN);
+    assert.equal(r.status, 200);
+    const st = fs.db['crm_users/uid1'];
+    // 3 originales + 1 del cron concurrente + 1 de MIA = 5 (la del cron NO se pierde).
+    assert.equal(st.sales.length, 5);
+    assert.ok(st.sales.some(s => s.id === 999001), 'la venta del cron debe sobrevivir al guardado de MIA');
+    assert.ok(st.sales.some(s => s.productId === 2 && s.source !== 'mercadolibre'), 'la venta de MIA también se guarda');
+  } finally { restore(); }
+});
+
+test('op:send — merge anti-clobber: delete_sale NO resucita la venta borrada', async () => {
+  let fsRef = null;
+  // El usuario borra la venta 101 vía MIA; el doc remoto todavía la tiene (no debe volver).
+  const brain = async (msg, byName) => {
+    await byName.delete_sale.invoke({ id: 101 });
+    return { reply: 'venta borrada' };
+  };
+  const { fs, restore } = setupAgent({ initialDb: userDb(), brain });
+  fsRef = fs;
+  try {
+    const r = await call({ op: 'send', message: 'borra la venta 101' }, TOKEN);
+    assert.equal(r.status, 200);
+    const st = fs.db['crm_users/uid1'];
+    assert.ok(!st.sales.some(s => s.id === 101), 'la venta borrada no debe reaparecer por el merge');
+    assert.equal(st.sales.length, 2); // 3 - 1
+  } finally { restore(); }
+});
+
 test('save_memory — se persiste y aparece en la siguiente apertura de perfil', async () => {
   const brain = async (msg, byName) => {
     await byName.save_memory.invoke({ note: 'Vende sobre todo en diciembre.' });
