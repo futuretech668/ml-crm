@@ -14,6 +14,9 @@
 // ============================================================================
 
 const crypto = require('crypto');
+// Fuente ÚNICA del redirect_uri (compartida con ml-callback.js). DEBE coincidir
+// EXACTO en ambos lados o ML rechaza el canje. Ver api/lib/ml-redirect.js.
+const { resolveRedirectUri } = require('./lib/ml-redirect.js');
 const AUTH_DOMAIN = process.env.ML_AUTH_DOMAIN || 'https://auth.mercadolibre.cl';
 
 // Firma el uid con HMAC para que ml-callback pueda comprobar que el `state`
@@ -36,9 +39,10 @@ exports.handler = async (event) => {
     return { statusCode: 500, body: 'Falta ML_CLIENT_ID en las variables de entorno de Netlify.' };
   }
 
-  // URL pública del backend (Render). Se configura en la env var URL.
-  const base = process.env.URL || ('https://' + (event.headers.host || ''));
-  const redirectUri = base + '/api/ml-callback';
+  // redirect_uri resuelto por la fuente única compartida (ML_REDIRECT_URI en
+  // producción, o cálculo por host como fallback). DEBE coincidir EXACTO con el
+  // que usa ml-callback.js al canjear el code.
+  const redirectUri = resolveRedirectUri(event);
 
   const authUrl = AUTH_DOMAIN + '/authorization'
     + '?response_type=code'

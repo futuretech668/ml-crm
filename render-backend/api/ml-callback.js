@@ -19,6 +19,9 @@
 // ============================================================================
 
 const crypto = require('crypto');
+// Fuente ÚNICA del redirect_uri (compartida con ml-login.js). DEBE coincidir
+// EXACTO en ambos lados o ML rechaza el canje. Ver api/lib/ml-redirect.js.
+const { resolveRedirectUri } = require('./lib/ml-redirect.js');
 
 const TOKEN_URL = (process.env.ML_API || 'https://api.mercadolibre.com') + '/oauth/token';
 
@@ -128,7 +131,10 @@ exports.handler = async (event) => {
     return backTo('error');
   }
 
-  const redirectUri = base + '/api/ml-callback';
+  // redirect_uri resuelto por la fuente única compartida (la MISMA que usa
+  // ml-login.js). DEBE coincidir EXACTO con el del paso de autorización o ML
+  // rechaza el canje por mismatch. Fijar ML_REDIRECT_URI en producción.
+  const redirectUri = resolveRedirectUri(event);
 
   try {
     // 1) Canjear el código de Mercado Libre por los tokens.
