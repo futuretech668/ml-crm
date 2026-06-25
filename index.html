@@ -2437,6 +2437,7 @@
                             <div class="kpi-label">Ingresos Totales</div>
                             <div class="kpi-value" id="dashRevenue">$0</div>
                             <div class="kpi-sub" id="dashRevenueDetail">Total ingresado</div>
+                            <div class="kpi-trend" id="dashRevenueTrend" style="display:none;font-size:11px;margin-top:4px;"></div>
                         </div>
 
                         <!-- Ganancia Neta -->
@@ -2445,6 +2446,7 @@
                             <div class="kpi-label">Ganancia Neta</div>
                             <div class="kpi-value" id="dashNetProfit">$0</div>
                             <div class="kpi-sub" id="dashNetProfitDetail">Después de descuentos</div>
+                            <div class="kpi-trend" id="dashNetProfitTrend" style="display:none;font-size:11px;margin-top:4px;"></div>
                         </div>
 
                         <!-- Comisiones -->
@@ -2469,6 +2471,7 @@
                             <div class="kpi-label">Unidades Vendidas</div>
                             <div class="kpi-value" id="dashUnits">0</div>
                             <div class="kpi-sub" id="dashUnitsDetail">Total vendido</div>
+                            <div class="kpi-trend" id="dashUnitsTrend" style="display:none;font-size:11px;margin-top:4px;"></div>
                         </div>
 
                         <!-- IVA -->
@@ -2486,6 +2489,12 @@
                             <div class="kpi-value" id="dashPublicidad">$0</div>
                             <div class="kpi-sub" id="dashPublicidadDetail">Gasto en ads</div>
                         </div>
+                    </div>
+
+                    <!-- Insights automáticos (reglas deterministas; se rellena por JS). Oculto si no hay datos. -->
+                    <div class="card" id="dashInsightsCard" style="margin-bottom: 24px; display:none;">
+                        <h3><i data-lucide="lightbulb"></i>Observaciones</h3>
+                        <div id="dashInsights"></div>
                     </div>
 
                     <div class="card" style="margin-bottom: 24px;">
@@ -3048,6 +3057,19 @@
                     <div class="card">
                         <h2><i data-lucide="calendar-range"></i>Resumen del mes</h2>
                         <div id="finResumenMes"></div>
+                    </div>
+
+                    <!-- Distribución de costos del mes + barra de meta (se rellena por JS; oculto si no hay datos). -->
+                    <div class="grid grid-2" id="finVisualRow" style="display:none;">
+                        <div class="card">
+                            <h2><i data-lucide="pie-chart"></i>Distribución de costos del mes</h2>
+                            <canvas id="finGastosChart" height="240" style="max-width:100%;max-height:240px;"></canvas>
+                            <div id="finGastosLegend" style="margin-top:12px;"></div>
+                        </div>
+                        <div class="card">
+                            <h2><i data-lucide="target"></i>Meta del mes</h2>
+                            <div id="finMetaBar"></div>
+                        </div>
                     </div>
 
                     <!-- Ganancia neta por producto -->
@@ -6281,6 +6303,92 @@
             renderGastosAdicionales();
             renderStockAlerts();
             try { updateMlSyncIndicator(); } catch (e) {}
+            try { renderInsights(); } catch (e) { /* aditivo: nunca rompe el dashboard */ }
+            try { renderDashTrends(); } catch (e) { /* aditivo */ }
+        }
+
+        // Observaciones automáticas (deterministas, sin IA): mejor día, producto estrella,
+        // alerta de stock crítico con ventas recientes. Aditivo: oculto si no hay nada útil.
+        function renderInsights() {
+            const card = document.getElementById('dashInsightsCard');
+            const cont = document.getElementById('dashInsights');
+            if (!card || !cont) return;
+            const sales = (STATE.sales || []);
+            const items = [];
+            // 1) Mejor día de la semana por ingresos promedio.
+            if (sales.length >= 3) {
+                const dias = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+                const acc = {}; // dow -> {total, n}
+                sales.forEach(s => {
+                    const d = new Date((s.date || '') + 'T12:00:00');
+                    if (isNaN(d)) return;
+                    const k = d.getDay();
+                    const rev = (window.saleRevenue ? saleRevenue(s) : (Number(s.totalPrice) || 0));
+                    (acc[k] = acc[k] || { total: 0, n: 0 }).total += rev; acc[k].n++;
+                });
+                let best = null;
+                Object.keys(acc).forEach(k => { const avg = acc[k].total / acc[k].n; if (!best || avg > best.avg) best = { k: +k, avg }; });
+                if (best) items.push(`💡 Tu mejor día de ventas es el <strong>${dias[best.k]}</strong> (${formatCurrency(Math.round(best.avg))} en promedio).`);
+            }
+            // 2) Producto estrella por aporte a la ganancia.
+            const porProd = {};
+            sales.forEach(s => {
+                const g = (window.saleProfit ? saleProfit(s) : (Number(s.profit) || 0));
+                porProd[s.productId] = (porProd[s.productId] || 0) + g;
+            });
+            const totalG = Object.values(porProd).reduce((a, b) => a + b, 0);
+            if (totalG > 0) {
+                let topId = null, topG = -Infinity;
+                Object.keys(porProd).forEach(id => { if (porProd[id] > topG) { topG = porProd[id]; topId = id; } });
+                const prod = (STATE.products || []).find(p => String(p.id) === String(topId));
+                if (prod) items.push(`🚀 <strong>${DOMPurify.sanitize(prod.name)}</strong> es tu producto estrella: ${Math.round(topG / totalG * 100)}% de tu ganancia.`);
+            }
+            // 3) Stock crítico de un producto que se vende seguido.
+            const vendidos = new Set(sales.map(s => s.productId));
+            const critico = (STATE.products || []).filter(p => !p.archived && vendidos.has(p.id))
+                .map(p => ({ p, lvl: (window.stockLevel ? stockLevel(p) : { key: 'ok' }) }))
+                .filter(x => x.lvl.key === 'critico' || x.lvl.key === 'sin')[0];
+            if (critico) items.push(`⚠️ <strong>${DOMPurify.sanitize(critico.p.name)}</strong> tiene stock ${critico.lvl.key === 'sin' ? 'agotado' : 'crítico'} (${critico.p.stock} u.) y se vende seguido.`);
+            if (!items.length) { card.style.display = 'none'; return; }
+            cont.innerHTML = '<div style="display:flex;flex-direction:column;gap:8px;font-size:13px;color:var(--text-secondary);">' +
+                items.map(t => `<div>${t}</div>`).join('') + '</div>';
+            card.style.display = '';
+        }
+
+        // Chips de tendencia MENSUAL (mes actual vs mes anterior) bajo los KPIs del Dashboard.
+        // NO altera el número grande (que sigue siendo el total histórico): solo agrega contexto.
+        function renderDashTrends() {
+            const sales = STATE.sales || [];
+            const now = new Date();
+            const ymOf = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+            const curYm = ymOf(now);
+            const prevYm = ymOf(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+            const agg = (ym) => {
+                let rev = 0, prof = 0, units = 0;
+                sales.forEach(s => {
+                    if (String(s.date || '').slice(0, 7) !== ym) return;
+                    rev += (window.saleRevenue ? saleRevenue(s) : (Number(s.totalPrice) || 0));
+                    prof += (window.saleProfit ? saleProfit(s) : (Number(s.profit) || 0));
+                    units += (Number(s.quantity) || 0);
+                });
+                let iva = 0;
+                try { const ir = window.ivaResumenMeses ? ivaResumenMeses() : null; if (ir) { const m = (ir.meses || []).find(x => x.ym === ym); if (m) iva = Number(m.iva) || 0; } } catch (e) {}
+                const pub = window.publicidadDelMes ? (publicidadDelMes(ym) || 0) : 0;
+                return { rev, net: prof - iva - pub, units };
+            };
+            const cur = agg(curYm), prev = agg(prevYm);
+            const chip = (elId, c, p) => {
+                const el = document.getElementById(elId); if (!el) return;
+                if (!p) { el.style.display = 'none'; return; } // sin mes anterior con datos → sin chip
+                const pct = Math.round(((c - p) / Math.abs(p)) * 100);
+                const up = pct >= 0;
+                el.style.color = up ? 'var(--success)' : 'var(--accent-danger)';
+                el.textContent = (up ? '▲ +' : '▼ ') + pct + '% este mes';
+                el.style.display = '';
+            };
+            chip('dashRevenueTrend', cur.rev, prev.rev);
+            chip('dashNetProfitTrend', cur.net, prev.net);
+            chip('dashUnitsTrend', cur.units, prev.units);
         }
 
         // Indicador "última sincronización con Mercado Libre" en el Dashboard.
@@ -6678,6 +6786,38 @@
             const totalShipping = _fz.totalShipping;
             const avgMargin = _fz.netMargin;          // margen NETO (coincide con el Dashboard)
 
+            // Comparativa mensual (mes actual vs anterior) + serie diaria del mes en curso.
+            // Aditivo: los KPIs de arriba siguen siendo el TOTAL histórico.
+            const _ana = (function(){
+                const sales = STATE.sales || [];
+                const now = new Date();
+                const ymOf = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+                const curYm = ymOf(now), prevYm = ymOf(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+                const agg = (ym) => {
+                    let rev = 0, prof = 0, units = 0;
+                    sales.forEach(s => { if (String(s.date || '').slice(0, 7) !== ym) return;
+                        rev += (window.saleRevenue ? saleRevenue(s) : (Number(s.totalPrice) || 0));
+                        prof += (window.saleProfit ? saleProfit(s) : (Number(s.profit) || 0));
+                        units += (Number(s.quantity) || 0); });
+                    let iva = 0; try { const ir = window.ivaResumenMeses ? ivaResumenMeses() : null; if (ir){ const m = (ir.meses || []).find(x => x.ym === ym); if (m) iva = Number(m.iva) || 0; } } catch(e){}
+                    const pub = window.publicidadDelMes ? (publicidadDelMes(ym) || 0) : 0;
+                    return { rev, net: prof - iva - pub, units };
+                };
+                // Serie diaria del mes actual (ganancia por día).
+                const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+                const daily = new Array(daysInMonth).fill(0);
+                sales.forEach(s => { if (String(s.date || '').slice(0, 7) !== curYm) return;
+                    const d = parseInt(String(s.date).slice(8, 10), 10);
+                    if (d >= 1 && d <= daysInMonth) daily[d - 1] += (window.saleProfit ? saleProfit(s) : (Number(s.profit) || 0)); });
+                return { cur: agg(curYm), prev: agg(prevYm), daily, daysInMonth, curYm };
+            })();
+            const _anaCmp = (cur, prev, money) => {
+                if (!prev) return '<span style="color:var(--text-muted);font-size:11px;">sin mes anterior</span>';
+                const pct = Math.round(((cur - prev) / Math.abs(prev)) * 100);
+                const up = pct >= 0;
+                return '<span style="color:' + (up ? 'var(--success)' : 'var(--accent-danger)') + ';font-size:11px;">' + (up ? '▲ +' : '▼ ') + pct + '% vs mes ant.</span>';
+            };
+
             let html = '';
 
             // Resumen general
@@ -6702,6 +6842,18 @@
                     <div class="kpi-value">${formatNumber(avgMargin)}%</div>
                     <div class="kpi-sub">Neto / ingresos</div>
                 </div>
+            </div>`;
+
+            // Comparativa mensual (chips) + gráfico de ventas por día del mes en curso.
+            html += `<div class="card" style="margin-bottom: 14px;">
+                <h3><i data-lucide="git-compare"></i>Este mes vs mes anterior</h3>
+                <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
+                    <div class="badge" style="background:var(--bg-tertiary);padding:8px 12px;font-size:12px;color:var(--text-secondary);">Ingresos: <strong style="color:var(--text-primary);">${formatCurrency(_ana.cur.rev)}</strong> &nbsp;${_anaCmp(_ana.cur.rev, _ana.prev.rev)}</div>
+                    <div class="badge" style="background:var(--bg-tertiary);padding:8px 12px;font-size:12px;color:var(--text-secondary);">Ganancia neta: <strong style="color:var(--text-primary);">${formatCurrency(_ana.cur.net)}</strong> &nbsp;${_anaCmp(_ana.cur.net, _ana.prev.net)}</div>
+                    <div class="badge" style="background:var(--bg-tertiary);padding:8px 12px;font-size:12px;color:var(--text-secondary);">Unidades: <strong style="color:var(--text-primary);">${_ana.cur.units}</strong> &nbsp;${_anaCmp(_ana.cur.units, _ana.prev.units)}</div>
+                </div>
+                <h3 style="margin-top:6px;"><i data-lucide="calendar-days"></i>Ganancia por día (mes actual)</h3>
+                <canvas id="anaDayChart" height="220" style="max-width:100%;max-height:220px;"></canvas>
             </div>`;
 
             // Análisis de stock (junto a los KPIs financieros: todo el estado de salud arriba)
@@ -6856,6 +7008,21 @@
             }
 
             document.getElementById('analyticsTable').innerHTML = html;
+            // Gráfico de ventas por día del mes (aditivo: nunca rompe el render del Análisis).
+            try {
+                const cv = document.getElementById('anaDayChart');
+                if (cv && window.Chart) {
+                    if (window.anaDayChartInstance) { try { window.anaDayChartInstance.destroy(); } catch (e) {} }
+                    window.anaDayChartInstance = new Chart(cv.getContext('2d'), {
+                        type: 'bar',
+                        data: {
+                            labels: _ana.daily.map((_, i) => i + 1),
+                            datasets: [{ label: 'Ganancia', data: _ana.daily.map(v => Math.round(v)), backgroundColor: '#16C784', borderRadius: 3 }]
+                        },
+                        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false } } } }
+                    });
+                }
+            } catch (e) { /* aditivo */ }
             refreshIcons();
         }
 
@@ -8858,6 +9025,89 @@
                 '</div>';
         }
 
+        // ---------- Distribución de costos del mes (torta) + barra de meta ----------
+        function renderFinanzasExtras(){
+            var row = $('finVisualRow');
+            if (!row || !window.STATE) return;
+            var sales = Array.isArray(STATE.sales) ? STATE.sales : [];
+            var exp = (typeof ensureExpenses === 'function') ? ensureExpenses() : (STATE.expenses || []);
+            var now = new Date();
+            var curYm = now.getFullYear() + '-' + (now.getMonth() + 1 < 10 ? '0' : '') + (now.getMonth() + 1);
+
+            // Costos del mes en curso: comisiones, envíos, gastos variables, fijos, publicidad, IVA.
+            var comis = 0, envio = 0;
+            sales.forEach(function(s){ if (monthKey(s.date) === curYm){ comis += (Number(s.commission) || 0); envio += (Number(s.shipping) || 0); } });
+            var variables = 0;
+            exp.forEach(function(e){ if (monthKey(e.fecha) === curYm) variables += (Number(e.monto) || 0); });
+            var fijos = (window.totalGastosFijosMensual ? window.totalGastosFijosMensual(curYm) : 0);
+            var pub = (window.publicidadDelMes ? window.publicidadDelMes(curYm) : 0);
+            var iva = 0;
+            try { var _ir = window.ivaResumenMeses ? window.ivaResumenMeses() : null; if (_ir){ var _m = (_ir.meses || []).filter(function(x){ return x.ym === curYm; })[0]; if (_m) iva = Number(_m.iva) || 0; } } catch(e){}
+
+            var cats = [
+                { label: 'Comisiones', val: comis, color: '#F59E0B' },
+                { label: 'Envíos', val: envio, color: '#3B82F6' },
+                { label: 'Variables', val: variables, color: '#EF4444' },
+                { label: 'Fijos', val: fijos, color: '#8B5CF6' },
+                { label: 'Publicidad', val: pub, color: '#EC4899' },
+                { label: 'IVA', val: iva, color: '#14B8A6' }
+            ].filter(function(c){ return c.val > 0; });
+            var totalCost = cats.reduce(function(a,c){ return a + c.val; }, 0);
+
+            // Meta del mes (si existe).
+            var metaHtml = '<p style="color:var(--text-muted);font-size:14px;">No has fijado una meta para este mes.</p>';
+            var goals = (STATE.goals && STATE.goals.mensual) ? STATE.goals.mensual : null;
+            if (goals && goals.objetivo > 0){
+                var ymMeta = goals.mes || curYm;
+                var tipo = goals.tipoMeta || 'ganancia';
+                var logrado = 0;
+                sales.forEach(function(s){
+                    if (monthKey(s.date) !== ymMeta) return;
+                    if (tipo === 'unidades') logrado += (Number(s.quantity) || 0);
+                    else if (tipo === 'ventas') logrado += saleRevenue(s);
+                    else logrado += saleProfit(s);
+                });
+                var pct = Math.max(0, Math.min(100, Math.round(logrado / goals.objetivo * 100)));
+                var barCol = pct >= 80 ? 'var(--success)' : (pct >= 50 ? '#F59E0B' : 'var(--accent-danger)');
+                var fmtV = (tipo === 'unidades') ? function(n){ return n + ' u.'; } : money;
+                var tipoLabel = tipo === 'unidades' ? 'unidades' : (tipo === 'ventas' ? 'ingresos' : 'ganancia');
+                var falta = Math.max(0, goals.objetivo - logrado);
+                metaHtml =
+                    '<div style="font-size:13px;color:var(--text-secondary);margin-bottom:10px;">Objetivo de <b style="color:var(--text-primary);">' + tipoLabel + '</b>: <b style="color:var(--text-primary);">' + fmtV(goals.objetivo) + '</b> · ' + esc(monthLabel(ymMeta)) + '</div>' +
+                    '<div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">Logrado: <b style="color:var(--text-primary);">' + fmtV(logrado) + '</b></div>' +
+                    '<div style="background:var(--bg-tertiary);border-radius:999px;height:16px;overflow:hidden;border:1px solid var(--border-color);">' +
+                        '<div style="height:100%;width:' + pct + '%;background:' + barCol + ';transition:width .3s;"></div>' +
+                    '</div>' +
+                    '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-muted);margin-top:6px;">' +
+                        '<span>' + pct + '%</span><span>' + (pct >= 100 ? '¡Meta cumplida! 🎉' : ('Faltan ' + fmtV(falta))) + '</span>' +
+                    '</div>';
+            }
+            $('finMetaBar').innerHTML = metaHtml;
+
+            // Si no hay costos y no hay meta con datos, ocultar toda la fila.
+            if (!cats.length && (!goals || !goals.objetivo)){ row.style.display = 'none'; return; }
+            row.style.display = '';
+
+            // Torta (doughnut) de costos.
+            var canvas = $('finGastosChart');
+            if (canvas && window.Chart && cats.length){
+                var ctx = canvas.getContext('2d');
+                if (window.finGastosChartInstance) { try { window.finGastosChartInstance.destroy(); } catch(e){} }
+                window.finGastosChartInstance = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: { labels: cats.map(function(c){ return c.label; }), datasets: [{ data: cats.map(function(c){ return Math.round(c.val); }), backgroundColor: cats.map(function(c){ return c.color; }), borderWidth: 0 }] },
+                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+                });
+                $('finGastosLegend').innerHTML = '<div style="display:flex;flex-wrap:wrap;gap:8px 16px;font-size:12px;">' +
+                    cats.map(function(c){ var p = totalCost > 0 ? Math.round(c.val / totalCost * 100) : 0;
+                        return '<span style="display:inline-flex;align-items:center;gap:6px;color:var(--text-secondary);"><span style="width:10px;height:10px;border-radius:50%;background:' + c.color + ';display:inline-block;"></span>' + c.label + ' ' + p + '% <span style="color:var(--text-muted);">(' + money(c.val) + ')</span></span>'; }).join('') +
+                    '</div>';
+            } else if (canvas && !cats.length){
+                if (window.finGastosChartInstance) { try { window.finGastosChartInstance.destroy(); window.finGastosChartInstance = null; } catch(e){} }
+                $('finGastosLegend').innerHTML = '<p style="color:var(--text-muted);font-size:13px;">Sin costos registrados este mes.</p>';
+            }
+        }
+
         // ---------- API global ----------
         window.renderFinanzas = function(){
             try{
@@ -8871,6 +9121,7 @@
                 fillFinConfigInputs();
                 fillIvaInputs();
                 renderResumenMes();
+                try { renderFinanzasExtras(); } catch(e){ /* aditivo: nunca rompe Finanzas */ }
                 renderGananciaProductos();
                 renderGastosList();
                 renderGastosFijos();
