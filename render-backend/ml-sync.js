@@ -279,8 +279,16 @@ function suggestProduct(products, title, minScore) {
 // Resuelve la variante de un producto a partir del título de ML por color/talla.
 // Devuelve la variante SOLO si calza exactamente una (claro); null si hay duda
 // (ninguna o varias) para preguntarle al usuario. VERBATIM en domain.mjs / index.html.
-function suggestVariant(product, title) {
+function suggestVariant(product, title, mlSku) {
   if (!product || !product.hasVariants || !Array.isArray(product.variants) || !product.variants.length) return null;
+  // Atajo de ALTA confianza: si la venta de ML trae un SKU (seller_sku / seller_custom_field)
+  // y EXACTAMENTE una variante tiene ese mismo `sku`, se resuelve directo (sin depender del título).
+  const normSku = (s) => String(s || '').trim().toLowerCase();
+  const wantSku = normSku(mlSku);
+  if (wantSku) {
+    const bySku = product.variants.filter((v) => v && normSku(v.sku) && normSku(v.sku) === wantSku);
+    if (bySku.length === 1) return bySku[0];
+  }
   const sing = (w) => (w.length > 3 && w.endsWith('s')) ? w.slice(0, -1) : w;
   const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
     .replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter((w) => w && !STOPWORDS.has(w)).map(sing);
@@ -334,6 +342,9 @@ function applyOrder(order, ctx) {
     const mlVarText = ((it.item && it.item.variation_attributes) || [])
       .map((a) => a && (a.value_name || a.value_id)).filter(Boolean).join(' ');
     const vText = mlVarText || title;
+    // SKU del vendedor que ML expone por variación: si el usuario lo cargó igual en su
+    // publicación y en la variante de Nexsell, permite un match EXACTO (sin depender del texto).
+    const mlSku = (it.item && (it.item.seller_sku || it.item.seller_custom_field)) || it.seller_sku || '';
     let mapping = mappings[itemId];
     let needsVariant = false; // producto claro pero variante ambigua -> se pregunta
     // Auto-mapeo inteligente: si el nombre coincide en >80% con un producto registrado,
@@ -343,7 +354,7 @@ function applyOrder(order, ctx) {
       if (auto) {
         if (auto.hasVariants) {
           // Producto con variantes: solo auto-mapear si la variante es CLARA (color/talla en el título).
-          const av = suggestVariant(auto, vText);
+          const av = suggestVariant(auto, vText, mlSku);
           if (av) { mapping = { productId: auto.id, productName: auto.name, variantId: av.id, variantLabel: vLabel(av) }; mappings[itemId] = mapping; }
           else { needsVariant = true; } // claro el producto, ambigua la variante -> pendiente
         } else {
@@ -356,7 +367,7 @@ function applyOrder(order, ctx) {
       // fijada, intentar resolverla si el título la hace clara (no re-pregunta lo ya confirmado).
       const prod = products.find((p) => p.id === mapping.productId);
       if (prod && prod.hasVariants && mapping.variantId == null) {
-        const av = suggestVariant(prod, vText);
+        const av = suggestVariant(prod, vText, mlSku);
         if (av) { mapping.variantId = av.id; mapping.variantLabel = vLabel(av); }
       }
     }
@@ -411,9 +422,9 @@ function applyOrder(order, ctx) {
         // Si el producto venía claro (auto-mapeo >80%) pero la variante es ambigua,
         // usar ese producto como sugerencia; si no, adivinar por nombre (>=0.4).
         const suggested = (needsVariant ? suggestProduct(products, title, 0.8) : null) || suggestProduct(products, title);
-        const sVar = (suggested && suggested.hasVariants) ? suggestVariant(suggested, vText) : null;
+        const sVar = (suggested && suggested.hasVariants) ? suggestVariant(suggested, vText, mlSku) : null;
         pendingMappings.push({
-          item_id: itemId, title, price: unitPrice, quantity: qty, commissionPerUnit,
+          item_id: itemId, title, price: unitPrice, quantity: qty, commissionPerUnit, mlSku: mlSku || null,
           suggestedProductId: suggested ? suggested.id : null,
           suggestedName: suggested ? suggested.name : null,
           suggestedVariantId: sVar ? sVar.id : null,

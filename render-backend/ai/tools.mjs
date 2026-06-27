@@ -205,6 +205,7 @@ export function buildCrmTools(ctx) {
           color: z.string().optional(),
           colorHex: z.string().optional(),
           talla: z.string().optional(),
+          sku: z.string().optional().describe('Código/SKU de la variante; debe coincidir con el seller_sku de la publicación en Mercado Libre para el match automático.'),
           precioVenta: z.number().optional(),
           precioCosto: z.number().optional(),
           stock: z.number().optional(),
@@ -307,7 +308,7 @@ export function buildCrmTools(ctx) {
       const variant = domain.findVariant(product, args.variantId);
       if (!variant) return j({ error: 'No existe esa variante.', variantes: variantSummary(product) });
       if (args.action === 'edit') {
-        const fields = ['color', 'colorHex', 'talla', 'precioVenta', 'precioCosto', 'tieneEnvio', 'costoEnvio', 'tieneComision', 'comisionTipo', 'comision', 'stock'];
+        const fields = ['color', 'colorHex', 'talla', 'sku', 'precioVenta', 'precioCosto', 'tieneEnvio', 'costoEnvio', 'tieneComision', 'comisionTipo', 'comision', 'stock'];
         for (const f of fields) if (args[f] !== undefined) variant[f] = args[f];
         domain.recalcVariantStock(product);
         product.lastModified = ctx.nowIso();
@@ -339,6 +340,7 @@ export function buildCrmTools(ctx) {
         color: z.string().optional(),
         colorHex: z.string().optional(),
         talla: z.string().optional(),
+        sku: z.string().optional().describe('Código/SKU de la variante; debe coincidir con el seller_sku de la publicación en Mercado Libre para el match automático.'),
         precioVenta: z.number().optional(),
         precioCosto: z.number().optional(),
         stock: z.number().optional(),
@@ -1077,6 +1079,26 @@ export function buildCrmTools(ctx) {
     }
   );
 
+  const delete_mapping = tool(
+    async (args) => {
+      const itemId = String(args.itemId);
+      const m = (state.mappings && typeof state.mappings === 'object') ? state.mappings : {};
+      const prev = m[itemId] || null;
+      if (!prev) return j({ error: 'No existe un mapeo para ese item_id. Usa list_mappings para ver los mapeos actuales.' });
+      delete state.mappings[itemId];
+      mark('mappings');
+      ctx.did.push({ action: 'delete_mapping', itemId, productId: prev.productId != null ? prev.productId : null });
+      return j({ ok: true, borrado: { item_id: itemId, ...prev } });
+    },
+    {
+      name: 'delete_mapping',
+      description: 'Borra el mapeo de una publicación de Mercado Libre (item_id). NO toca ventas ya registradas; solo elimina la asociación, de modo que la PRÓXIMA venta de esa publicación volverá a quedar pendiente para que se confirme a qué producto corresponde. Úsalo cuando un mapeo quedó mal y prefieres reasociar desde cero en vez de corregirlo con remap_item.',
+      schema: z.object({
+        itemId: z.union([z.string(), z.number()]).describe('item_id de la publicación de ML cuyo mapeo quieres borrar.')
+      })
+    }
+  );
+
   return [
     query_sales, list_products, get_goal_progress, get_finance_summary,
     add_sale, delete_sale, add_product, edit_product, delete_product,
@@ -1085,7 +1107,7 @@ export function buildCrmTools(ctx) {
     list_tasks, list_expenses, list_fixed_expenses, get_finance_config, list_channels, list_notifications,
     manage_expense, manage_fixed_expense, set_goal, set_finance_config, manage_channel,
     mark_notification_read, dismiss_notification, set_business_profile, regenerate_business_profile,
-    dismiss_pending_sale, restore_pending_sale, list_mappings, remap_item
+    dismiss_pending_sale, restore_pending_sale, list_mappings, remap_item, delete_mapping
   ];
 }
 

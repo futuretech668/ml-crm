@@ -2635,6 +2635,7 @@
                                 </div>
                             </div>
                             <input type="hidden" id="saleTime">
+                            <div id="saleVariantResumen" style="display:none;font-size:13px;margin:0 0 10px;padding:8px 10px;border-radius:8px;background:var(--bg-secondary);border:1px solid var(--border-color);"></div>
                             <p id="saleSubmitHint" style="color:var(--text-muted);font-size:13px;margin:0 0 10px;">Elige un producto y la cantidad para poder registrar la venta.</p>
                             <div style="display: flex; gap: 12px; flex-wrap: wrap;">
                                 <button type="submit" id="saleSubmitBtn" class="btn btn-primary" disabled><i data-lucide="check"></i>Registrar venta</button>
@@ -3696,7 +3697,10 @@
         // Etiquetas visibles de cada pestaña de Rendimiento.
         const RENDIMIENTO_LABELS = { analytics:'Análisis', metas:'Metas', logros:'Logros', reportes:'Reportes', alerts:'Alertas' };
         // Subsecciones (pestañas internas) de "Productos".
-        const GRUPO_PRODUCTOS = ['products','inventory','mapeos'];
+        // 'mapeos' queda fuera del menú a propósito: la pestaña Mapeos ML está oculta
+        // de la vista; la corrección de mapeos ahora la hace MIA (tool manage_mapping).
+        // La sección #mapeos y renderMapeos() siguen en el código pero inaccesibles.
+        const GRUPO_PRODUCTOS = ['products','inventory'];
         const PRODUCTOS_LABELS = { products:'Catálogo', inventory:'Inventario', mapeos:'Mapeos ML' };
         // Etiqueta para la miga de pan de cada sección de primer nivel.
         const SECCION_LABELS = { dashboard:'Dashboard', sales:'Ventas', finanzas:'Finanzas', agenda:'Agenda', settings:'Configuración', products:'Productos', inventory:'Productos', mapeos:'Productos', rendimiento:'Rendimiento' };
@@ -3817,9 +3821,9 @@
         // Inyecta la barra de pestañas Productos / Inventario al inicio de ambas secciones.
         function injectProductTabs(){
             const botones = '<button type="button" class="pi-tab" data-pi="products">Catálogo</button>'
-                          + '<button type="button" class="pi-tab" data-pi="inventory">Inventario</button>'
-                          + '<button type="button" class="pi-tab" data-pi="mapeos">Mapeos ML</button>';
-            injectTabBar(['products', 'inventory', 'mapeos'], botones, 'pi', (id) => { if (window.irASeccion) window.irASeccion(id); });
+                          + '<button type="button" class="pi-tab" data-pi="inventory">Inventario</button>';
+            // La pestaña "Mapeos ML" se ocultó de la vista; su gestión pasó a MIA (manage_mapping).
+            injectTabBar(['products', 'inventory'], botones, 'pi', (id) => { if (window.irASeccion) window.irASeccion(id); });
         }
 
         // Inyecta la barra de pestañas de Rendimiento al inicio de cada subsección,
@@ -4831,7 +4835,13 @@
                     if (isNaN(precioUnit) || precioUnit <= 0) { showToast('❌ El precio de venta no puede ser 0 ni vacío'); return; }
                 }
                 // Costo unitario: el de la variante específica si aplica (snapshot).
-                const costoUnit = variante ? (Number(variante.precioCosto) || product.costPrice) : product.costPrice;
+                // Si la variante NO tiene costo propio, se HEREDA el del producto y se avisa
+                // (mismo criterio que la ruta de ventas ML) para que no pase desapercibido.
+                const costoHeredado = !!(variante && !(Number(variante.precioCosto) > 0));
+                const costoUnit = variante ? (Number(variante.precioCosto) || (Number(product.costPrice) || 0)) : (Number(product.costPrice) || 0);
+                if (costoHeredado) {
+                    showToast('⚠️ La variante no tenía costo; se usó el costo del producto (' + formatCurrency(costoUnit) + '). Revísalo.');
+                }
                 // Envío (Agente 1/4): "No" = 0; "Sí" = monto escrito (precargado de la variante, editable).
                 const modoEnvio = (document.querySelector('input[name="saleEnvioMode"]:checked') || {}).value || 'no';
                 let envioTotal = 0;
@@ -4878,6 +4888,7 @@
                     source: canal,                         // canal/origen: manual / mercadolibre / otro
                     variantId: variante ? variante.id : null,
                     variantLabel: variante ? variantLabelOf(variante) : '',
+                    costInherited: costoHeredado,        // true si el costo se heredó del producto (variante sin costo)
                     createdAt: new Date().toISOString()
                 };
 
@@ -5051,6 +5062,7 @@
                 if (comResumen) comResumen.textContent = (comV > 0)
                     ? ('🏪 Comisión: ' + (comTipo === 'percentage' ? (comV + '%') : formatCurrency(comV)) + ' — se respeta del producto')
                     : '🏪 Sin comisión';
+                if (window.ventaSyncResumenVariante) window.ventaSyncResumenVariante();
             };
 
             // Muestra/oculta el panel de ajuste manual de envío o comisión.
@@ -5092,12 +5104,50 @@
                     var precioMostrar = variante ? (Number(variante.precioVenta != null ? variante.precioVenta : variante.precio) || (p ? p.salePrice : 0)) : (p ? p.salePrice : null);
                     lbl.textContent = (precioMostrar != null) ? ('(' + formatCurrency(precioMostrar) + ')') : '';
                 }
+                if (window.ventaSyncResumenVariante) window.ventaSyncResumenVariante();
+            };
+
+            // Muestra costo, precio y ganancia ESTIMADA de la venta antes de registrarla,
+            // para que un costo faltante (heredado) se vea de inmediato. Misma fórmula que el submit.
+            window.ventaSyncResumenVariante = function(){
+                var box = document.getElementById('saleVariantResumen');
+                if (!box) return;
+                var ctx = window.ventaCtxProducto(); var p = ctx.p, v = ctx.v;
+                // Sin producto, o producto con variantes sin variante elegida: no mostramos nada.
+                if (!p || (p.hasVariants && Array.isArray(p.variants) && p.variants.length && !v)) { box.style.display = 'none'; return; }
+                var qty = parseInt((document.getElementById('saleQuantity')||{}).value) || 1;
+                // Costo: el de la variante si es > 0; si no, se HEREDA del producto (y se avisa).
+                var costoVar = v ? (Number(v.precioCosto) || 0) : (Number(p.costPrice) || 0);
+                var heredado = false, costoUnit = costoVar;
+                if (v && !(Number(v.precioCosto) > 0)) { costoUnit = Number(p.costPrice) || 0; heredado = true; }
+                // Precio: modo "otro" usa el escrito; "guardado" usa variante/producto.
+                var modoPrecio = ((document.querySelector('input[name="salePriceMode"]:checked')||{}).value) || 'guardado';
+                var precioUnit = v ? (Number(v.precioVenta != null ? v.precioVenta : v.precio) || (Number(p.salePrice) || 0)) : (Number(p.salePrice) || 0);
+                if (modoPrecio === 'otro') { var pc = parseFloat((document.getElementById('salePriceCustom')||{}).value); if (!isNaN(pc) && pc > 0) precioUnit = pc; }
+                // Envío y comisión: de los controles actuales del form.
+                var envSiOn = ((document.querySelector('input[name="saleEnvioMode"]:checked')||{}).value) === 'si';
+                var envio = envSiOn ? (parseFloat((document.getElementById('saleEnvioCustom')||{}).value) || 0) : 0;
+                var comSiOn = ((document.querySelector('input[name="saleComisionMode"]:checked')||{}).value) === 'si';
+                var comEsPct = ((document.getElementById('saleComisionTipo')||{}).value) === 'percentage';
+                var comV = comSiOn ? (parseFloat((document.getElementById('saleComisionCustom')||{}).value) || 0) : 0;
+                var totalPrecio = precioUnit * qty;
+                var comision = comSiOn ? (comEsPct ? (totalPrecio * comV / 100) : comV) : 0;
+                var ganancia = totalPrecio - (costoUnit * qty) - comision - envio;
+                var skuTxt = (v && v.sku) ? (' · SKU ' + DOMPurify.sanitize(String(v.sku))) : '';
+                var colGan = ganancia < 0 ? 'var(--danger, #e5484d)' : 'var(--accent-primary)';
+                box.style.display = '';
+                box.innerHTML =
+                    '<div>💰 Costo unit.: <strong>' + formatCurrency(costoUnit) + '</strong>'
+                    + (heredado ? ' <span style="color:var(--danger,#e5484d);">⚠️ heredado del producto (la variante no tiene costo)</span>' : '')
+                    + ' · Precio unit.: <strong>' + formatCurrency(precioUnit) + '</strong>' + skuTxt + '</div>'
+                    + '<div>📈 Ganancia estimada (' + qty + ' u.): <strong style="color:' + colGan + ';">' + formatCurrency(ganancia) + '</strong></div>';
             };
 
             // Al elegir una variante (o producto), respetar su envío y comisión configurados.
             window.ventaPreloadVariant = function(){
                 if (window.ventaRespetarProducto) window.ventaRespetarProducto();
                 if (window.ventaSyncSubmit) window.ventaSyncSubmit();
+                if (window.ventaSyncResumenVariante) window.ventaSyncResumenVariante();
             };
 
             var _sp = document.getElementById('saleProduct'); if (_sp) _sp.addEventListener('change', window.ventaSyncVariant);
@@ -5855,8 +5905,12 @@
         // Devuelve la variante SOLO si calza exactamente una (claro); null si hay duda.
         // Singulariza ("negros"->"negro"). VERBATIM de domain.mjs/ml-sync.js.
         var __ML_STOPWORDS = new Set(['de','la','el','los','las','con','para','por','y','a','en','un','una','del','al','o']);
-        function suggestVariant(product, title){
+        function suggestVariant(product, title, mlSku){
             if (!product || !product.hasVariants || !Array.isArray(product.variants) || !product.variants.length) return null;
+            // Atajo de ALTA confianza por SKU exacto (seller_sku de ML == v.sku de la variante).
+            var _normSku = function(s){ return String(s||'').trim().toLowerCase(); };
+            var _want = _normSku(mlSku);
+            if (_want){ var _bySku = product.variants.filter(function(v){ return v && _normSku(v.sku) && _normSku(v.sku) === _want; }); if (_bySku.length === 1) return _bySku[0]; }
             var sing = function(w){ return (w.length > 3 && w.charAt(w.length-1) === 's') ? w.slice(0,-1) : w; };
             var norm = function(s){ return String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'')
                 .replace(/[^a-z0-9 ]/g,' ').split(/\s+/).filter(function(w){ return w && !__ML_STOPWORDS.has(w); }).map(sing); };
@@ -5986,7 +6040,7 @@
             function K(c,t){ return (c||'') + '||' + (t||''); }
             function $(id){ return document.getElementById(id); }
             function num(x){ var n = parseFloat(x); return isNaN(n) ? 0 : n; }
-            function ensure(k){ if (!VAR.data[k]) VAR.data[k] = { costo:'', venta:'', tieneEnvio:false, costoEnvio:'', tieneComision:false, comisionTipo:'percentage', comision:'', stock:'' }; return VAR.data[k]; }
+            function ensure(k){ if (!VAR.data[k]) VAR.data[k] = { costo:'', venta:'', tieneEnvio:false, costoEnvio:'', tieneComision:false, comisionTipo:'percentage', comision:'', stock:'', sku:'' }; return VAR.data[k]; }
             // Ganancia por unidad de una variante (en vivo).
             function ganOf(d){
                 var venta = num(d && d.venta), costo = num(d && d.costo);
@@ -6094,6 +6148,7 @@
                             fieldNum('Costo *', d.costo, enc, 'costo', 'max-width:110px;') +
                             fieldNum('Venta *', d.venta, enc, 'venta', 'max-width:110px;') +
                             fieldNum('Stock', d.stock, enc, 'stock', 'max-width:90px;') +
+                            ('<div><label style="display:block;font-size:11px;color:var(--text-muted);margin-bottom:3px;">Código/SKU</label><input type="text" placeholder="ej. AUD-NEG" value="' + String(d.sku||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;') + '" oninput="if(window.varSetField)varSetField(\'' + enc + '\',\'sku\',this.value)" class="form-control" style="max-width:140px;"></div>') +
                         '</div>' +
                         '<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin-top:10px;">' +
                             '<label class="switch" style="font-size:13px;"><input type="checkbox" class="switch-input" ' + (d.tieneEnvio?'checked':'') + ' onchange="if(window.varToggleField)varToggleField(\'' + enc + '\',\'tieneEnvio\',this.checked)"> 📦 Envío</label>' +
@@ -6149,6 +6204,7 @@
                     return {
                         id: VAR.ids[key] || ('v' + i + '-' + (cb.color||'') + (cb.talla||'')),
                         color: cb.color, colorHex: cb.colorHex, talla: cb.talla,
+                        sku: (d.sku || '').trim(),
                         precioCosto: costo, precioVenta: venta,
                         tieneEnvio: tieneEnvio, costoEnvio: costoEnvio,
                         tieneComision: tieneComision, comisionTipo: comisionTipo, comision: comisionInput, comisionMonto: comisionMonto,
@@ -6182,6 +6238,7 @@
                     if (v.talla) { hasTalla = true; if (VAR.tallas.indexOf(v.talla) < 0) VAR.tallas.push(v.talla); }
                     var k = K(v.color || '', v.talla || '');
                     VAR.data[k] = {
+                        sku: (v.sku != null) ? v.sku : '',
                         costo: (v.precioCosto != null) ? v.precioCosto : '',
                         venta: (v.precioVenta != null) ? v.precioVenta : (v.precio != null ? v.precio : ''),
                         tieneEnvio: !!v.tieneEnvio,
@@ -7499,7 +7556,7 @@
             if (product.hasVariants && Array.isArray(product.variants) && product.variants.length) {
                 if (variantId != null) variant = product.variants.find(v => String(v.id) === String(variantId));
                 if (!variant && pending.suggestedVariantId != null) variant = product.variants.find(v => String(v.id) === String(pending.suggestedVariantId));
-                if (!variant) variant = suggestVariant(product, pending.title);
+                if (!variant) variant = suggestVariant(product, pending.title, pending.mlSku);
                 if (!variant) return false; // ambigua -> que el usuario elija en la burbuja
             }
 
@@ -7591,11 +7648,15 @@
             const now = new Date();
             const nowIso = now.toISOString();
             let registradas = 0;
+            let _algunCostoHeredado = false;
             held.forEach((h, i) => {
                 const qty = h.quantity || 1;
                 const unitPrice = h.price || (_variant ? _variant.precioVenta : product.salePrice);
                 // Costo y envío: de la variante si hay, si no del producto.
-                const costUnit = _variant ? (Number(_variant.precioCosto) || 0) : (Number(product.costPrice) || 0);
+                // Si la variante NO tiene costo propio, se HEREDA el del producto (mismo criterio
+                // que la venta manual) en vez de quedar en 0, y se marca la venta para revisión.
+                const costInherited = !!(_variant && !(Number(_variant.precioCosto) > 0));
+                const costUnit = _variant ? (Number(_variant.precioCosto) || (Number(product.costPrice) || 0)) : (Number(product.costPrice) || 0);
                 // Comisión: preferir el sale_fee REAL por unidad que dejó la sync; si no, % por defecto.
                 const rate = (h.commissionRate != null) ? h.commissionRate : (product.commission / 100);
                 const commissionAmount = (h.commissionPerUnit != null)
@@ -7637,6 +7698,7 @@
                     shippingSource: (h.shippingTotal != null) ? 'ml' : 'local',
                     variantId: _variant ? _variant.id : null,
                     variantLabel: _variant ? variantLabelOf(_variant) : '',
+                    costInherited: costInherited,        // true si el costo se heredó del producto (variante sin costo)
                     // Auditoría (campos aditivos, mismo formato que el backend).
                     registeredAt: nowIso,
                     registeredBy: 'app',
@@ -7652,7 +7714,11 @@
                     p.lastModified = now.toISOString();
                 }
                 registradas++;
+                if (costInherited) _algunCostoHeredado = true;
             });
+            if (_algunCostoHeredado && typeof showToast === 'function') {
+                showToast('⚠️ Una variante de "' + product.name + '" no tenía costo; se usó el costo del producto. Revísalo.');
+            }
             return registradas;
         }
 
@@ -7685,8 +7751,12 @@
         // Variante por título CON tolerancia de género/nombre (espejo de la versión
         // ACTUALIZADA de domain.mjs:639, más completa que la suggestVariant histórica
         // de index.html). Se usa SOLO para la re-asociación para no romper paridad con A.
-        function _reassocSuggestVariant(product, title) {
+        function _reassocSuggestVariant(product, title, mlSku) {
             if (!product || !product.hasVariants || !Array.isArray(product.variants) || !product.variants.length) return null;
+            // Atajo de ALTA confianza por SKU exacto (seller_sku de ML == v.sku de la variante).
+            var _normSku = function(s){ return String(s||'').trim().toLowerCase(); };
+            var _want = _normSku(mlSku);
+            if (_want){ var _bySku = product.variants.filter(function(v){ return v && _normSku(v.sku) && _normSku(v.sku) === _want; }); if (_bySku.length === 1) return _bySku[0]; }
             var sing = function (w) { return (w.length > 3 && w.charAt(w.length - 1) === 's') ? w.slice(0, -1) : w; };
             var genderVariants = function (w) {
                 var out = new Set([w]);
@@ -7751,7 +7821,7 @@
                 // 4. Resolución de variante (solo si el producto maneja variantes).
                 var variantId = null;
                 if (product.hasVariants) {
-                    var v = _reassocSuggestVariant(product, pending.title);
+                    var v = _reassocSuggestVariant(product, pending.title, pending.mlSku);
                     if (v) variantId = v.id;
                     else if (pending.suggestedVariantId != null) {
                         var sv = (product.variants || []).find(function (x) { return String(x.id) === String(pending.suggestedVariantId); });
@@ -7861,7 +7931,7 @@
             if (_pp && _pp.hasVariants && Array.isArray(_pp.variants) && _pp.variants.length) {
                 const sv = (p.suggestedVariantId != null)
                     ? _pp.variants.find(v => String(v.id) === String(p.suggestedVariantId))
-                    : suggestVariant(_pp, p.title);
+                    : suggestVariant(_pp, p.title, p.mlSku);
                 const lbl = document.createElement('div');
                 lbl.style.cssText = 'margin-top:10px;font-size:12.5px;color:var(--text-secondary);';
                 lbl.innerHTML = '¿Qué variante de <strong>' + DOMPurify.sanitize(_pp.name) + '</strong> se vendió?' +

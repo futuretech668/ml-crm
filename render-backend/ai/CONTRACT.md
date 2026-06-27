@@ -137,6 +137,7 @@ Es la op por defecto si se omite `op`.
 - `{ action: "set_business_profile" }` · `{ action: "regenerate_business_profile" }`
 - `{ action: "dismiss_pending_sale", itemId }` · `{ action: "restore_pending_sale", itemId }`
 - `{ action: "remap_item", itemId, productId, variantId }`
+- `{ action: "delete_mapping", itemId, productId }`
 
 #### `proposed[]` — confirm-gate de acciones de Mercado Libre (HACIA AFUERA)
 Las acciones que afectan a compradores reales (`ml_answer_question`,
@@ -261,6 +262,7 @@ en español. Ninguna borra ventas/productos del usuario.
 | `restore_pending_sale` | `itemId` (string\|number) | Quita el item_id de `dismissedPending` (vuelve a list_pending_ml_sales). Error si no estaba descartada. |
 | `list_mappings` | — | Lectura: lista `mappings{}` (item_id → producto/variante). |
 | `remap_item` | `itemId` (string\|number), `productId` (number), `variantId?` (string\|number) | Re-mapea una publicación de ML a otro producto/variante en `mappings`. NO toca ventas ya registradas. Exige `variantId` si el producto maneja variantes. Error si el producto/variante no existe. |
+| `delete_mapping` | `itemId` (string\|number) | Borra el mapeo de una publicación en `mappings`. NO toca ventas ya registradas; la próxima venta de esa publicación vuelve a quedar pendiente. Error si no hay mapeo para ese item_id. |
 
 ### Cambios en herramientas existentes
 - `set_goal.tipoMeta` ahora acepta `"unidades"` además de `"ganancia"` y `"ventas"`
@@ -271,3 +273,18 @@ en español. Ninguna borra ventas/productos del usuario.
   acotado a 0–100.
 - Validaciones endurecidas: `add_sale.quantity` entero positivo; `add_product`
   `costPrice`/`salePrice`/`stock` ≥ 0; `manage_expense.monto` y `manage_fixed_expense.monto` ≥ 0.
+
+### Identificador de variante: `sku` (match con Mercado Libre)
+- Cada variante acepta un campo opcional **`sku`** (Código/SKU), editable en el formulario de
+  producto del frontend y vía `add_product.variants[].sku` / `manage_variant.sku`.
+- `suggestVariant(product, title, mlSku)` resuelve la variante por **SKU exacto** cuando la venta
+  de ML trae un `seller_sku`/`seller_custom_field` y EXACTAMENTE una variante tiene ese mismo `sku`
+  (comparación normalizada: trim + minúsculas). Es un atajo de alta confianza que NO depende del
+  color/talla en el título.
+- Si no hay SKU, el SKU es ambiguo (dos variantes con el mismo), o no calza con ninguna variante,
+  se mantiene **sin regresión** el matching por tokens de color/talla.
+- `ml-sync.js` lee `it.item.seller_sku || it.item.seller_custom_field || it.seller_sku` de cada
+  ítem del pedido y lo propaga: al pendiente como `pendingMappings[].mlSku` (para que la
+  reasociación posterior también lo use) y a `suggestVariant`.
+- **Para que funcione**, el usuario debe cargar el mismo código en la variante de Nexsell y en el
+  `seller_sku` (SKU) de su publicación/variación en Mercado Libre.

@@ -493,6 +493,7 @@ export function buildVariantPayload(args, opts) {
     color: args.color || '',
     colorHex: args.colorHex || '',
     talla: args.talla || '',
+    sku: (args.sku != null ? String(args.sku) : '').trim(),
     precioVenta: Number(args.precioVenta != null ? args.precioVenta : (args.salePrice || 0)) || 0,
     precioCosto: Number(args.precioCosto != null ? args.precioCosto : (args.costPrice || 0)) || 0,
     tieneEnvio: !!args.tieneEnvio,
@@ -636,8 +637,17 @@ export function fuzzyMatchProducts(products, title) {
 // una (caso claro -> auto-asociar); null si hay ambigüedad (ninguna o varias),
 // para que el usuario elija. Singulariza para casar "negros" con "negro".
 // Replicado VERBATIM en ml-sync.js y en index.html.
-export function suggestVariant(product, title) {
+export function suggestVariant(product, title, mlSku) {
   if (!product || !product.hasVariants || !Array.isArray(product.variants) || !product.variants.length) return null;
+  // Atajo de ALTA confianza: si la venta de ML trae un SKU (seller_sku / seller_custom_field)
+  // y EXACTAMENTE una variante tiene ese mismo `sku` (comparación normalizada), se resuelve
+  // directo, sin depender del color/talla en el título. Es el camino más robusto.
+  const normSku = (s) => String(s || '').trim().toLowerCase();
+  const wantSku = normSku(mlSku);
+  if (wantSku) {
+    const bySku = product.variants.filter((v) => v && normSku(v.sku) && normSku(v.sku) === wantSku);
+    if (bySku.length === 1) return bySku[0];
+  }
   // Singularización (negros->negro) + neutralización de género conservadora
   // (negra->negro, blanca->blanco, roja->rojo, …): si la palabra (ya singular)
   // termina en 'a', se prueba también la forma en 'o'. Esto NO vuelve ambiguo lo
@@ -836,7 +846,7 @@ export function reassociatePendingForProduct(state, product, opts) {
     // 4. Resolución de variante (solo si el producto maneja variantes).
     let variantId = null;
     if (product.hasVariants) {
-      const v = suggestVariant(product, pending.title);
+      const v = suggestVariant(product, pending.title, pending.mlSku);
       if (v) variantId = v.id;
       else if (pending.suggestedVariantId != null && findVariant(product, pending.suggestedVariantId)) {
         variantId = findVariant(product, pending.suggestedVariantId).id;

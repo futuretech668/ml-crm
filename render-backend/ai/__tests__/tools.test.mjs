@@ -777,3 +777,21 @@ test('remap_item — exige variantId si el producto maneja variantes', async () 
   assert.equal(state.mappings.MLC1.variantId, 501);
   assert.equal(state.mappings.MLC1.variantLabel, 'color Rojo / talla M');
 });
+
+test('delete_mapping — borra el mapeo y no toca ventas registradas', async () => {
+  const state = goldenState();
+  state.mappings = { MLC1: { productId: 1, productName: 'Audífonos Pro' } };
+  const ctx = makeCtx(state);
+  const t = toolsByName(buildCrmTools(ctx));
+  const ventasAntes = state.sales.length;
+  const r = JSON.parse(await t.delete_mapping.invoke({ itemId: 'MLC1' }));
+  assert.equal(r.ok, true);
+  assert.equal(r.borrado.item_id, 'MLC1');
+  assert.equal(state.mappings.MLC1, undefined);
+  assert.ok(ctx.changed.has('mappings'));
+  // No toca ventas ya registradas:
+  assert.equal(state.sales.length, ventasAntes);
+  // item_id sin mapeo → error:
+  const bad = JSON.parse(await t.delete_mapping.invoke({ itemId: 'NOPE' }));
+  assert.ok(bad.error);
+});
