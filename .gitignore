@@ -9,6 +9,7 @@ node_modules/
 **/serviceAccountKey.json
 
 # Backups y staging local (no van al repo)
+_backups/
 backup-*/
 backup_visual_original/
 _subir-a-github/
