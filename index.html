@@ -587,9 +587,12 @@
             --bg-secondary: #0E1117;
             --bg-tertiary: #14181F;
             --bg-elevated: #1A1F28;
+            --bg-hover: #20262F;
             --border-color: #222834;
             --border-soft: #1A1F28;
+            --border-strong: #2C3442;
             --accent-primary: #16C784;
+            --accent-primary-strong: #0FB574;
             --accent-secondary: #3B82F6;
             --accent-tertiary: #8B5CF6;
             --accent-danger: #F2555A;
@@ -600,9 +603,24 @@
             --success: #16C784;
             --warning: #F5A524;
             --danger: #F2555A;
+            /* Helpers RGB para superficies/glows coherentes con el acento real */
+            --accent-rgb: 22, 199, 132;
+            --secondary-rgb: 59, 130, 246;
+            --warning-rgb: 245, 165, 36;
+            --danger-rgb: 242, 85, 90;
+            /* Superficies de acento (reemplazan rgba hardcodeados) */
+            --accent-soft: rgba(var(--accent-rgb), 0.10);
+            --accent-soft-hover: rgba(var(--accent-rgb), 0.16);
+            --accent-border: rgba(var(--accent-rgb), 0.32);
+            --warning-soft: rgba(var(--warning-rgb), 0.10);
+            --warning-border: rgba(var(--warning-rgb), 0.30);
+            --danger-soft: rgba(var(--danger-rgb), 0.10);
+            --danger-border: rgba(var(--danger-rgb), 0.30);
+            --focus-ring: 0 0 0 3px rgba(var(--accent-rgb), 0.25);
             --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-            --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.4);
-            --shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.55);
+            --shadow-md: 0 10px 30px rgba(0, 0, 0, 0.45);
+            --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.6);
+            --shadow-accent: 0 8px 28px rgba(var(--accent-rgb), 0.28);
             --radius-sm: 8px;
             --radius: 12px;
             --radius-lg: 16px;
@@ -763,7 +781,7 @@
 
         .nav-item.active {
             border-left: 4px solid var(--accent-primary);
-            background: linear-gradient(90deg, rgba(16, 185, 129, 0.15), transparent);
+            background: linear-gradient(90deg, rgba(var(--accent-rgb), 0.15), transparent);
             color: var(--accent-primary);
             font-weight: 600;
         }
@@ -947,11 +965,11 @@
         .card {
             background-color: var(--bg-tertiary);
             border: 1px solid var(--border-soft);
-            border-radius: 14px;
+            border-radius: var(--radius-lg);
             padding: 22px;
             margin-bottom: 20px;
             box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
-            transition: all var(--transition-base);
+            transition: border-color var(--transition-base), box-shadow var(--transition-base), transform var(--transition-base);
             position: relative;
             overflow-x: hidden;
             overflow-y: visible;
@@ -960,9 +978,8 @@
         }
 
         .card:hover {
-            border-color: var(--border-color);
-            box-shadow: var(--shadow-md), 0 0 0 1px var(--accent-primary) inset;
-            background-color: var(--bg-elevated);
+            border-color: var(--border-strong);
+            box-shadow: var(--shadow-md);
         }
 
         .card h2 {
@@ -1010,21 +1027,34 @@
             box-sizing: border-box;
         }
 
+        .kpi-card::before {
+            content: '';
+            position: absolute;
+            left: 0; top: 0; bottom: 0;
+            width: 3px;
+            background: linear-gradient(180deg, var(--accent-primary), var(--accent-secondary));
+            opacity: 0;
+            transition: opacity var(--transition-base);
+            pointer-events: none;
+        }
+
         .kpi-card::after {
             content: '';
             position: absolute;
             inset: 0;
-            background: linear-gradient(135deg, transparent, rgba(16, 185, 129, 0.1));
+            background: linear-gradient(135deg, transparent, var(--accent-soft));
             opacity: 0;
             transition: opacity var(--transition-base);
             pointer-events: none;
         }
 
         .kpi-card:hover {
-            border-color: var(--accent-primary);
-            box-shadow: 0 0 24px rgba(16, 185, 129, 0.1);
+            border-color: var(--accent-border);
+            box-shadow: 0 12px 28px rgba(0,0,0,0.4), 0 0 0 1px var(--accent-border);
             transform: translateY(-4px);
         }
+
+        .kpi-card:hover::before { opacity: 1; }
 
         .kpi-card:hover::after {
             opacity: 1;
@@ -1096,7 +1126,7 @@
         .form-control:focus {
             outline: none;
             border-color: var(--accent-primary);
-            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1), inset 0 0 0 1px var(--accent-primary);
+            box-shadow: var(--focus-ring), inset 0 0 0 1px var(--accent-primary);
             background-color: var(--bg-tertiary);
         }
 
@@ -1205,17 +1235,22 @@
         .btn-primary {
             background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
             color: white;
-            box-shadow: 0 4px 16px rgba(16, 185, 129, 0.3);
+            box-shadow: 0 4px 16px rgba(var(--accent-rgb), 0.3);
             font-weight: 700;
         }
 
         .btn-primary:hover {
             transform: translateY(-2px);
-            box-shadow: 0 8px 24px rgba(16, 185, 129, 0.4);
+            box-shadow: var(--shadow-accent);
         }
 
         .btn-primary:active {
             transform: translateY(0);
+        }
+
+        .btn:focus-visible {
+            outline: none;
+            box-shadow: var(--focus-ring);
         }
 
         .btn-secondary {
@@ -1233,7 +1268,7 @@
 
         .btn-secondary.active {
             border-color: var(--accent-primary);
-            background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(59, 130, 246, 0.05));
+            background: linear-gradient(135deg, var(--accent-soft), rgba(var(--secondary-rgb), 0.05));
             color: var(--accent-primary);
             box-shadow: 0 0 0 1px var(--accent-primary) inset;
         }
@@ -1241,13 +1276,13 @@
         .btn-danger {
             background: linear-gradient(135deg, var(--accent-danger), #DC2626);
             color: white;
-            box-shadow: 0 4px 16px rgba(239, 68, 68, 0.3);
+            box-shadow: 0 4px 16px rgba(var(--danger-rgb), 0.3);
             font-weight: 700;
         }
 
         .btn-danger:hover {
             transform: translateY(-2px);
-            box-shadow: 0 8px 24px rgba(239, 68, 68, 0.4);
+            box-shadow: 0 8px 24px rgba(var(--danger-rgb), 0.4);
         }
 
         .btn-small {
@@ -1285,34 +1320,47 @@
             border-bottom: 1px solid var(--border-color);
         }
 
+        thead th {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            background-color: var(--bg-tertiary);
+        }
+
         th {
-            padding: 16px;
+            padding: 14px 16px;
             text-align: left;
             font-weight: 700;
-            font-size: 12px;
-            color: var(--accent-primary);
-            letter-spacing: 0.3px;
+            font-size: 11px;
+            color: var(--text-secondary);
+            letter-spacing: 0.6px;
             text-transform: uppercase;
+            white-space: nowrap;
+            border-bottom: 1px solid var(--border-color);
         }
 
         td {
-            padding: 14px 16px;
+            padding: 13px 16px;
             border-bottom: 1px solid var(--border-soft);
             font-size: 14px;
             color: var(--text-primary);
-            transition: all var(--transition-fast);
+            transition: background-color var(--transition-fast);
         }
 
+        /* Celdas numéricas: tabulares, alineadas a la derecha */
+        td.num, th.num { text-align: right; }
+        td.num { font-family: 'Fira Code', monospace; font-variant-numeric: tabular-nums; }
+
         tbody tr {
-            transition: all var(--transition-fast);
+            transition: background-color var(--transition-fast);
         }
 
         tbody tr:nth-child(even) {
-            background-color: rgba(255, 255, 255, 0.045);
+            background-color: rgba(255, 255, 255, 0.025);
         }
 
         tbody tr:hover {
-            background-color: var(--bg-tertiary);
+            background-color: var(--accent-soft);
         }
 
         tbody tr:last-child td {
@@ -1383,10 +1431,10 @@
         }
 
         .top-product-item:hover {
-            border-color: var(--accent-primary);
+            border-color: var(--accent-border);
             background: linear-gradient(135deg, var(--bg-elevated), var(--bg-tertiary));
             transform: translateX(4px);
-            box-shadow: 0 0 12px rgba(16, 185, 129, 0.1);
+            box-shadow: 0 0 12px var(--accent-soft);
         }
 
         .top-product-rank {
@@ -1439,21 +1487,21 @@
         }
 
         .badge-success {
-            background-color: rgba(16, 185, 129, 0.1);
+            background-color: var(--accent-soft);
             color: var(--success);
-            border-color: rgba(16, 185, 129, 0.3);
+            border-color: var(--accent-border);
         }
 
         .badge-warning {
-            background-color: rgba(245, 158, 11, 0.1);
+            background-color: var(--warning-soft);
             color: var(--warning);
-            border-color: rgba(245, 158, 11, 0.3);
+            border-color: var(--warning-border);
         }
 
         .badge-danger {
-            background-color: rgba(239, 68, 68, 0.1);
+            background-color: var(--danger-soft);
             color: var(--danger);
-            border-color: rgba(239, 68, 68, 0.3);
+            border-color: var(--danger-border);
         }
 
         .alert-box {
@@ -1467,19 +1515,19 @@
         }
 
         .alert-warning {
-            background: rgba(245, 158, 11, 0.08);
+            background: var(--warning-soft);
             border-color: var(--warning);
             color: var(--warning);
         }
 
         .alert-danger {
-            background: rgba(239, 68, 68, 0.08);
+            background: var(--danger-soft);
             border-color: var(--danger);
             color: var(--danger);
         }
 
         .alert-success {
-            background: rgba(16, 185, 129, 0.08);
+            background: var(--accent-soft);
             border-color: var(--success);
             color: var(--success);
         }
@@ -1931,7 +1979,7 @@
 
             .nav-item.active {
                 border-left: 3px solid var(--accent-primary);
-                background: linear-gradient(90deg, rgba(16, 185, 129, 0.15), transparent);
+                background: linear-gradient(90deg, rgba(var(--accent-rgb), 0.15), transparent);
                 color: var(--accent-primary);
                 border-radius: 0;
                 font-weight: 600;
@@ -2065,9 +2113,11 @@
         .rail-item [data-lucide] { width: 18px; height: 18px; color: inherit; }
         .rail-item:hover { background: var(--bg-tertiary); color: var(--text-primary); }
         .rail-item.active {
-            background: rgba(22, 199, 132, 0.12);
+            position: relative;
+            background: var(--accent-soft);
             color: var(--accent-primary);
             font-weight: 600;
+            box-shadow: inset 3px 0 0 var(--accent-primary);
         }
         /* ---- Cuenta (pie del rail) + menú hacia arriba ---- */
         .acct-wrap { position: relative; margin-top: auto; padding: 10px; border-top: 1px solid var(--border-soft); }
@@ -2098,7 +2148,7 @@
         .acct-item { display: flex; align-items: center; gap: 8px; }
         .acct-item i { width: 15px; height: 15px; }
         .acct-item-danger { color: var(--accent-danger, #ef4444); }
-        .acct-item-danger:hover { background: rgba(239,68,68,0.12); }
+        .acct-item-danger:hover { background: var(--danger-soft); }
         /* ---- Ícono de ayuda (?) con tooltip (hover en escritorio, tap/focus en móvil) ---- */
         .help-tip { position: relative; display: inline-flex; align-items: center; justify-content: center;
             width: 16px; height: 16px; min-width: 16px; border-radius: 50%; margin-left: 6px;
@@ -2326,8 +2376,20 @@
         .rail-logo { border-radius: 15px; width: 56px; height: 56px; background: #000; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5); }
         .rail-cap { font-size: 9px; letter-spacing: 1px; color: #3F4856; padding: 16px 14px 6px; }
         .rail-item { font-size: 13.5px; padding: 9px 14px; min-height: 38px; border-radius: 9px; gap: 12px; }
-        .rail-item.active { background: var(--bg-tertiary); color: var(--text-primary); font-weight: 600; }
+        .rail-item.active { position: relative; background: var(--bg-tertiary); color: var(--text-primary); font-weight: 600; box-shadow: inset 3px 0 0 var(--accent-primary); }
         .rail-item.active [data-lucide] { color: var(--accent-primary); }
+
+        /* ---- Toques finos globales ---- */
+        ::selection { background: rgba(var(--accent-rgb), 0.28); color: var(--text-primary); }
+        .content::-webkit-scrollbar, .app-main::-webkit-scrollbar { width: 10px; height: 10px; }
+        .content::-webkit-scrollbar-track, .app-main::-webkit-scrollbar-track { background: transparent; }
+        .content::-webkit-scrollbar-thumb, .app-main::-webkit-scrollbar-thumb {
+            background: var(--border-color); border-radius: 8px; border: 2px solid var(--bg-primary);
+        }
+        .content::-webkit-scrollbar-thumb:hover, .app-main::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }
+        .table-container::-webkit-scrollbar { height: 9px; }
+        .table-container::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 8px; }
+        .table-container::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }
 
         /* Cards: no hard borders, no shadow — separation by soft fill + space */
         .card {
@@ -2543,6 +2605,17 @@
                     <div class="card">
                         <h3><i data-lucide="receipt"></i>Gastos adicionales de la empresa (este mes)</h3>
                         <div id="dashGastosAdicionales"></div>
+
+                        <!-- Acceso rápido: agregar gasto variable sin salir del dashboard -->
+                        <form id="dashGastoForm" onsubmit="return (window.addFinExpenseQuick ? window.addFinExpenseQuick(event) : false);" style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border-color);">
+                            <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;color:var(--text-muted);margin-bottom:10px;">Agregar gasto rápido</div>
+                            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+                                <input type="text" class="form-control" id="dashGastoNombre" placeholder="Nombre del gasto" style="flex:2 1 160px;min-width:140px;" required>
+                                <input type="number" class="form-control" id="dashGastoMonto" min="0" step="0.01" placeholder="$0" style="flex:1 1 100px;min-width:90px;" required>
+                                <button type="submit" class="btn btn-primary btn-small" style="flex:0 0 auto;"><i data-lucide="plus-circle"></i>Agregar</button>
+                            </div>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:8px;">Se registra con la fecha de hoy y también aparece en <strong>Finanzas</strong>.</div>
+                        </form>
                     </div>
                 </div>
 
@@ -2670,6 +2743,7 @@
                                 <div id="ventasInfo" style="margin-top:10px;font-size:12px;color:var(--text-muted);"></div>
                             </div>
                         </div>
+                        <p class="sales-scroll-hint" aria-hidden="true"><i data-lucide="move-horizontal"></i> Desliza la tabla para ver todas las columnas</p>
                         <div id="salesTable"></div>
                     </div>
                 </div>
@@ -2785,7 +2859,7 @@
                             </div>
 
                             <!-- Ganancia en vivo (producto sin variantes) — AGENTE 2 -->
-                            <div id="prodProfitLive" style="margin:8px 0 4px;padding:12px 14px;border-radius:10px;background:linear-gradient(135deg, rgba(16,185,129,0.1), rgba(59,130,246,0.05));border:1px solid rgba(16,185,129,0.2);font-size:14px;">Ganancia por unidad: <strong style="color:var(--success);">$0</strong></div>
+                            <div id="prodProfitLive" style="margin:8px 0 4px;padding:12px 14px;border-radius:10px;background:linear-gradient(135deg, rgba(var(--accent-rgb),0.1), rgba(var(--secondary-rgb),0.05));border:1px solid rgba(var(--accent-rgb),0.2);font-size:14px;">Ganancia por unidad: <strong style="color:var(--success);">$0</strong></div>
 
                             <div style="display: flex; gap: 12px; flex-wrap: wrap;">
                                 <button type="submit" class="btn btn-primary"><i data-lucide="save"></i>Guardar producto</button>
@@ -2813,12 +2887,13 @@
                         <div class="page-sub">Niveles de stock y reposición</div>
                     </div>
                     <div class="card">
-                        <h2><i data-lucide="clipboard-list"></i>Estado del inventario</h2>
+                        <h2><span class="inv-chip"><i data-lucide="clipboard-list"></i></span>Estado del inventario</h2>
                         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px;">
                             <input type="text" id="invSearch" class="form-control" style="flex:1;min-width:220px;" placeholder="🔍 Buscar producto por nombre…" oninput="window.__invFiltrar && window.__invFiltrar()">
                             <button type="button" id="invVerTodosBtn" class="btn btn-secondary btn-small" onclick="window.__invVerTodos && window.__invVerTodos()" style="display:none;"><i data-lucide="list"></i> Ver todos</button>
                         </div>
                         <div id="invListInfo" style="margin-bottom:10px;font-size:12px;color:var(--text-muted);"></div>
+                        <div class="inv-legend" aria-hidden="true"><span class="inv-legend-item"><span class="inv-legend-dot inv-bar-ok"></span>OK</span><span class="inv-legend-item"><span class="inv-legend-dot inv-bar-riesgo"></span>En riesgo</span><span class="inv-legend-item"><span class="inv-legend-dot inv-bar-critico"></span>Crítico</span><span class="inv-legend-item"><span class="inv-legend-dot inv-bar-sin"></span>Sin stock</span></div>
                         <div id="inventoryList"></div>
                     </div>
                 </div>
@@ -2866,12 +2941,65 @@
                         <div class="page-title"><i data-lucide="settings"></i>Configuración</div>
                         <div class="page-sub">Elige una pestaña para ajustar cada parte de tu cuenta</div>
                     </div>
+                    <style id="setStyles">
+                        /* ===== Configuración — diseño cuidado ===== */
+                        #settingsTabs {
+                            display: flex; gap: 4px; padding: 5px; margin-bottom: 24px; flex-wrap: wrap;
+                            background: var(--bg-secondary); border: 1px solid var(--border-soft); border-radius: 14px;
+                        }
+                        #settingsTabs .pi-tab {
+                            display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px;
+                            border-radius: 10px; font-size: 13.5px; font-weight: 600; white-space: nowrap;
+                            color: var(--text-secondary); background: transparent;
+                            transition: background var(--transition-fast), color var(--transition-fast), box-shadow var(--transition-fast);
+                        }
+                        #settingsTabs .pi-tab i, #settingsTabs .pi-tab svg { width: 16px; height: 16px; }
+                        #settingsTabs .pi-tab:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+                        #settingsTabs .pi-tab.active {
+                            background: linear-gradient(135deg, var(--accent-primary), var(--accent-primary-strong));
+                            color: #04130C; box-shadow: 0 6px 16px rgba(var(--accent-rgb), 0.28);
+                        }
+                        #settingsTabs .pi-tab.active i, #settingsTabs .pi-tab.active svg { color: #04130C; }
+
+                        /* Cabecera de cada panel con chip de icono */
+                        #settings .set-panel { padding: 0; overflow: hidden; }
+                        #settings .set-panel > h2 {
+                            padding: 18px 22px; margin: 0 !important; font-size: 16px; gap: 12px !important;
+                            border-bottom: 1px solid var(--border-soft);
+                            background: linear-gradient(180deg, var(--bg-elevated), transparent);
+                        }
+                        #settings .set-panel > h2 > i,
+                        #settings .set-panel > h2 > svg {
+                            width: 36px !important; height: 36px !important; padding: 8px; border-radius: 11px;
+                            background: var(--accent-soft); color: var(--accent-primary);
+                            box-sizing: border-box; flex: none;
+                        }
+                        #settings .set-panel > div[id^="body"] { padding: 20px 22px 22px; margin-top: 0 !important; }
+
+                        /* Control de subida de logo (reemplaza el input nativo) */
+                        .set-upload {
+                            display: flex; align-items: center; gap: 13px; padding: 14px 16px; cursor: pointer;
+                            border: 1.5px dashed var(--border-strong); border-radius: 12px; background: var(--bg-secondary);
+                            transition: border-color var(--transition-fast), background var(--transition-fast);
+                        }
+                        .set-upload:hover { border-color: var(--accent-primary); background: var(--bg-tertiary); }
+                        .set-upload > i, .set-upload > svg { width: 24px; height: 24px; color: var(--accent-primary); flex: none; }
+                        .set-upload .set-upload-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+                        .set-upload .set-upload-txt strong { font-size: 13.5px; font-weight: 600; color: var(--text-primary); }
+                        .set-upload .set-upload-txt span { font-size: 11.5px; color: var(--text-muted); }
+
+                        /* Zona de peligro */
+                        #settings .set-danger {
+                            margin-top: 22px; border: 1px solid var(--danger-border); border-radius: 12px;
+                            padding: 16px; background: var(--danger-soft);
+                        }
+                    </style>
                     <div class="pi-tabs" id="settingsTabs">
-                        <button type="button" class="pi-tab active" data-set="perfil">Perfil</button>
-                        <button type="button" class="pi-tab" data-set="negocio">Mi negocio</button>
-                        <button type="button" class="pi-tab" data-set="notif">Notificaciones</button>
-                        <button type="button" class="pi-tab" data-set="ml">Mercado Libre</button>
-                        <button type="button" class="pi-tab" data-set="datos">Datos</button>
+                        <button type="button" class="pi-tab active" data-set="perfil"><i data-lucide="building-2"></i>Perfil</button>
+                        <button type="button" class="pi-tab" data-set="negocio"><i data-lucide="briefcase"></i>Mi negocio</button>
+                        <button type="button" class="pi-tab" data-set="notif"><i data-lucide="bell"></i>Notificaciones</button>
+                        <button type="button" class="pi-tab" data-set="ml"><i data-lucide="link"></i>Mercado Libre</button>
+                        <button type="button" class="pi-tab" data-set="datos"><i data-lucide="database"></i>Datos</button>
                     </div>
 
                     <!-- 1) PERFIL DE LA EMPRESA (identidad) -->
@@ -2884,7 +3012,13 @@
                             </div>
                             <div class="form-row">
                                 <div class="form-group"><label class="form-label">Moneda</label><select class="form-control" id="profCurrency"><option value="CLP">Peso chileno (CLP)</option><option value="USD">Dólar (USD)</option><option value="EUR">Euro (EUR)</option></select></div>
-                                <div class="form-group"><label class="form-label">Logo (máx 1.5MB)</label><input type="file" class="form-control" id="profLogoInput" accept="image/*"></div>
+                                <div class="form-group"><label class="form-label">Logo (máx 1.5MB)</label>
+                                    <label class="set-upload" for="profLogoInput">
+                                        <i data-lucide="image-up"></i>
+                                        <span class="set-upload-txt"><strong>Subir logo</strong><span>PNG o JPG · máx 1.5MB</span></span>
+                                        <input type="file" id="profLogoInput" accept="image/*" hidden>
+                                    </label>
+                                </div>
                             </div>
                             <div id="profLogoPreview" style="margin:0 0 14px;"></div>
                             <button type="button" class="btn btn-primary" onclick="if(window.saveProfile)saveProfile()"><i data-lucide="save"></i>Guardar perfil</button>
@@ -2906,7 +3040,7 @@
                                 .biz-opt .biz-ico { width:24px; height:24px; color:var(--text-secondary); transition:color .18s ease; }
                                 .biz-opt .biz-ttl { font-size:13.5px; font-weight:700; color:var(--text-primary); }
                                 .biz-opt .biz-sub { font-size:11.5px; color:var(--text-muted); line-height:1.3; }
-                                .biz-opt.sel { border-color:var(--accent-primary); background:rgba(22,199,132,.10); box-shadow:0 0 0 1px var(--accent-primary) inset; }
+                                .biz-opt.sel { border-color:var(--accent-primary); background:var(--accent-soft); box-shadow:0 0 0 1px var(--accent-primary) inset; }
                                 .biz-opt.sel .biz-ico { color:var(--accent-primary); }
                             </style>
                             <div id="bizCards"></div>
@@ -2947,10 +3081,10 @@
                             <p style="color:var(--text-secondary);font-size:13px;margin-bottom:14px;">Haz un respaldo de tus datos o restáuralo. Guarda el archivo en un lugar seguro.</p>
                             <div style="display: flex; gap: 12px; flex-wrap: wrap;">
                                 <button class="btn btn-primary" id="exportBtn"><i data-lucide="download"></i>Exportar datos</button>
-                                <button class="btn btn-primary" id="importBtn"><i data-lucide="upload"></i>Importar datos</button>
+                                <button class="btn btn-secondary" id="importBtn"><i data-lucide="upload"></i>Importar datos</button>
                                 <input type="file" id="importFile" accept=".json" style="display: none;">
                             </div>
-                            <div style="margin-top:22px;border:1px solid var(--accent-danger);border-radius:12px;padding:14px 16px;background:rgba(220,38,38,0.06);">
+                            <div class="set-danger">
                                 <div style="font-weight:700;color:var(--accent-danger);font-size:14px;display:flex;align-items:center;gap:8px;"><i data-lucide="alert-triangle" style="width:18px;height:18px;"></i>Zona de peligro</div>
                                 <p style="color:var(--text-secondary);font-size:13px;margin:8px 0 12px;">Borra todos tus datos (productos, ventas, gastos, agenda, metas y logros). La configuración se conserva. No se puede deshacer.</p>
                                 <button class="btn btn-danger" id="clearBtn"><i data-lucide="trash-2"></i>Limpiar TODO</button>
@@ -3064,7 +3198,7 @@
                     <div class="grid grid-2" id="finVisualRow" style="display:none;">
                         <div class="card">
                             <h2><i data-lucide="pie-chart"></i>Distribución de costos del mes</h2>
-                            <canvas id="finGastosChart" height="240" style="max-width:100%;max-height:240px;"></canvas>
+                            <canvas id="finGastosChart" height="240" style="max-width:100%;max-height:240px;" role="img" aria-label="Distribución de costos del mes"></canvas>
                             <div id="finGastosLegend" style="margin-top:12px;"></div>
                         </div>
                         <div class="card">
@@ -3234,6 +3368,7 @@
             <div style="display:grid;grid-template-columns:1fr;gap:18px;">
                 <!-- Acciones -->
                 <div class="card">
+                    <h3 style="margin:0 0 14px;"><i data-lucide="zap"></i> Acciones rápidas</h3>
                     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
                         <button type="button" class="btn btn-secondary btn-small" onclick="if(window.agendaGenDespachos)agendaGenDespachos(true)"><i data-lucide="truck"></i> Generar despachos</button>
                         <button type="button" class="btn btn-secondary btn-small" onclick="if(window.agendaSetOrden)agendaSetOrden('prioridad')"><i data-lucide="flag"></i> Ordenar por prioridad</button>
@@ -3336,7 +3471,7 @@
                     </div>
                     <div>
                         <label style="display:block;font-size:12px;color:var(--text-secondary);margin-bottom:6px;">Objetivo</label>
-                        <input type="number" id="metasInObjetivo" min="0" step="1" placeholder="Ej: 1000000" style="width:100%;padding:10px 12px;background:var(--bg-tertiary);border:1px solid var(--border-soft);border-radius:9px;color:var(--text-primary);">
+                        <input type="number" id="metasInObjetivo" min="0" step="1" inputmode="numeric" placeholder="Ej: 1000000" style="width:100%;padding:10px 12px;background:var(--bg-tertiary);border:1px solid var(--border-soft);border-radius:9px;color:var(--text-primary);">
                     </div>
                     <div>
                         <button type="submit" class="btn btn-primary" style="width:100%;"><i data-lucide="check"></i> Guardar meta</button>
@@ -3588,19 +3723,19 @@
     </style>
 
     <!-- Botón flotante -->
-    <button id="chatFab" aria-label="Abrir MIA, tu asistente de ventas" aria-haspopup="dialog">
-        <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+    <button id="chatFab" aria-label="Abrir NOVA, tu asistente de ventas" aria-haspopup="dialog">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2.6l2.7 5.86 6.4.62-4.82 4.25 1.42 6.27L12 16.9l-5.7 3.3 1.42-6.27L2.9 9.08l6.4-.62L12 2.6z"/></svg>
         <span id="chatBadge" style="display:none;"></span>
     </button>
 
     <!-- Ventana del chat -->
-    <div id="chatWindow" style="display:none;" role="dialog" aria-modal="false" aria-label="MIA — asistente de ventas">
+    <div id="chatWindow" style="display:none;" role="dialog" aria-modal="false" aria-label="NOVA — asistente de ventas">
         <!-- Cabecera plana -->
         <div class="mia-head">
             <div class="mia-head-id">
-                <div class="mia-head-av" aria-hidden="true">M</div>
+                <div class="mia-head-av" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor" style="width:60%;height:60%;"><path d="M12 2.6l2.7 5.86 6.4.62-4.82 4.25 1.42 6.27L12 16.9l-5.7 3.3 1.42-6.27L2.9 9.08l6.4-.62L12 2.6z"/></svg></div>
                 <div style="min-width:0;">
-                    <div class="mia-head-title">MIA <span class="mia-head-dot" title="En línea"></span></div>
+                    <div class="mia-head-title">NOVA <span class="mia-head-dot" title="En línea"></span></div>
                     <div class="mia-head-sub">Tu copiloto de ventas</div>
                 </div>
             </div>
@@ -3618,7 +3753,7 @@
         <div id="chatSuggestions" class="mia-suggestions" style="display:none;" aria-label="Sugerencias"></div>
         <!-- Composer -->
         <div class="mia-composer">
-            <textarea id="chatInput" rows="1" placeholder="Escríbele a MIA…" autocomplete="off" aria-label="Mensaje para MIA"></textarea>
+            <textarea id="chatInput" rows="1" placeholder="Escríbele a NOVA…" autocomplete="off" aria-label="Mensaje para NOVA"></textarea>
             <button id="chatSend" aria-label="Enviar" disabled><i data-lucide="send-horizontal"></i></button>
         </div>
         <!-- Panel de historial (deslizante) -->
@@ -5311,7 +5446,7 @@
                                 </div>
                             </div>
                             <div>
-                                <div style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(59, 130, 246, 0.05)); border-radius: 8px; padding: 14px; border: 1px solid rgba(16, 185, 129, 0.2);">
+                                <div style="background: linear-gradient(135deg, rgba(var(--accent-rgb), 0.1), rgba(59, 130, 246, 0.05)); border-radius: 8px; padding: 14px; border: 1px solid rgba(var(--accent-rgb), 0.2);">
                                     <div style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 10px; letter-spacing: 0.3px;">${gainLabel}</div>
                                     <div style="font-size: 28px; font-weight: 800; color: ${gainUnit >= 0 ? 'var(--success)' : 'var(--accent-danger)'}; font-family: 'Fira Code'; margin-bottom: 4px; letter-spacing: -1px;">${formatCurrency(gainUnit)}</div>
                                     <div style="font-size: 13px; font-weight: 700; color: ${gainPercent >= 0 ? 'var(--success)' : 'var(--accent-danger)'};">${formatNumber(gainPercent)}%</div>
@@ -5464,7 +5599,7 @@
                 <div class="badge" style="background:var(--bg-tertiary);color:var(--text-secondary);font-size:12px;padding:6px 12px;">Ganancia: <strong style="color:${_sum.ganancia >= 0 ? 'var(--success)' : 'var(--accent-danger)'};">${formatCurrency(_sum.ganancia)}</strong></div>
             </div>`;
             html += `<div class="table-container"><table><thead><tr>
-                <th>Fecha</th><th>Producto</th><th>Cant</th><th>Canal</th><th>Precio Venta</th>${_showComision ? '<th>Comisión</th>' : ''}<th>Envío</th><th>Total Neto</th><th>Ganancia</th><th>Acciones</th>
+                <th>Fecha</th><th>Producto</th><th class="num">Cant</th><th>Canal</th><th class="num">Precio Venta</th>${_showComision ? '<th class="num">Comisión</th>' : ''}<th class="num">Envío</th><th class="num">Total Neto</th><th class="num">Ganancia</th><th>Acciones</th>
             </tr></thead><tbody>`;
 
             filtered.forEach(s => {
@@ -5486,13 +5621,13 @@
                 html += `<tr>
                     <td>${s.date}</td>
                     <td>${DOMPurify.sanitize(s.productName)}${s.variantLabel ? ` <span style="color:var(--text-muted);font-size:11px;">(${DOMPurify.sanitize(s.variantLabel)})</span>` : ''}</td>
-                    <td>${s.quantity}</td>
+                    <td class="num">${s.quantity}</td>
                     <td>${canalBadge}</td>
-                    <td>${formatCurrency(s.salePrice)}</td>
-                    ${_showComision ? `<td style="color: var(--danger);">${esML || comision > 0 ? formatCurrency(comision) : '—'}</td>` : ''}
-                    <td>${formatCurrency(envio)}</td>
-                    <td>${formatCurrency(totalNeto)}</td>
-                    <td style="color: ${ganancia >= 0 ? 'var(--success)' : 'var(--accent-danger)'}; font-weight: bold;">${formatCurrency(ganancia)}</td>
+                    <td class="num">${formatCurrency(s.salePrice)}</td>
+                    ${_showComision ? `<td class="num" style="color: var(--danger);">${esML || comision > 0 ? formatCurrency(comision) : '—'}</td>` : ''}
+                    <td class="num">${formatCurrency(envio)}</td>
+                    <td class="num">${formatCurrency(totalNeto)}</td>
+                    <td class="num" style="color: ${ganancia >= 0 ? 'var(--success)' : 'var(--accent-danger)'}; font-weight: bold;">${formatCurrency(ganancia)}</td>
                     <td style="white-space:nowrap;"><button class="btn btn-small btn-secondary" onclick="editSale(${s.id})" aria-label="Editar" style="margin-right:6px;"><i data-lucide="pencil"></i></button><button class="btn btn-small btn-danger" onclick="deleteSale(${s.id})" aria-label="Eliminar"><i data-lucide="trash-2"></i></button></td>
                 </tr>`;
             });
@@ -5740,8 +5875,8 @@
                     ${nameCell}
                     <td><span class="badge ${lvl.badge}"${badgeStyle}>${status}</span></td>
                     ${stockCell}
-                    <td>${initialStock}</td>
-                    <td>${Math.round(percent)}%</td>
+                    <td class="num">${initialStock}</td>
+                    <td class="inv-pct"><span class="inv-bar"><span class="inv-bar-fill inv-bar-${lvl.key}" style="width:${Math.min(100,Math.round(percent))}%"></span></span><span class="inv-pct-val">${Math.round(percent)}%</span></td>
                 </tr>`;
                 if (_esVar) {
                     html += `<tr data-inv-var-row="${p.id}"><td colspan="5" style="padding:0;border:none;"><div id="invVarPanel-${p.id}" style="max-height:0;overflow:hidden;transition:max-height .3s ease;background:var(--bg-primary);">${renderVariantRows(p)}</div></td></tr>`;
@@ -5749,13 +5884,13 @@
             });
             html += `</tbody></table></div>`;
             // Valor del inventario al pie (tarjetas de resumen, debajo de la tabla crítica).
-            html += `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:14px;">
+            html += `<div class="inv-value-row" style="display:flex;gap:12px;flex-wrap:wrap;margin-top:14px;">
                 <div style="flex:1;min-width:160px;background:var(--bg-tertiary);border:1px solid var(--border-color);border-radius:12px;padding:12px 14px;">
-                    <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">Valor en stock (a costo)</div>
+                    <div class="inv-value-head"><span class="inv-value-ic"><i data-lucide="boxes"></i></span>Valor en stock (a costo)</div>
                     <div style="font-size:18px;font-weight:800;color:var(--text-primary);">${formatCurrency(_valorCosto)}</div>
                 </div>
                 <div style="flex:1;min-width:160px;background:var(--bg-tertiary);border:1px solid var(--border-color);border-radius:12px;padding:12px 14px;">
-                    <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">Valor potencial de venta</div>
+                    <div class="inv-value-head"><span class="inv-value-ic inv-value-ic-accent"><i data-lucide="trending-up"></i></span>Valor potencial de venta</div>
                     <div style="font-size:18px;font-weight:800;color:var(--accent-primary);">${formatCurrency(_valorVenta)}</div>
                 </div>
             </div>`;
@@ -6812,11 +6947,11 @@
                         <div><span style="color: var(--text-muted);">Comisión:</span> <strong style="color: var(--accent-danger);">${formatCurrency(commAmount)}</strong></div>
                         <div><span style="color: var(--text-muted);">Envío:</span> <strong>${formatCurrency(p.shipping)}</strong></div>
                     </div>
-                    <div style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(59, 130, 246, 0.05)); border-radius: 8px; padding: 12px; border: 1px solid rgba(16, 185, 129, 0.2);">
+                    <div style="background: linear-gradient(135deg, rgba(var(--accent-rgb), 0.1), rgba(59, 130, 246, 0.05)); border-radius: 8px; padding: 12px; border: 1px solid rgba(var(--accent-rgb), 0.2);">
                         <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">Ganancia por Unidad</div>
                         <div style="font-size: 24px; font-weight: 800; color: var(--success); font-family: 'Fira Code'; margin-bottom: 4px;">${formatCurrency(gainUnit)}</div>
                         <div style="font-size: 13px; font-weight: 700; color: var(--success);">${formatNumber(gainPercent)}%</div>
-                        <div style="font-size: 11px; color: var(--text-muted); margin-top: 8px; border-top: 1px solid rgba(16, 185, 129, 0.2); padding-top: 8px;">
+                        <div style="font-size: 11px; color: var(--text-muted); margin-top: 8px; border-top: 1px solid rgba(var(--accent-rgb), 0.2); padding-top: 8px;">
                             <strong>${product.sold}</strong> ${product.sold === 1 ? 'unidad vendida' : 'unidades vendidas'}
                         </div>
                     </div>
@@ -6937,6 +7072,7 @@
                     <div class="badge" style="background:var(--bg-tertiary);padding:8px 12px;font-size:12px;color:var(--text-secondary);">Unidades: <strong style="color:var(--text-primary);">${_ana.cur.units}</strong> &nbsp;${_anaCmp(_ana.cur.units, _ana.prev.units)}</div>
                 </div>
                 <h3 style="margin-top:6px;"><i data-lucide="calendar-days"></i>Ganancia por día (mes actual)</h3>
+                <div class="analytics-legend"><span class="analytics-legend-dot"></span>Ganancia diaria</div>
                 <canvas id="anaDayChart" height="220" style="max-width:100%;max-height:220px;"></canvas>
             </div>`;
 
@@ -6947,7 +7083,7 @@
             const lowStock = _activos.filter(p => { const k = stockLevel(p).key; return k === 'critico' || k === 'riesgo'; });
             const optimalStock = _activos.filter(p => stockLevel(p).key === 'ok');
 
-            html += `<div class="grid grid-3" style="gap: 10px; margin-bottom: 14px;">
+            html += `<div class="ana-stock-head"><i data-lucide="boxes"></i>Estado de inventario</div><div class="grid grid-3" style="gap: 10px; margin-bottom: 14px;">
                 <div class="kpi-card">
                     <div class="kpi-label"><i data-lucide="package-check"></i>Stock Óptimo</div>
                     <div class="kpi-value">${optimalStock.length}</div>
@@ -7256,7 +7392,7 @@
             },
             // Preview exacto de lo que se ejecutará (texto de respuesta/mensaje o los cambios de la publicación).
             propPreview(it) {
-                if (!it) return 'MIA quiere realizar una acción hacia afuera (Mercado Libre).';
+                if (!it) return 'NOVA quiere realizar una acción hacia afuera (Mercado Libre).';
                 if (it.text) return it.text;
                 if (it.cambios && typeof it.cambios === 'object') {
                     const c = (n) => (window.formatCurrency ? formatCurrency(n) : ('$' + Math.round(Number(n)||0).toLocaleString('es-CL')));
@@ -7266,7 +7402,7 @@
                     if (it.cambios.status)                     parts.push('Estado → ' + (it.cambios.status === 'paused' ? 'pausada' : it.cambios.status === 'active' ? 'activa' : it.cambios.status));
                     if (parts.length) return parts.join(' · ');
                 }
-                return it.preview || it.summary || it.message || it.body || 'MIA quiere realizar una acción hacia afuera (Mercado Libre).';
+                return it.preview || it.summary || it.message || it.body || 'NOVA quiere realizar una acción hacia afuera (Mercado Libre).';
             },
             propResend(it)  { return (it && (it.resendMessage || it.message)) || CHAT.lastUserMessage || 'Confirmo'; },
             sugLabel(s)     { return (typeof s === 'string') ? s : (s && (s.label || s.text || s.title)) || ''; },
@@ -7335,7 +7471,7 @@
                 wrap.appendChild(body);
             } else {
                 const av = document.createElement('div');
-                av.className = 'avatar'; av.setAttribute('aria-hidden', 'true'); av.textContent = 'M';
+                av.className = 'avatar'; av.setAttribute('aria-hidden', 'true'); av.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor" style="width:62%;height:62%;"><path d="M12 2.6l2.7 5.86 6.4.62-4.82 4.25 1.42 6.27L12 16.9l-5.7 3.3 1.42-6.27L2.9 9.08l6.4-.62L12 2.6z"/></svg>';
                 body = document.createElement('div');
                 body.className = 'body';
                 body.innerHTML = _miaMd(text);
@@ -7351,8 +7487,8 @@
             const cont = document.getElementById('chatMessages'); if (!cont) return;
             cont.innerHTML =
                 '<div class="mia-empty" id="miaEmpty">' +
-                '<div class="av" aria-hidden="true">M</div>' +
-                '<h4>Soy MIA, tu copiloto de ventas</h4>' +
+                '<div class="av" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor" style="width:58%;height:58%;"><path d="M12 2.6l2.7 5.86 6.4.62-4.82 4.25 1.42 6.27L12 16.9l-5.7 3.3 1.42-6.27L2.9 9.08l6.4-.62L12 2.6z"/></svg></div>' +
+                '<h4>Soy NOVA, tu copiloto de ventas</h4>' +
                 '<p>Pregúntame por tus ganancias, stock, márgenes o pídeme registrar una venta. Toco tus datos reales.</p>' +
                 '</div>';
         }
@@ -7369,8 +7505,8 @@
                 _miaClearEmpty();
                 const wrap = document.createElement('div');
                 wrap.id = 'chatTyping'; wrap.className = 'mia-msg assistant';
-                wrap.setAttribute('aria-label', 'MIA está escribiendo');
-                wrap.innerHTML = '<div class="avatar" aria-hidden="true">M</div><div class="body"><div class="mia-typing" aria-hidden="true"><span></span><span></span><span></span></div></div>';
+                wrap.setAttribute('aria-label', 'NOVA está escribiendo');
+                wrap.innerHTML = '<div class="avatar" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor" style="width:62%;height:62%;"><path d="M12 2.6l2.7 5.86 6.4.62-4.82 4.25 1.42 6.27L12 16.9l-5.7 3.3 1.42-6.27L2.9 9.08l6.4-.62L12 2.6z"/></svg></div><div class="body"><div class="mia-typing" aria-hidden="true"><span></span><span></span><span></span></div></div>';
                 cont.appendChild(wrap);
                 _miaScroll(false);
             } else if (el) { el.remove(); }
@@ -7434,7 +7570,7 @@
             catch (e) { return ''; }
         }
         function _miaErr(e) {
-            if (e && e.code === 'AUTH') return '⚠️ Necesitas haber iniciado sesión para hablar con MIA. Vuelve a entrar e intenta de nuevo.';
+            if (e && e.code === 'AUTH') return '⚠️ Necesitas haber iniciado sesión para hablar con NOVA. Vuelve a entrar e intenta de nuevo.';
             if (e && e.code === 'NET')  return '⚠️ No pude conectar con el servidor. Revisa tu conexión y vuelve a intentarlo.';
             if (e && e.code === 'HTTP' && e.status === 429) return '⚠️ Vas muy rápido 😅 Espera unos segundos y vuelve a preguntarme.';
             if (e && e.code === 'HTTP' && e.status === 401) return '⚠️ Tu sesión expiró. Vuelve a iniciar sesión para seguir conversando.';
@@ -7490,7 +7626,7 @@
                 chatTyping(false);
                 if (r.threadId) CHAT.threadId = r.threadId;
                 if (r.reply) chatRenderMessage('assistant', r.reply);
-                else chatRenderMessage('assistant', 'Hola, soy **MIA** 👋 Tu copiloto de ventas. ¿En qué te ayudo hoy?');
+                else chatRenderMessage('assistant', 'Hola, soy **NOVA** 👋 Tu copiloto de ventas. ¿En qué te ayudo hoy?');
                 renderSuggestions(r.suggestions && r.suggestions.length ? r.suggestions : null);
             } catch (e) {
                 chatTyping(false);
@@ -9402,6 +9538,34 @@
             return false;
         };
 
+        // Acceso rápido desde el Dashboard: registra un gasto variable con la fecha de hoy.
+        // Reutiliza el mismo almacén (ensureExpenses) que el registro de Finanzas.
+        window.addFinExpenseQuick = function(ev){
+            if (ev && ev.preventDefault) ev.preventDefault();
+            var nombre = String((($('dashGastoNombre') || {}).value || '')).trim();
+            var monto = parseFloat(($('dashGastoMonto') || {}).value || '');
+            if (!nombre){ fToast('⚠️ Escribe el nombre del gasto'); return false; }
+            if (isNaN(monto) || monto < 0){ fToast('⚠️ Monto inválido'); return false; }
+
+            ensureExpenses().push({
+                id: Date.now(),
+                nombre: nombre,
+                monto: Math.round(monto * 100) / 100,
+                fecha: new Date().toISOString().slice(0, 10)
+            });
+            if (window.saveToLocalStorage) saveToLocalStorage();
+
+            if ($('dashGastoNombre')) $('dashGastoNombre').value = '';
+            if ($('dashGastoMonto')) $('dashGastoMonto').value = '';
+
+            renderResumenMes();
+            renderGastosList();
+            if (window.renderDashboard) try { window.renderDashboard(); } catch(e){}
+            fIcons();
+            fToast('✅ Gasto registrado');
+            return false;
+        };
+
         window.deleteFinExpense = function(id){
             var exp = ensureExpenses();
             var idx = -1;
@@ -10392,8 +10556,8 @@
                     '<div><div style="font-size:12px;color:var(--text-secondary);">Días restantes</div><div style="font-size:15px;font-weight:600;color:var(--text-primary);margin-top:2px;">' + diasRest + '</div></div>' +
                 '</div>' +
                 '<div style="display:flex;align-items:center;gap:10px;">' +
-                    '<div style="flex:1;height:18px;background:var(--bg-tertiary);border-radius:10px;overflow:hidden;">' +
-                        '<div style="height:100%;width:' + pctClamp.toFixed(1) + '%;background:' + color + ';border-radius:10px;transition:width 300ms ease;"></div>' +
+                    '<div class="metas-bar" style="flex:1;height:18px;background:var(--bg-tertiary);border-radius:10px;overflow:hidden;">' +
+                        '<div class="metas-bar-fill" style="height:100%;width:' + pctClamp.toFixed(1) + '%;background:' + color + ';border-radius:10px;transition:width 300ms ease;"></div>' +
                     '</div>' +
                     '<div style="min-width:54px;text-align:right;font-weight:700;color:' + color + ';">' + Math.round(pct) + '%</div>' +
                 '</div>' +
@@ -10842,9 +11006,9 @@
                     prog = Math.min(actual, meta).toLocaleString('es-CL') + ' / ' + meta.toLocaleString('es-CL');
                 }
 
-                var c = '<div style="position:relative;background:var(--bg-secondary,var(--bg-tertiary));border:1px solid '+bordeColor+';border-radius:14px;padding:16px;'+(cumplido?'':'opacity:0.78;')+'">';
+                var c = '<div class="logros-badge '+(cumplido?'is-done':'is-locked')+'" style="position:relative;background:var(--bg-secondary,var(--bg-tertiary));border:1px solid '+bordeColor+';border-radius:14px;padding:16px;'+(cumplido?'':'opacity:0.78;')+'">';
                 if (esNuevo){
-                    c += '<span style="position:absolute;top:10px;right:10px;background:var(--accent-primary);color:#04130C;font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;">¡NUEVO!</span>';
+                    c += '<span class="logros-new" style="position:absolute;top:10px;right:10px;background:var(--accent-primary);color:#04130C;font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;">¡NUEVO!</span>';
                 }
                 c += '<div style="width:46px;height:46px;border-radius:13px;background:'+iconBg+';display:flex;align-items:center;justify-content:center;color:'+iconCol+';margin-bottom:12px;">';
                 c += '<i data-lucide="'+esc(cumplido ? L.icon : 'lock')+'"></i></div>';
@@ -10941,5 +11105,2837 @@
         };
     })();
     </script>
+<style id="polishPass">
+/* ============================================================= */
+/* POLISH PASS — mejoras por sección (subagentes en paralelo)    */
+/* Aditivo y namespaceado por #seccion. No toca JS ni IDs.       */
+/* ============================================================= */
+
+/* ============================================================= */
+/* ===== DASHBOARD — refinamiento aditivo (namespaceado) ======= */
+/* Gana la cascada por especificidad de ID; solo presentación.   */
+/* ============================================================= */
+
+/* ---- Ritmo de espaciado entre bloques del dashboard ---- */
+#dashboard .card { margin-bottom: 22px; }
+#dashboard .grid { margin-bottom: 22px; }
+#dashboard .grid:last-of-type { margin-bottom: 22px; }
+
+/* ---- Cabecera de tarjeta con CHIP de icono (patrón Configuración) ---- */
+#dashboard .card > h3 {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    padding-bottom: 14px;
+    margin-bottom: 18px;
+    border-bottom: 1px solid var(--border-soft);
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+}
+#dashboard .card > h3 > i,
+#dashboard .card > h3 > svg,
+#dashboard .card > h3 > [data-lucide] {
+    width: 34px !important;
+    height: 34px !important;
+    padding: 8px;
+    border-radius: 10px;
+    background: var(--accent-soft);
+    color: var(--accent-primary) !important;
+    box-sizing: border-box;
+    flex: none;
+    transition: background var(--transition-base), color var(--transition-base);
+}
+#dashboard .card:hover > h3 > i,
+#dashboard .card:hover > h3 > svg,
+#dashboard .card:hover > h3 > [data-lucide] {
+    background: var(--accent-soft-hover);
+}
+
+/* ---- Tarjetas: micro-interacción sutil y respiración ---- */
+#dashboard .card {
+    padding: 24px;
+    transition: border-color var(--transition-base), box-shadow var(--transition-base), background var(--transition-base);
+}
+#dashboard .card:hover {
+    border-color: var(--accent-border);
+    box-shadow: var(--shadow-md);
+}
+
+/* ---- KPI cards: chip de icono verde + jerarquía + elevación sutil ---- */
+#dashboard .kpi-card {
+    transition: transform var(--transition-base), border-color var(--transition-base), box-shadow var(--transition-base);
+}
+#dashboard .kpi-card:hover {
+    transform: translateY(-3px);
+    border-color: var(--accent-border);
+    box-shadow: var(--shadow-md);
+}
+#dashboard .kpi-icon {
+    width: 36px;
+    height: 36px;
+    margin-bottom: 14px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--accent-soft);
+    color: var(--accent-primary);
+    transition: background var(--transition-base);
+}
+#dashboard .kpi-card:hover .kpi-icon { background: var(--accent-soft-hover); }
+#dashboard .kpi-icon > i,
+#dashboard .kpi-icon > svg,
+#dashboard .kpi-icon [data-lucide] { width: 18px; height: 18px; }
+#dashboard .kpi-label {
+    color: var(--text-secondary);
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+#dashboard .kpi-value {
+    font-family: 'Poppins', sans-serif;
+    letter-spacing: -0.04em;
+    line-height: 1.05;
+}
+#dashboard .kpi-sub { color: var(--text-muted); }
+
+/* ---- Top 5: micro-interacción ya existente, suavizada ---- */
+#dashboard .top-product-item {
+    transition: transform var(--transition-base), border-color var(--transition-base), background var(--transition-base);
+}
+#dashboard .top-product-item:hover {
+    transform: translateX(3px);
+    border-color: var(--accent-border);
+    background: var(--bg-hover);
+}
+
+/* ---- Alertas de stock: filas con micro-interacción ---- */
+#dashboard #dashStockAlerts > div > div {
+    transition: transform var(--transition-base);
+}
+#dashboard #dashStockAlerts > div > div:hover {
+    transform: translateX(3px);
+}
+
+/* ---- Observaciones: cada línea como chip con acento izquierdo ---- */
+#dashboard #dashInsights > div > div {
+    padding: 10px 12px;
+    border: 1px solid var(--border-soft);
+    border-left: 2px solid var(--accent-primary);
+    border-radius: var(--radius-sm);
+    background: var(--bg-tertiary);
+    transition: border-color var(--transition-base), background var(--transition-base);
+}
+#dashboard #dashInsights > div > div:hover {
+    border-color: var(--accent-border);
+    background: var(--bg-hover);
+}
+
+/* ---- Ranking de productos: números en monoespaciada tabular ---- */
+#dashboard #topProductsTable td:not(:first-child) {
+    font-family: 'Fira Code', monospace;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+}
+#dashboard #topProductsTable th { font-weight: 600; }
+
+/* ---- Gastos adicionales: montos alineados en monoespaciada ---- */
+#dashboard #dashGastosAdicionales > div > span:last-child {
+    font-family: 'Fira Code', monospace;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ---- Atajo de gasto rápido: foco accesible + remate ---- */
+#dashboard #dashGastoForm .form-control:focus-visible,
+#dashboard #dashGastoForm .btn:focus-visible {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: 1px;
+}
+#dashboard #dashGastoForm { border-top: 1px solid var(--border-soft); }
+
+/* ---- Indicador de sincronización ML: chip discreto ---- */
+#dashboard #mlSyncIndicator {
+    padding: 6px 10px;
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-sm);
+    background: var(--bg-tertiary);
+    width: fit-content;
+}
+#dashboard #mlSyncIndicator [data-lucide],
+#dashboard #mlSyncIndicator svg { color: var(--accent-primary); }
+
+/* ===== SALES (Ventas) — estilos aditivos y namespaceados ===== */
+
+/* Chip de icono en cabeceras de tarjeta (mismo lenguaje que Configuración) */
+#sales .card h2 > [data-lucide]:first-child,
+#sales .card h2 > .lucide:first-child,
+#sales .card h3 > [data-lucide]:first-child,
+#sales .card h3 > .lucide:first-child {
+    box-sizing: content-box;
+    width: 17px;
+    height: 17px;
+    padding: 7px;
+    border-radius: var(--radius-sm);
+    background: var(--accent-soft);
+    border: 1px solid var(--accent-border);
+    color: var(--accent-primary);
+    stroke-width: 2.2;
+    flex-shrink: 0;
+    overflow: visible;
+}
+#sales .card h2,
+#sales .card h3 {
+    gap: 11px;
+}
+
+/* Densidad de la tabla del historial (solo dentro de #sales) */
+#sales #salesTable table th { padding: 12px 14px; }
+#sales #salesTable table td { padding: 11px 14px; }
+
+/* Chips de resumen (primera fila del render: Ingresos / Unidades / Ganancia) */
+#salesTable > div:first-child .badge {
+    border: 1px solid var(--border-soft);
+    border-radius: 999px;
+    box-shadow: var(--shadow-sm);
+}
+
+/* Badges de canal con forma de píldora dentro de la tabla */
+#salesTable tbody .badge {
+    border-radius: 999px;
+    padding: 3px 10px;
+    letter-spacing: .2px;
+}
+
+/* Realce de foco verde del buscador del historial */
+#sales #ventasBuscar:focus {
+    border-color: var(--accent-primary);
+    box-shadow: var(--focus-ring);
+    outline: none;
+}
+
+/* Acciones (editar/eliminar) un poco más juntas y nítidas */
+#sales #salesTable tbody td:last-child .btn {
+    padding: 6px 9px;
+}
+
+/* La columna de acciones no se alinea como número aunque sea la última */
+#sales #salesTable table td:last-child,
+#sales #salesTable table th:last-child {
+    text-align: left;
+}
+
+/* ====== PRODUCTS (namespaced, aditivo) ====== */
+
+/* Chip de icono en cabeceras de tarjeta (patrón Configuración) */
+#products .card > h2 [data-lucide],
+#products .card > h3 [data-lucide]{
+    width: 30px; height: 30px; padding: 7px;
+    box-sizing: border-box;
+    border-radius: 9px;
+    background: var(--accent-soft);
+    color: var(--accent-primary);
+    border: 1px solid var(--accent-border);
+    stroke-width: 2;
+}
+
+/* Píldoras segmentadas para los toggles No / Sí y Color/Talla */
+#products #prodShippingToggleRow > div > label,
+#products #prodCommissionToggleRow > div > label,
+#products #prodVariantsBlock label:has(> input[name="prodHasVariants"]){
+    padding: 8px 16px !important;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    transition: all var(--transition-fast);
+}
+#products #prodShippingToggleRow > div > label:hover,
+#products #prodCommissionToggleRow > div > label:hover,
+#products #prodVariantsBlock label:has(> input[name="prodHasVariants"]):hover{
+    border-color: var(--accent-border);
+    color: var(--text-primary);
+}
+#products #prodShippingToggleRow > div > label:has(input:checked),
+#products #prodCommissionToggleRow > div > label:has(input:checked),
+#products #prodVariantsBlock label:has(> input[name="prodHasVariants"]:checked){
+    border-color: var(--accent-border);
+    background: var(--accent-soft);
+    color: var(--text-primary);
+    box-shadow: var(--shadow-sm);
+}
+
+/* Banner "Ganancia por unidad" del formulario */
+#products #prodProfitLive{
+    background: var(--accent-soft) !important;
+    border: 1px solid var(--accent-border) !important;
+    border-left: 3px solid var(--accent-primary) !important;
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+#products #prodProfitLive strong{
+    font-family: 'Fira Code', monospace;
+    font-size: 16px;
+}
+
+/* Buscador de "Mis productos" */
+#products #prodSearch{ transition: all var(--transition-fast); }
+
+/* Tarjetas de producto (JS-rendered) — micro-interacción hover */
+#products #productsList > div{
+    cursor: default;
+}
+#products #productsList > div:hover{
+    border-color: var(--accent-border) !important;
+    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
+}
+
+/* Panel "Ganancia por Unidad" de cada tarjeta: acento a la izquierda */
+#products #productsList > div > div > div:nth-child(2) > div:first-child{
+    border-left: 3px solid var(--accent-primary) !important;
+}
+
+/* Jerarquía y hover de botones Editar / Archivar */
+#products #productsList .btn-small{
+    transition: all var(--transition-fast);
+    font-family: 'Inter', sans-serif;
+}
+#products #productsList .btn-small:hover{
+    filter: brightness(1.08);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+}
+
+/* Stock con variantes (clicable): refuerzo visual del acento */
+#products #productsList strong[onclick]{
+    text-underline-offset: 3px;
+}
+#products #productsList strong[onclick]:hover{
+    text-decoration: underline;
+}
+
+/* Panel de variantes desplegable: fondo coherente */
+#products [id^="varPanel-"]{
+    border: 1px solid var(--border-soft);
+}
+
+/* Estado vacío dentro de Mis productos */
+#products #productsList .empty-state{
+    padding: 32px 16px;
+}
+
+/* Info de listado más sutil */
+#products #prodListInfo{
+    font-family: 'Inter', sans-serif;
+    letter-spacing: .2px;
+}
+
+/* Panel de variantes del formulario: borde de acento suave al activarse */
+#products #prodVariantsPanel{
+    box-shadow: var(--shadow-sm);
+}
+#products #varCombosSection{ margin-top: 16px; }
+
+@media (max-width: 600px){
+    #products .card > h2 [data-lucide],
+    #products .card > h3 [data-lucide]{ width: 26px; height: 26px; padding: 6px; }
+    #products #productsList > div:hover{ transform: none; }
+}
+
+/* ============ INVENTARIO (namespaceado bajo #inventory) ============ */
+/* Chip de icono en la cabecera de la tarjeta (lenguaje visual de Configuración) */
+#inventory .card h2 .inv-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: var(--radius-sm);
+    background: var(--accent-soft);
+    border: 1px solid var(--accent-border);
+    flex: 0 0 auto;
+}
+#inventory .card h2 .inv-chip [data-lucide] {
+    width: 16px;
+    height: 16px;
+    color: var(--accent-primary);
+}
+
+/* Buscador de inventario un poco más definido en focus */
+#inventory #invSearch:focus {
+    border-color: var(--accent-border);
+    box-shadow: var(--focus-ring);
+}
+
+/* Tabla: filas más legibles */
+#inventory .table-container { border-radius: var(--radius); }
+#inventory tbody tr { transition: background-color var(--transition-fast); }
+#inventory tbody tr:hover { background: var(--bg-hover); }
+#inventory tbody td { vertical-align: middle; }
+
+/* Badges de estado de stock: misma píldora pero sin mayúsculas forzadas y mejor lectura */
+#inventory td .badge {
+    text-transform: none;
+    letter-spacing: 0.1px;
+    font-size: 11.5px;
+    padding: 5px 11px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+#inventory td .badge [data-lucide] { width: 13px; height: 13px; }
+
+/* ===== Barra de nivel de stock (columna Porcentaje) ===== */
+#inventory td.inv-pct {
+    min-width: 150px;
+    white-space: nowrap;
+}
+#inventory .inv-bar {
+    position: relative;
+    display: inline-block;
+    vertical-align: middle;
+    width: 96px;
+    height: 7px;
+    border-radius: 999px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-soft);
+    overflow: hidden;
+}
+#inventory .inv-bar-fill {
+    position: absolute;
+    inset: 0 auto 0 0;
+    height: 100%;
+    border-radius: 999px;
+    min-width: 2px;
+    transition: width var(--transition-base);
+}
+#inventory .inv-bar-ok      { background: var(--accent-primary); }
+#inventory .inv-bar-riesgo  { background: var(--warning); }
+#inventory .inv-bar-critico { background: var(--danger); }
+#inventory .inv-bar-sin     { background: var(--danger); opacity: 0.55; }
+#inventory .inv-pct-val {
+    margin-left: 9px;
+    font-family: 'Fira Code', monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 12.5px;
+    color: var(--text-secondary);
+    vertical-align: middle;
+}
+
+@media (max-width: 640px) {
+    #inventory .inv-bar { width: 64px; }
+    #inventory td.inv-pct { min-width: 0; }
+}
+
+/* ===================== ANALYTICS — refinamiento visual (aditivo) ===================== */
+/* Cabecera de tarjeta con chip de icono (mismo lenguaje que Configuración) */
+#analytics .card > h3 {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding-bottom: 14px;
+    margin-bottom: 16px;
+    border-bottom: 1px solid var(--border-soft);
+    font-family: 'Poppins', sans-serif;
+    letter-spacing: -0.01em;
+}
+#analytics .card > h3 > i,
+#analytics .card > h3 > svg {
+    width: 34px !important;
+    height: 34px !important;
+    padding: 7px;
+    border-radius: 10px;
+    background: var(--accent-soft);
+    color: var(--accent-primary) !important;
+    box-sizing: border-box;
+    flex: none;
+    stroke-width: 2.2;
+}
+/* Segundo h3 dentro de una misma tarjeta (p.ej. "Ganancia por día") como sub-bloque */
+#analytics .card > h3 ~ h3 {
+    margin-top: 20px;
+}
+
+/* Contenedor del gráfico enmarcado */
+#analytics #anaDayChart {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    box-sizing: border-box;
+    box-shadow: var(--shadow-sm);
+}
+
+/* Leyenda del gráfico (Chart.js tiene legend desactivada) */
+#analytics .analytics-legend {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 12px;
+    padding: 5px 11px;
+    border: 1px solid var(--border-soft);
+    border-radius: 999px;
+    background: var(--bg-tertiary);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+#analytics .analytics-legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+    background: var(--accent-primary);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+    flex: none;
+}
+
+/* Chips comparativos (badges del bloque "Este mes vs mes anterior") */
+#analytics .badge {
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-sm) !important;
+    gap: 6px;
+    line-height: 1.4;
+    transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+#analytics .badge:hover {
+    border-color: var(--accent-border);
+}
+
+/* Tablas: hover de fila, encabezado y números */
+#analytics .table-container {
+    border-color: var(--border-soft);
+}
+#analytics thead th {
+    background-color: var(--bg-tertiary);
+}
+#analytics tbody tr {
+    transition: background-color var(--transition-fast);
+}
+#analytics tbody tr:hover td {
+    background-color: var(--bg-hover);
+}
+#analytics tbody td {
+    vertical-align: middle;
+}
+#analytics td.num,
+#analytics th.num {
+    text-align: right;
+    font-family: 'Fira Code', monospace;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Botón "Ver todos" coherente con el acento */
+#analytics .btn-small i,
+#analytics .btn-small svg {
+    color: var(--accent-primary);
+}
+
+/* ===== ALERTS — tarjetas de severidad con chip de icono (aditivo, namespaceado) ===== */
+
+/* Cabecera de la tarjeta: chip de icono verde (patrón Configuración) */
+#alerts .card > h2 { display: flex; align-items: center; gap: 10px; }
+#alerts .card > h2 [data-lucide] {
+    width: 30px; height: 30px;
+    padding: 7px;
+    box-sizing: border-box;
+    border-radius: var(--radius-sm);
+    background: var(--accent-soft);
+    color: var(--accent-primary);
+}
+
+/* Filas de alerta -> tarjetas */
+#alerts .alert-box {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-color);
+    border-left-width: 3px;
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    gap: 14px;
+    align-items: center;
+    color: var(--text-primary);
+    transition: transform var(--transition-fast), border-color var(--transition-fast), background var(--transition-fast);
+}
+#alerts .alert-box:hover {
+    transform: translateX(2px);
+    border-color: var(--border-strong);
+    background: var(--bg-hover);
+}
+#alerts .alert-box span { color: var(--text-secondary); line-height: 1.45; }
+#alerts .alert-box strong { color: var(--text-primary); font-weight: 700; }
+
+/* Chip de icono por severidad */
+#alerts .alert-box [data-lucide] {
+    width: 38px; height: 38px;
+    padding: 9px;
+    box-sizing: border-box;
+    border-radius: var(--radius-sm);
+    stroke-width: 2;
+    flex-shrink: 0;
+}
+#alerts .alert-danger  { border-left-color: var(--danger); }
+#alerts .alert-warning { border-left-color: var(--warning); }
+#alerts .alert-danger  [data-lucide] { background: var(--danger-soft);  color: var(--danger); }
+#alerts .alert-warning [data-lucide] { background: var(--warning-soft); color: var(--warning); }
+
+/* Estado vacío amable (la caja de éxito sólo aparece cuando no hay alertas) */
+#alerts .alert-success {
+    flex-direction: column;
+    text-align: center;
+    gap: 12px;
+    padding: 38px 22px;
+    background: var(--bg-elevated);
+    border: 1px dashed var(--border-color);
+    border-left: 1px dashed var(--border-color);
+}
+#alerts .alert-success:hover { transform: none; background: var(--bg-elevated); border-color: var(--border-color); }
+#alerts .alert-success [data-lucide] {
+    width: 58px; height: 58px;
+    padding: 15px;
+    border-radius: 50%;
+    background: var(--accent-soft);
+    color: var(--accent-primary);
+    stroke-width: 2;
+}
+#alerts .alert-success span {
+    color: var(--text-primary);
+    font-size: 15px;
+    font-weight: 600;
+}
+#alerts .alert-success span::after {
+    content: "No hay productos con stock bajo o crítico.";
+    display: block;
+    margin-top: 4px;
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 400;
+}
+
+/* ===== FINANZAS — pulido aditivo (chip de cabecera + alineación numérica) ===== */
+
+/* Chip de icono en las cabeceras de tarjeta (mismo lenguaje visual que Configuración).
+   El ID #finanzas da specificity suficiente para ganar a `.card h2 [data-lucide]`. */
+#finanzas .card > h2 { gap: 12px; }
+#finanzas .card > h2 > i,
+#finanzas .card > h2 > svg {
+    width: 34px; height: 34px; padding: 8px; border-radius: 10px;
+    background: var(--accent-soft); color: var(--accent-primary);
+    box-sizing: border-box; flex: none;
+}
+
+/* Tablas: columnas numéricas alineadas a la derecha (encabezado + cuerpo + total).
+   Se respetan los colspan de los tfoot para que el monto del TOTAL quede a la derecha. */
+#finGananciaProductos table th:nth-child(n+2),
+#finGananciaProductos table td:nth-child(n+2),
+#finGastosFijosList table th:nth-child(2),
+#finGastosFijosList table td:nth-child(2),
+#finGastosFijosList table th:nth-child(4),
+#finGastosFijosList table td:nth-child(4),
+#finGastosList table th:nth-child(3),
+#finGastosList table td:nth-child(3),
+#finGastosList table tfoot td:nth-child(2) {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Montos en mono ('Fira Code') para alineación de dígitos perfecta. Solo celdas de datos. */
+#finGananciaProductos table td:nth-child(n+2),
+#finGastosFijosList table td:nth-child(2),
+#finGastosFijosList table td:nth-child(4),
+#finGastosList table td:nth-child(3),
+#finGastosList table tfoot td:nth-child(2) {
+    font-family: 'Fira Code', ui-monospace, 'SFMono-Regular', monospace;
+}
+
+/* ===== AGENDA — mejoras visuales aditivas y namespaceadas ===== */
+
+/* Cabecera de tarjeta con chip de icono (mismo lenguaje que Configuración) */
+#agenda .card > h3 {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: 'Poppins', sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+#agenda .card > h3 > i,
+#agenda .card > h3 > svg {
+  width: 34px;
+  height: 34px;
+  padding: 8px;
+  border-radius: 11px;
+  background: var(--accent-soft);
+  color: var(--accent-primary);
+  box-sizing: border-box;
+  flex: none;
+}
+
+/* KPIs del resumen del día */
+#agSummary .card {
+  border: 1px solid var(--border-soft);
+  transition: var(--transition-base);
+  position: relative;
+  overflow: hidden;
+}
+#agSummary .card:hover {
+  border-color: var(--accent-border);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+#agSummary .card > div:first-child {
+  font-family: 'Fira Code', monospace;
+  letter-spacing: -0.5px;
+}
+
+/* Items de tarea pendiente: micro-interacciones que el estilo inline no define */
+#agPendientes > div {
+  transition: var(--transition-base);
+}
+#agPendientes > div:hover {
+  background: var(--bg-hover) !important;
+  box-shadow: var(--shadow-sm);
+}
+/* Botón de check (marcar como hecha) */
+#agPendientes > div > button[title="Marcar como hecha"] {
+  transition: var(--transition-fast);
+}
+#agPendientes > div > button[title="Marcar como hecha"]:hover {
+  background: var(--accent-soft) !important;
+  border-color: var(--accent-primary) !important;
+}
+/* Botones editar / eliminar */
+#agPendientes > div > button[title="Editar"]:hover {
+  color: var(--accent-primary) !important;
+}
+#agPendientes > div > button[title="Eliminar"]:hover {
+  color: var(--danger) !important;
+}
+
+/* Estado vacío de pendientes con más aire (solo si es el único hijo) */
+#agPendientes > div:only-child[style*="padding:8px 0"] {
+  text-align: center;
+}
+
+/* Formulario de nueva tarea: focus/hover coherentes con el design system */
+#agForm input:hover,
+#agForm select:hover {
+  border-color: var(--border-strong) !important;
+}
+#agForm input:focus,
+#agForm select:focus {
+  border-color: var(--accent-primary) !important;
+  box-shadow: var(--focus-ring);
+  outline: none;
+}
+
+/* Calendario: feedback al pasar el mouse por un día */
+#agCalGrid > div > div[onclick]:hover {
+  background: var(--bg-hover) !important;
+}
+
+/* ====================================================================
+   METAS — refinamiento visual (ADITIVO y namespaceado bajo #metas)
+   Solo presentación. Usa variables del design system.
+   ==================================================================== */
+
+/* ---- Cabecera de tarjeta con chip de icono (patrón de Configuración) ----
+   .card h3 ya es display:flex (regla global). Aquí solo ajustamos gap/tipo. */
+#metas .card > h3 {
+    align-items: center;
+    gap: 12px;
+    font-family: 'Poppins', sans-serif;
+    font-size: 15px;
+    letter-spacing: -.2px;
+    color: var(--text-primary);
+}
+#metas .card > h3 [data-lucide],
+#metas .card > h3 svg {
+    width: 34px; height: 34px;
+    padding: 8px;
+    border-radius: 10px;
+    background: var(--accent-soft);
+    color: var(--accent-primary);
+    box-sizing: border-box;
+    flex: none;
+}
+
+/* Pill del mes activo junto a "Meta del mes" */
+#metas #metasMesLabel {
+    display: inline-flex; align-items: center;
+    padding: 2px 10px;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    border: 1px solid var(--accent-border);
+    font-size: 12px !important;
+    line-height: 1.6;
+}
+
+/* ---- Bloque "Progreso del mes": estadísticas como mini-tarjetas ----
+   El primer hijo de #metasProgreso es la fila flex de stats; sus hijos
+   directos son las 5 celdas. En estado vacío ese hijo es texto sin
+   sub-divs -> el selector no encuentra nada (sin riesgo). */
+#metas #metasProgreso > div:first-child {
+    gap: 12px !important;
+}
+#metas #metasProgreso > div:first-child > div {
+    flex: 1 1 120px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-sm);
+    padding: 11px 13px;
+    transition: border-color var(--transition-fast);
+}
+#metas #metasProgreso > div:first-child > div:hover {
+    border-color: var(--border-color);
+}
+
+/* ---- Barra de progreso (clases añadidas vía markupEdit) ---- */
+#metas .metas-bar {
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, .35);
+    border: 1px solid var(--border-soft);
+}
+#metas .metas-bar-fill {
+    background: linear-gradient(90deg, var(--accent-primary), var(--accent-primary-strong)) !important;
+    box-shadow: 0 0 12px -2px var(--shadow-accent);
+}
+/* % grande en monoespaciada (hermano directo de la barra) */
+#metas .metas-bar + div {
+    font-family: 'Fira Code', monospace;
+    font-size: 18px !important;
+}
+
+/* ---- Formulario: input de objetivo en mono + focus-ring verde ---- */
+#metas #metasInObjetivo {
+    font-family: 'Fira Code', monospace;
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast) !important;
+}
+#metas #metasInObjetivo:hover {
+    border-color: var(--border-color) !important;
+}
+#metas #metasInObjetivo:focus {
+    outline: none;
+    border-color: var(--accent-primary) !important;
+    box-shadow: 0 0 0 3px var(--accent-soft) !important;
+}
+
+/* ---- Tabla del historial: cabeceras y columnas numéricas ---- */
+#metas #metasHistorial thead th {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--text-muted);
+}
+#metas #metasHistorial tbody td:nth-child(3),
+#metas #metasHistorial tbody td:nth-child(4) {
+    font-family: 'Fira Code', monospace;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================= */
+/* Logros — insignias/badges (CSS aditivo y namespaceado)        */
+/* La base de las tarjetas la pinta el JS (renderGrid) con estilos */
+/* inline; aqui solo anadimos jerarquia, estados y micro-interac. */
+/* ============================================================= */
+
+/* Cabecera de tarjeta con "chip" de icono (mismo patron que Configuracion) */
+#logros .card > h3 { display: flex; align-items: center; gap: 12px; }
+#logros .card > h3 > i,
+#logros .card > h3 > svg {
+    width: 36px !important; height: 36px !important; padding: 8px;
+    border-radius: 11px; background: var(--accent-soft);
+    color: var(--accent-primary) !important;
+    box-sizing: border-box; flex: none;
+}
+
+/* Insignias del grid: micro-interacciones (no fijan border/bg, los pone el JS) */
+#logrosGrid .logros-badge {
+    transition: transform var(--transition-base),
+                box-shadow var(--transition-base),
+                border-color var(--transition-base),
+                opacity var(--transition-base);
+    will-change: transform;
+}
+#logrosGrid .logros-badge:hover {
+    transform: translateY(-3px);
+    border-color: var(--accent-border) !important;
+    box-shadow: var(--shadow-md);
+}
+
+/* Bloqueada: al pasar el cursor recupera opacidad para invitar a desbloquear */
+#logrosGrid .logros-badge.is-locked:hover { opacity: 1 !important; }
+
+/* Conseguida: refuerzo de acento sutil + glow al hover */
+#logrosGrid .logros-badge.is-done {
+    box-shadow: 0 0 0 1px var(--accent-soft), var(--shadow-sm);
+}
+#logrosGrid .logros-badge.is-done:hover { box-shadow: var(--shadow-accent); }
+
+/* Etiqueta "¡NUEVO!" con pulso suave de acento */
+#logrosGrid .logros-new { animation: logrosPulse 1.7s ease-in-out infinite; }
+@keyframes logrosPulse {
+    0%, 100% { box-shadow: 0 0 0 0 var(--accent-soft); }
+    50%      { box-shadow: 0 0 0 6px transparent; }
+}
+
+/* Tiles de estadisticas: feedback al hover (los tiles llevan bg/border inline,
+   por eso aqui se necesita !important acotado para que el hover sea visible) */
+#logrosStats > div > div {
+    transition: border-color var(--transition-base), background var(--transition-base);
+}
+#logrosStats > div > div:hover {
+    border-color: var(--accent-border) !important;
+    background: var(--bg-elevated) !important;
+}
+
+/* Filas de records: resalte al hover (no llevan background inline) */
+#logrosRecords > div {
+    transition: background var(--transition-base);
+    border-radius: var(--radius-sm);
+}
+#logrosRecords > div:hover { background: var(--bg-hover); }
+
+/* Respeta usuarios con movimiento reducido */
+@media (prefers-reduced-motion: reduce) {
+    #logrosGrid .logros-badge { transition: none; }
+    #logrosGrid .logros-badge:hover { transform: none; }
+    #logrosGrid .logros-new { animation: none; }
+}
+
+</style>
+<style id="polishPass2">
+/* POLISH PASS 2 — refinamiento + función (subagentes, ronda 2) */
+
+/* ============================================================= */
+/* POLISH PASS 2 — DASHBOARD (carga después; gana empates)       */
+/* Aditivo, namespaceado por #dashboard. No toca JS ni IDs.      */
+/* ============================================================= */
+
+/* ---- Observaciones + Alertas: rellenar el ancho vacío ----
+   El wrapper interno que renderiza el JS lleva flex-direction:column.
+   Lo convertimos en rejilla auto-fit: con 1 item ocupa todo el ancho,
+   con 2+ se reparte en 2 columnas y el espacio muerto desaparece.   */
+#dashboard #dashInsights > div[style*="flex-direction"],
+#dashboard #dashStockAlerts > div[style*="flex-direction"] {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 10px;
+    align-items: stretch;
+}
+/* Las filas (chips) ocupan toda la altura de su celda para alinear bordes */
+#dashboard #dashInsights > div[style*="flex-direction"] > div,
+#dashboard #dashStockAlerts > div[style*="flex-direction"] > div {
+    height: 100%;
+    box-sizing: border-box;
+}
+
+/* ---- Charts: panel enmarcado para densidad y estructura ----
+   El canvas de Chart.js es transparente; al darle fondo+borde deja de
+   flotar en el vacío y los 4 gráficos ganan contención visual.        */
+#dashboard .card > canvas {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm) inset;
+    margin-top: 2px;
+    transition: border-color var(--transition-base), box-shadow var(--transition-base);
+}
+#dashboard .card:hover > canvas {
+    border-color: var(--accent-border);
+}
+
+/* ---- Ranking de Productos: alineación numérica a la derecha ----
+   Solo la 1ª columna (Producto) queda a la izquierda; el resto son
+   cifras y se alinean a la derecha para una lectura tabular limpia.   */
+#dashboard #topProductsTable table th:not(:first-child),
+#dashboard #topProductsTable table td:not(:first-child) {
+    text-align: right;
+}
+#dashboard #topProductsTable thead th {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+/* Hover de fila: feedback fino sin alterar colores semánticos */
+#dashboard #topProductsTable tbody tr {
+    transition: background var(--transition-fast);
+}
+#dashboard #topProductsTable tbody tr:hover {
+    background: var(--bg-hover);
+}
+
+/* ---- Gastos adicionales: hover sutil + remate del total ---- */
+#dashboard #dashGastosAdicionales > div {
+    transition: background var(--transition-fast);
+    border-radius: var(--radius-sm);
+}
+#dashboard #dashGastosAdicionales > div:hover {
+    background: var(--bg-hover);
+}
+/* La fila Total (la única sin borde inferior) recibe un acento superior */
+#dashboard #dashGastosAdicionales > div:last-child {
+    margin-top: 4px;
+    padding-top: 14px !important;
+    border-top: 1px solid var(--border-color);
+}
+
+/* ---- Estados vacíos del dashboard: icono como chip coherente ---- */
+#dashboard .empty-state {
+    padding: 32px 16px;
+    color: var(--text-muted);
+}
+#dashboard .empty-state > i,
+#dashboard .empty-state > svg,
+#dashboard .empty-state [data-lucide] {
+    width: 40px !important;
+    height: 40px !important;
+    padding: 11px;
+    margin-bottom: 6px;
+    border-radius: var(--radius);
+    background: var(--accent-soft);
+    color: var(--accent-primary) !important;
+    box-sizing: border-box;
+}
+
+/* ---- Charts apilados en pantallas estrechas: respiración extra ---- */
+@media (max-width: 900px) {
+    #dashboard .card > canvas { margin-top: 4px; }
+    #dashboard #dashInsights > div[style*="flex-direction"],
+    #dashboard #dashStockAlerts > div[style*="flex-direction"] {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ====== SALES — polishPass2 (segundo nivel, aditivo, namespaced) ====== */
+
+/* (1) Agrupación del formulario: los 3 bloques opcionales (Precio / Envío /
+   Comisión) se convierten en sub-paneles cohesionados. Sin !important: los
+   form-group solo traen margin inline, no borde/fondo. */
+#sales #salesForm .form-group:has(input[name="salePriceMode"]),
+#sales #salesForm .form-group:has(#saleEnvioResumen),
+#sales #salesForm .form-group:has(#saleComisionResumen) {
+    padding: 13px 15px;
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius);
+    background: var(--bg-tertiary);
+    transition: border-color var(--transition-base);
+}
+#sales #salesForm .form-group:has(input[name="salePriceMode"]):focus-within,
+#sales #salesForm .form-group:has(#saleEnvioResumen):focus-within,
+#sales #salesForm .form-group:has(#saleComisionResumen):focus-within {
+    border-color: var(--accent-border);
+}
+/* El resumen de envío/comisión (📦 / 🏪) gana algo de jerarquía como título del bloque */
+#sales #saleEnvioResumen,
+#sales #saleComisionResumen {
+    font-weight: 600;
+    color: var(--text-primary) !important;
+}
+
+/* (2) Chips de resumen del historial: label muted/uppercase + valor numérico
+   en Fira Code, fondo elevado y barra de acento. Inline gana, por eso !important
+   en lo que pisa estilo inline. */
+#sales #salesTable > div:first-child { gap: 12px; }
+#sales #salesTable > div:first-child .badge {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 9px 15px !important;
+    font-size: 10.5px !important;
+    text-transform: uppercase;
+    letter-spacing: .6px;
+    font-weight: 700;
+    color: var(--text-muted) !important;
+    background: var(--bg-elevated) !important;
+    border: 1px solid var(--border-color);
+    border-left: 3px solid var(--accent-border);
+    box-shadow: var(--shadow-sm);
+}
+#sales #salesTable > div:first-child .badge strong {
+    font-family: 'Fira Code', monospace;
+    font-size: 14px;
+    letter-spacing: 0;
+    font-weight: 700;
+}
+
+/* (3) Historial: contenedor con scroll + cabecera sticky (mejora funcional segura) */
+#sales #salesTable .table-container {
+    max-height: 560px;
+    overflow: auto;
+    border-radius: var(--radius);
+    border: 1px solid var(--border-soft);
+}
+#sales #salesTable thead th {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    background: var(--bg-elevated);
+    box-shadow: inset 0 -1px 0 var(--border-color);
+}
+/* Zebra más clara (solo variables del DS) + hover de fila reforzado */
+#sales #salesTable tbody tr {
+    transition: background var(--transition-fast);
+}
+#sales #salesTable tbody tr:nth-child(even) {
+    background: var(--bg-secondary);
+}
+#sales #salesTable tbody tr:hover {
+    background: var(--bg-hover);
+}
+/* Scrollbar fino y temático del historial */
+#sales #salesTable .table-container::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+#sales #salesTable .table-container::-webkit-scrollbar-thumb {
+    background: var(--border-strong);
+    border-radius: 999px;
+    border: 2px solid var(--bg-elevated);
+}
+#sales #salesTable .table-container::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+/* (4) Estado vacío del historial mucho más cuidado (render JS, estilizado por CSS) */
+#sales #salesTable .empty-state {
+    padding: 48px 24px;
+    border: 1px dashed var(--border-color);
+    border-radius: var(--radius-lg);
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+}
+#sales #salesTable .empty-state [data-lucide] {
+    width: 46px;
+    height: 46px;
+    padding: 12px;
+    border-radius: 14px;
+    background: var(--accent-soft);
+    color: var(--accent-primary);
+    border: 1px solid var(--accent-border);
+    stroke-width: 2;
+    margin-bottom: 6px;
+}
+
+/* Responsive: en pantallas chicas los chips de resumen ocupan ancho y la tabla respira */
+@media (max-width: 640px) {
+    #sales #salesTable > div:first-child .badge { flex: 1 1 100%; justify-content: space-between; }
+    #sales #salesTable .table-container { max-height: 70vh; }
+}
+
+/* ============================================================
+   PRODUCTS · polish pass 2 (aditivo, sobre #products)
+   Construye ENCIMA del polishPass existente. No lo repite.
+   ============================================================ */
+
+/* ---- Resumen / contador arriba del listado: chip con punto de acento ---- */
+#products #prodListInfo:not(:empty){
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    background: var(--accent-soft);
+    border: 1px solid var(--accent-border);
+    border-radius: 999px;
+    color: var(--text-secondary) !important;
+    font-size: 12.5px !important;
+    font-weight: 600;
+    letter-spacing: .2px;
+}
+#products #prodListInfo:not(:empty)::before{
+    content: "";
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--accent-primary);
+    box-shadow: 0 0 0 3px var(--accent-soft-hover);
+    flex: 0 0 auto;
+}
+
+/* ---- Tarjeta de producto: franja de acento + compactación vertical ---- */
+#products #productsList > div{
+    position: relative;
+    overflow: hidden;
+    padding: 16px 18px 14px 20px !important;
+}
+#products #productsList > div::before{
+    content: "";
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: linear-gradient(180deg, var(--accent-primary), var(--accent-primary-strong));
+    opacity: .45;
+    transition: opacity var(--transition-fast);
+}
+#products #productsList > div:hover::before{ opacity: 1; }
+
+/* Nombre del producto: tipografía de título */
+#products #productsList > div > div:first-child > div:first-child > div:first-child{
+    font-family: 'Poppins', 'Inter', sans-serif !important;
+    letter-spacing: -.2px;
+}
+
+/* ---- Panel "Ganancia por Unidad": más cuerpo y foco ---- */
+#products #productsList > div > div:first-child > div:nth-child(2) > div:first-child{
+    background: linear-gradient(135deg, var(--accent-soft), transparent) !important;
+    border-color: var(--accent-border) !important;
+    box-shadow: var(--shadow-sm);
+}
+/* Cifra grande: numeración tabular para alineación óptica */
+#products #productsList > div > div:first-child > div:nth-child(2) > div:first-child > div:nth-child(2){
+    font-variant-numeric: tabular-nums;
+}
+/* Porcentaje: convertido en píldora monoespaciada (neutra ante +/-) */
+#products #productsList > div > div:first-child > div:nth-child(2) > div:first-child > div:last-child{
+    display: inline-block;
+    margin-top: 4px;
+    padding: 2px 10px;
+    border-radius: 999px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-soft);
+    font-family: 'Fira Code', monospace !important;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ---- Bloque de stock de la tarjeta: números tabulares + aire homogéneo ---- */
+#products #productsList > div > div:first-child > div:nth-child(2) > div:nth-child(2) strong{
+    font-family: 'Fira Code', monospace;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ---- Botones Editar / Archivar: foco accesible coherente ---- */
+#products #productsList .btn-small:focus-visible{
+    outline: none;
+    box-shadow: var(--focus-ring);
+}
+
+/* ---- Toggles No/Sí: simetría de píldoras (segmentado) ---- */
+#products #prodShippingToggleRow > div > label,
+#products #prodCommissionToggleRow > div > label,
+#products #prodVariantsBlock label:has(> input[name="prodHasVariants"]){
+    min-width: 78px;
+    justify-content: center;
+}
+#products #prodShippingToggleRow > div > label:has(input:checked),
+#products #prodCommissionToggleRow > div > label:has(input:checked),
+#products #prodVariantsBlock label:has(> input[name="prodHasVariants"]:checked){
+    box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--accent-border);
+}
+
+/* ---- Responsive: cada tarjeta colapsa a una columna en móvil ---- */
+@media (max-width: 640px){
+    #products #productsList > div > div:first-child{
+        grid-template-columns: 1fr !important;
+        gap: 12px !important;
+    }
+    #products #productsList > div{
+        padding: 14px 14px 12px 16px !important;
+    }
+}
+
+/* ===================== INVENTORY — polishPass2 (encima de polishPass) ===================== */
+
+/* 1) Columna Porcentaje: % alineado a la derecha y en columna recta.
+      Barras de ancho fijo + valor con min-width y text-align right => los números forman columna. */
+#inventory .inv-bar { width: 104px; }
+#inventory .inv-pct-val {
+    display: inline-block;
+    min-width: 42px;
+    text-align: right;
+    margin-left: 10px;
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+/* 2) Leyenda de colores de las barras de stock */
+#inventory .inv-legend {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 14px;
+    margin: -2px 0 12px;
+    font-size: 11.5px;
+    color: var(--text-muted);
+}
+#inventory .inv-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+#inventory .inv-legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+    display: inline-block;
+    border: 1px solid var(--border-soft);
+}
+/* los puntos heredan el color de barra ya definido en polishPass
+   (#inventory .inv-bar-ok / -riesgo / -critico / -sin) */
+
+/* 3) Mini-tarjetas de valor: cabecera con chip de icono + hover sutil */
+#inventory .inv-value-row { gap: 14px !important; margin-top: 16px !important; }
+#inventory .inv-value-row > div {
+    position: relative;
+    border-color: var(--border-soft) !important;
+    transition: border-color var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+#inventory .inv-value-row > div:hover {
+    border-color: var(--accent-border) !important;
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+}
+#inventory .inv-value-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+#inventory .inv-value-ic {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    flex: 0 0 auto;
+    border-radius: var(--radius-sm);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-soft);
+    color: var(--text-secondary);
+}
+#inventory .inv-value-ic [data-lucide] { width: 14px; height: 14px; }
+#inventory .inv-value-ic-accent {
+    background: var(--accent-soft);
+    border-color: var(--accent-border);
+    color: var(--accent-primary);
+}
+
+@media (max-width: 640px) {
+    #inventory .inv-bar { width: 72px; }
+    #inventory .inv-pct-val { min-width: 34px; }
+    #inventory .inv-legend { gap: 10px; }
+}
+
+/* ===================== ANALYTICS — segundo pase (polishPass2, aditivo) ===================== */
+/* Construye SOBRE el primer pase (#analytics ... en polishPass): no repite chips de cabecera,
+   gráfico enmarcado, leyenda ni hover básico; añade KPIs de stock, ritmo, zebra y responsive. */
+
+/* 1) Ritmo: separación uniforme y con más aire entre los bloques apilados */
+#analytics .card { margin-bottom: 20px !important; }
+#analytics .card:last-child { margin-bottom: 0 !important; }
+
+/* Separar visualmente el 2º sub-bloque ("Ganancia por día") del bloque de chips */
+#analytics .card > h3 ~ h3 {
+    padding-top: 16px;
+    border-top: 1px solid var(--border-soft);
+}
+
+/* 2) Iconos de KPI como chip (4 financieros + 3 de stock) — look de KPI consistente */
+#analytics .kpi-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+#analytics .kpi-label [data-lucide] {
+    width: 30px;
+    height: 30px;
+    padding: 7px;
+    margin-right: 0;
+    border-radius: 9px;
+    box-sizing: border-box;
+    background: var(--accent-soft);
+    color: var(--accent-primary);
+    vertical-align: middle;
+    flex: none;
+    stroke-width: 2.2;
+}
+
+/* 3) Las 3 mini-tarjetas de stock como KPI de estado (Óptimo / Bajo / Sin) */
+#analytics .grid-3 .kpi-card:nth-child(1) { border-left-color: var(--accent-primary) !important; }
+#analytics .grid-3 .kpi-card:nth-child(2) { border-left-color: var(--warning) !important; }
+#analytics .grid-3 .kpi-card:nth-child(3) { border-left-color: var(--danger) !important; }
+
+#analytics .grid-3 .kpi-card:nth-child(2) .kpi-label [data-lucide] {
+    background: var(--warning-soft);
+    color: var(--warning);
+}
+#analytics .grid-3 .kpi-card:nth-child(3) .kpi-label [data-lucide] {
+    background: var(--danger-soft);
+    color: var(--danger);
+}
+#analytics .grid-3 .kpi-card:nth-child(1) .kpi-value { color: var(--accent-primary); }
+#analytics .grid-3 .kpi-card:nth-child(2) .kpi-value { color: var(--warning); }
+#analytics .grid-3 .kpi-card:nth-child(3) .kpi-value { color: var(--danger); }
+
+/* Hover de las 3 tarjetas conserva su color de estado (gana al verde por defecto del .kpi-card:hover) */
+#analytics .grid-3 .kpi-card:nth-child(2):hover { border-color: var(--warning-border); }
+#analytics .grid-3 .kpi-card:nth-child(3):hover { border-color: var(--danger-border); }
+
+/* Rótulo de sección "Estado de inventario" (inyectado por markupEdit) */
+#analytics .ana-stock-head {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin: 4px 0 12px;
+    font-family: 'Poppins', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+}
+#analytics .ana-stock-head [data-lucide] {
+    width: 16px;
+    height: 16px;
+    color: var(--accent-primary);
+    flex: none;
+}
+
+/* 4) Encabezados de tabla: jerarquía clara, sticky y borde definido */
+#analytics thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    white-space: nowrap;
+    border-bottom: 1px solid var(--border-strong);
+}
+
+/* 5) Densidad legible: zebra sutil + cifras tabulares + micro-interacción de fila */
+#analytics tbody td {
+    font-variant-numeric: tabular-nums;
+}
+#analytics tbody tr:nth-child(even):not(:hover) td {
+    background-color: var(--bg-tertiary);
+}
+#analytics tbody tr td:first-child {
+    position: relative;
+}
+#analytics tbody tr:hover td:first-child::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--accent-primary);
+}
+
+/* Foco accesible del botón "Ver todos" */
+#analytics .btn-small:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring);
+}
+
+/* 6) Responsive de tablas: scroll horizontal fluido y densidad ajustada en móvil */
+#analytics .table-container {
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+}
+@media (max-width: 640px) {
+    #analytics .table-container table { min-width: 560px; }
+    #analytics thead th,
+    #analytics tbody td { padding-left: 12px; padding-right: 12px; }
+    #analytics .kpi-label [data-lucide] { width: 28px; height: 28px; padding: 6px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #analytics .kpi-card,
+    #analytics tbody tr { transition: none !important; }
+}
+
+/* ===== ALERTS — polishPass2 (aditivo, construye sobre #polishPass) ===== */
+
+/* Resumen de conteos -> badges legibles + separador bajo la línea.
+   Solo cuando hay alertas: el primer hijo de #alertsList es el resumen
+   (no .alert-box). En estado vacío el primer hijo ES .alert-box y queda excluido. */
+#alerts #alertsList > div:first-child:not(.alert-box) {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--border-soft);
+}
+#alerts #alertsList > div:first-child:not(.alert-box) strong {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 9px;
+    border-radius: 999px;
+    font-family: 'Fira Code', monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-soft);
+}
+
+/* Tinte de severidad: degradado muy sutil desde el borde izquierdo. */
+#alerts .alert-danger {
+    background: linear-gradient(90deg, var(--danger-soft) 0%, transparent 55%), var(--bg-elevated);
+}
+#alerts .alert-warning {
+    background: linear-gradient(90deg, var(--warning-soft) 0%, transparent 55%), var(--bg-elevated);
+}
+#alerts .alert-danger:hover,
+#alerts .alert-warning:hover {
+    background: var(--bg-hover);
+}
+
+/* Chip de icono con anillo interno para mayor profundidad/contraste. */
+#alerts .alert-danger [data-lucide] {
+    box-shadow: inset 0 0 0 1px var(--danger-border);
+}
+#alerts .alert-warning [data-lucide] {
+    box-shadow: inset 0 0 0 1px var(--warning-border);
+}
+
+/* Micro-pulso de atención solo en críticos (sutil, una pista visual). */
+@keyframes alertCritPulse {
+    0%, 100% { box-shadow: inset 0 0 0 1px var(--danger-border), 0 0 0 0 var(--danger-soft); }
+    50%      { box-shadow: inset 0 0 0 1px var(--danger-border), 0 0 0 5px var(--danger-soft); }
+}
+#alerts .alert-danger [data-lucide] {
+    animation: alertCritPulse 2.6s ease-in-out infinite;
+}
+
+/* Encabezados de grupo: punto de severidad + mejor aire. */
+#alerts #alertsList > div[style*="text-transform:uppercase"] {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+#alerts #alertsList > div[style*="text-transform:uppercase"]::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--text-muted);
+}
+
+/* Botón "Ver todas / Ver menos" con lenguaje de acento. */
+#alerts #alertsList .btn-small {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--accent-soft) !important;
+    color: var(--accent-primary);
+    border: 1px solid var(--accent-border);
+    font-weight: 600;
+}
+#alerts #alertsList .btn-small:hover {
+    background: var(--accent-soft-hover) !important;
+    border-color: var(--accent-primary);
+}
+#alerts #alertsList .btn-small i,
+#alerts #alertsList .btn-small svg { color: var(--accent-primary); }
+
+/* Estado vacío: refuerzo de contraste y glow de acento contenido. */
+#alerts .alert-success {
+    background:
+        radial-gradient(120% 90% at 50% 0%, var(--accent-soft) 0%, transparent 60%),
+        var(--bg-elevated);
+}
+#alerts .alert-success [data-lucide] {
+    box-shadow: 0 0 0 6px var(--accent-soft), inset 0 0 0 1px var(--accent-border);
+}
+
+/* Responsive: en pantallas chicas, chips de icono más compactos. */
+@media (max-width: 640px) {
+    #alerts .alert-box [data-lucide] { width: 32px; height: 32px; padding: 7px; }
+    #alerts .alert-box { padding: 12px 13px; gap: 11px; }
+}
+
+/* Accesibilidad: sin animación si el usuario la desactiva. */
+@media (prefers-reduced-motion: reduce) {
+    #alerts .alert-danger [data-lucide] { animation: none; }
+    #alerts .alert-box:hover { transform: none; }
+}
+
+/* ===== FINANZAS — polishPass2 (segundo nivel, aditivo sobre polishPass) ===== */
+
+/* --- Leyenda del donut como CHIPS (mismo lenguaje de pastillas del DS) --- */
+#finGastosLegend > div { gap: 8px !important; align-items: center; }
+#finGastosLegend > div > span {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-soft);
+    padding: 6px 12px;
+    border-radius: 999px;
+    line-height: 1;
+    font-weight: 500;
+    transition: var(--transition-fast);
+}
+#finGastosLegend > div > span:hover {
+    background: var(--bg-elevated);
+    border-color: var(--accent-border);
+}
+/* el punto de color, un poco más nítido dentro del chip */
+#finGastosLegend > div > span > span:first-child {
+    box-shadow: 0 0 0 2px var(--bg-tertiary);
+}
+
+/* --- Reequilibrio donut vs. Meta en desktop (la Meta vacía deja menos hueco) --- */
+@media (min-width: 900px) {
+    #finVisualRow { grid-template-columns: 1.25fr 1fr; align-items: stretch; }
+    #finVisualRow > .card { margin: 0; }
+}
+
+/* --- KPIs del Resumen del mes: jerarquía + micro-interacción --- */
+#finResumenMes > div[style*="flex-wrap:wrap"] > div {
+    transition: var(--transition-base);
+}
+#finResumenMes > div[style*="flex-wrap:wrap"] > div:hover {
+    border-color: var(--accent-border) !important;
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+/* la caja "Ganancia REAL" (última) es la línea de fondo: borde más marcado */
+#finResumenMes > div[style*="flex-wrap:wrap"] > div:last-child {
+    border-color: var(--border-strong) !important;
+    box-shadow: var(--shadow-sm);
+}
+/* franja comparativa con acento lateral */
+#finResumenMes > div:last-child {
+    border-left: 3px solid var(--accent-border) !important;
+}
+
+/* --- Tablas: filas de datos con hover y TOTAL destacado de forma consistente --- */
+#finanzas .table-container table tbody tr {
+    transition: background var(--transition-fast);
+}
+#finanzas .table-container table tbody tr:hover {
+    background: var(--bg-hover);
+}
+#finanzas .table-container table tfoot td {
+    background: var(--bg-elevated);
+    padding-top: 14px;
+    padding-bottom: 14px;
+}
+#finanzas .table-container table tfoot td:first-child {
+    letter-spacing: .04em;
+    color: var(--text-secondary);
+    font-size: 12px;
+    text-transform: uppercase;
+}
+
+/* --- Estados vacíos como tarjeta punteada centrada (solo cuando el contenedor
+       no tiene tabla/datos: el render emite un único <p>) --- */
+#finMetaBar > p:only-child,
+#finGananciaProductos > p:only-child,
+#finGastosList > p:only-child,
+#finGastosFijosList > p:only-child,
+#finGastosLegend > p:only-child,
+#finPubHistorial > p:only-child {
+    margin: 0;
+    padding: 22px 16px;
+    text-align: center;
+    background: var(--bg-tertiary);
+    border: 1px dashed var(--border-color);
+    border-radius: var(--radius);
+}
+
+/* --- Accesibilidad: anillo de foco visible en botones de borrar
+       (--focus-ring es un valor de box-shadow del DS, no un color) --- */
+#finanzas .btn-danger:focus-visible {
+    box-shadow: var(--focus-ring);
+    outline: none;
+}
+
+/* ====================================================================
+   AGENDA — polishPass2 (ADITIVO, namespaceado bajo #agenda)
+   Construye ENCIMA de #agSummary/#agPendientes/#agCalGrid del polishPass.
+   Solo presentación. Variables del design system. Sin colores nuevos.
+   ==================================================================== */
+
+/* ---- Labels de formulario: estilo condensado coherente con KPIs ---- */
+#agenda #agForm label{
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  font-weight: 600;
+  font-size: 11px !important;
+  color: var(--text-muted) !important;
+}
+
+/* ---- Iconos de date/time visibles en tema oscuro (fix real) ---- */
+#agenda #agForm input[type="date"]::-webkit-calendar-picker-indicator,
+#agenda #agForm input[type="time"]::-webkit-calendar-picker-indicator{
+  filter: invert(.85);
+  opacity: .55;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+#agenda #agForm input[type="date"]:hover::-webkit-calendar-picker-indicator,
+#agenda #agForm input[type="time"]:hover::-webkit-calendar-picker-indicator,
+#agenda #agForm input[type="date"]:focus::-webkit-calendar-picker-indicator,
+#agenda #agForm input[type="time"]:focus::-webkit-calendar-picker-indicator{
+  opacity: 1;
+}
+
+/* ---- KPIs del resumen: label en mayúsculas, número con acento ---- */
+#agenda #agSummary .card > div:last-child{
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+#agenda #agSummary .card::after{
+  content: "";
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: var(--accent-primary);
+  opacity: .55;
+}
+
+/* ---- Estado vacío de pendientes: tarjeta intencional, no texto suelto ---- */
+#agenda #agPendientes > div:only-child[style*="padding:8px 0"]{
+  border: 1px dashed var(--border-color);
+  border-radius: var(--radius);
+  background: var(--bg-tertiary);
+  padding: 30px 18px !important;
+  color: var(--text-secondary) !important;
+  font-size: 13.5px !important;
+  line-height: 1.5;
+}
+#agenda #agPendientes > div:only-child[style*="padding:8px 0"]::before{
+  content: "";
+  display: block;
+  width: 44px;
+  height: 44px;
+  margin: 0 auto 14px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  box-shadow: var(--shadow-accent);
+}
+
+/* ---- Item de tarea: el acento lateral respira al pasar el mouse ---- */
+#agenda #agPendientes > div:hover{
+  transform: translateX(2px);
+}
+
+/* ---- "Ver todas" y chip de filtro: alineados al sistema ---- */
+#agenda #agPendientes .btn-small,
+#agenda #agClearFiltro .btn-small{
+  border: 1px solid var(--border-soft);
+}
+#agenda #agPendientes .btn-small:hover,
+#agenda #agClearFiltro .btn-small:hover{
+  border-color: var(--accent-border);
+  color: var(--accent-primary);
+}
+
+/* ---- Calendario: cabecera de días de la semana legible ---- */
+#agenda #agCalGrid > div > div[style*="font-size:11px"]{
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  font-weight: 600;
+  color: var(--text-muted) !important;
+  padding-bottom: 6px !important;
+  border-bottom: 1px solid var(--border-soft);
+  margin-bottom: 2px;
+}
+
+/* ---- Calendario: celdas de día con cuerpo y alineación numérica ---- */
+#agenda #agCalGrid > div > div[onclick]{
+  min-height: 42px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+  transition: var(--transition-fast);
+}
+#agenda #agCalGrid > div > div[onclick]:hover{
+  border-color: var(--accent-border) !important;
+  box-shadow: var(--shadow-sm);
+}
+
+/* ---- Nav del mes: botones y título centrados con jerarquía ---- */
+#agenda #agCalTitulo{
+  font-family: 'Poppins', sans-serif;
+  font-size: 15px;
+  letter-spacing: .2px;
+}
+
+/* ---- Accesibilidad: foco visible coherente en controles de la sección ---- */
+#agenda #agPendientes button:focus-visible,
+#agenda #agForm button:focus-visible,
+#agenda .card > div button:focus-visible{
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* ---- Responsive: en móvil el botón Agregar ocupa toda la fila ---- */
+@media (max-width: 560px){
+  #agenda #agForm > div:last-child{
+    grid-column: 1 / -1;
+  }
+  #agenda #agCalGrid > div > div[onclick]{
+    min-height: 38px;
+    font-size: 12px;
+  }
+}
+
+/* ===== Metas — polishPass2 (aditivo, sobre el pulido base) ===== */
+
+/* --- Estados vacíos: que se vean intencionales, no como huecos --- */
+#metas #metasProgreso > div[style*="font-size:14px"],
+#metas #metasAlertas  > div[style*="font-size:14px"],
+#metas #metasHistorial > div[style*="font-size:14px"]{
+    text-align:center;
+    padding:26px 22px !important;
+    border:1px dashed var(--border-soft);
+    border-radius:var(--radius);
+    background:linear-gradient(180deg, var(--bg-tertiary), transparent);
+    color:var(--text-muted) !important;
+    line-height:1.55;
+    max-width:560px;
+    margin:2px auto;
+}
+
+/* --- Mini-tarjetas de stats del progreso: jerarquía label/valor --- */
+#metas #metasProgreso > div:first-child > div{
+    display:flex;
+    flex-direction:column;
+    gap:4px;
+    background:linear-gradient(180deg, var(--bg-elevated), var(--bg-tertiary)) !important;
+}
+#metas #metasProgreso > div:first-child > div > div:first-child{
+    font-size:10.5px !important;
+    text-transform:uppercase;
+    letter-spacing:.05em;
+    color:var(--text-muted) !important;
+    font-weight:600;
+}
+#metas #metasProgreso > div:first-child > div > div:last-child{
+    font-variant-numeric:tabular-nums;
+    margin-top:0 !important;
+}
+/* Realce de la celda "Logrado" (3ª) — es el dato protagonista */
+#metas #metasProgreso > div:first-child > div:nth-child(3){
+    border-color:var(--accent-border) !important;
+    box-shadow:inset 2px 0 0 0 var(--accent-primary);
+}
+
+/* --- Formulario de meta: ritmo y coherencia --- */
+#metas #metasForm{ gap:14px 16px !important; }
+#metas #metasForm label{
+    text-transform:uppercase;
+    letter-spacing:.04em;
+    font-weight:600;
+    color:var(--text-muted) !important;
+}
+#metas #metasInTipo{ transition:border-color var(--transition-fast), box-shadow var(--transition-fast); }
+#metas #metasInTipo:hover{ border-color:var(--border-color); }
+#metas #metasInTipo:focus{
+    outline:none;
+    border-color:var(--accent-primary);
+    box-shadow:0 0 0 3px var(--accent-soft);
+}
+#metas #metasForm .btn-primary{ letter-spacing:.01em; }
+
+/* --- Tabla de historial: cabecera, filas e indicadores --- */
+#metas #metasHistorial thead th{
+    border-bottom:1px solid var(--border-color);
+    padding-bottom:9px;
+}
+#metas #metasHistorial tbody tr{ transition:background var(--transition-fast); }
+#metas #metasHistorial tbody tr:nth-child(even){ background:var(--bg-tertiary); }
+#metas #metasHistorial tbody tr:hover{ background:var(--bg-hover); }
+#metas #metasHistorial tbody td{
+    padding:10px 8px;
+    border-top:1px solid var(--border-soft);
+    vertical-align:middle;
+}
+/* Badge de resultado como píldora — currentColor adapta verde/rojo del inline */
+#metas #metasHistorial tbody td:last-child span{
+    display:inline-flex;
+    align-items:center;
+    padding:3px 10px;
+    border-radius:999px;
+    font-size:12px;
+    line-height:1.4;
+    background:color-mix(in srgb, currentColor 13%, transparent);
+    border:1px solid color-mix(in srgb, currentColor 32%, transparent);
+}
+
+/* --- Responsive: stats a 2 columnas en pantallas chicas --- */
+@media (max-width:640px){
+    #metas #metasProgreso > div:first-child > div{ flex:1 1 calc(50% - 12px); }
+}
+
+/* ===== Logros — pulido nivel 2 (#polishPass2) ===== */
+
+/* Estado vacío grácil: cuando un contenedor aún no fue poblado por el JS
+   (render diferido / sin datos) en vez de una tarjeta alta y vacía. */
+#logros #logrosGrid:empty::before,
+#logros #logrosStats:empty::before,
+#logros #logrosRecords:empty::before{
+    content:"Calculando desde tus ventas...";
+    display:flex; align-items:center; justify-content:center;
+    min-height:92px; padding:22px;
+    color:var(--text-muted); font-size:13px; text-align:center;
+    border:1px dashed var(--border-soft); border-radius:var(--radius);
+    background:
+        radial-gradient(120% 140% at 50% -20%, var(--accent-soft) 0%, transparent 62%),
+        var(--bg-tertiary);
+}
+
+/* Mensajes "aún no hay ventas" (p generados por el JS) → tarjeta de estado vacío */
+#logros #logrosRecords > p,
+#logros #logrosStats > p,
+#logros #logrosGrid > p{
+    margin:0; text-align:center; color:var(--text-secondary);
+    padding:28px 22px; border:1px dashed var(--border-soft);
+    border-radius:var(--radius); background:var(--bg-tertiary);
+}
+
+/* Tiles de estadísticas: número en monoespaciado tabular + barra de acento al hover.
+   (el hover de border/bg ya lo aporta el pulido previo; aquí se suma encima) */
+#logros #logrosStats > div > div{
+    position:relative; overflow:hidden;
+}
+#logros #logrosStats > div > div::before{
+    content:""; position:absolute; left:0; top:0; bottom:0; width:3px;
+    background:linear-gradient(var(--accent-primary), var(--accent-secondary));
+    opacity:0; transform:scaleY(.4); transform-origin:center;
+    transition:opacity var(--transition-base), transform var(--transition-base);
+}
+#logros #logrosStats > div > div:hover::before{ opacity:.95; transform:scaleY(1); }
+#logros #logrosStats > div > div > div:last-child{
+    font-family:'Fira Code','JetBrains Mono',monospace !important;
+    font-variant-numeric:tabular-nums; letter-spacing:-.4px;
+}
+
+/* Récords: el valor en monoespaciado tabular para alinear cifras */
+#logros #logrosRecords > div > div:last-child > div:nth-child(2){
+    font-family:'Fira Code','JetBrains Mono',monospace !important;
+    font-variant-numeric:tabular-nums; letter-spacing:-.3px;
+}
+
+/* Medallas: igualar altura de la celda y monoespaciar la fracción de progreso */
+#logros #logrosGrid .logros-badge{ min-height:100%; }
+#logros #logrosGrid .logros-badge > div:last-child{
+    font-family:'Fira Code','JetBrains Mono',monospace;
+    font-variant-numeric:tabular-nums;
+}
+
+/* Medalla desbloqueada: hairline de acento superior como sello sutil */
+#logros #logrosGrid .logros-badge.is-done::after{
+    content:""; position:absolute; left:14px; right:14px; top:0; height:2px;
+    border-radius:0 0 3px 3px;
+    background:linear-gradient(90deg, transparent, var(--accent-primary), transparent);
+    opacity:.6;
+}
+
+/* Más aire entre medallas en pantallas amplias sin tocar el grid inline */
+@media (min-width:1100px){
+    #logros #logrosGrid .logros-badge{ padding-bottom:18px; }
+}
+
+@media (prefers-reduced-motion: reduce){
+    #logros #logrosStats > div > div::before{ transition:none; }
+}
+
+</style>
+<style id="polishPass3">
+/* polishPass3 — subagentes en paralelo */
+
+/* ===================== DASHBOARD — polishPass3 (aditivo, namespaced) =====================
+   Construye ENCIMA de polishPass / polishPass2. No repite chips de icono,
+   alineacion numerica, sub-paneles ni hovers ya definidos. Foco: reequilibrio
+   del grid de 7 KPIs y densidad/responsive. */
+
+/* ---- KPI grid (7 tarjetas): filas parejas en vez de 6+1 ----
+   El .grid-5 del dashboard contiene 7 KPIs. Con auto-fit empacaba 6 arriba y
+   dejaba 1 huerfano. Fijamos columnas para repartir 4+3 (desktop) y 3+3+1
+   (tablet), siempre filas equilibradas. minmax(0,1fr) evita desbordes. */
+@media (min-width: 1025px) {
+    #dashboard .grid-5 {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        align-items: stretch;
+    }
+}
+@media (min-width: 769px) and (max-width: 1024px) {
+    #dashboard .grid-5 {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        align-items: stretch;
+    }
+}
+
+/* Tarjetas KPI a la misma altura para que las filas 4 y 3 se vean parejas */
+#dashboard .grid-5 .kpi-card {
+    height: 100%;
+    box-sizing: border-box;
+}
+
+/* ---- Movil: 2 columnas (densidad) en vez de 1 sola apilada ----
+   Sobrescribe la regla base .grid-5 -> 1fr (max-width:768) por mayor
+   especificidad. Mantiene el gap inline. */
+@media (max-width: 768px) {
+    #dashboard .grid-5 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    /* Chip de icono mas compacto para ganar densidad vertical en movil */
+    #dashboard .kpi-icon {
+        width: 32px;
+        height: 32px;
+        margin-bottom: 10px;
+    }
+    #dashboard .kpi-label { line-height: 1.25; }
+    /* La 7a tarjeta (Publicidad) queda sola en su fila: que ocupe ambas
+       columnas para no dejar un hueco desbalanceado a la derecha */
+    #dashboard .grid-5 .kpi-card:last-child {
+        grid-column: 1 / -1;
+    }
+}
+
+/* ---- Ranking de Productos: scroll horizontal limpio en movil ----
+   La tabla ya vive en .table-container (overflow-x:auto). Evitamos que las
+   celdas se aplasten para que el scroll sea legible, con inercia tactil. */
+#dashboard #topProductsTable .table-container {
+    -webkit-overflow-scrolling: touch;
+}
+#dashboard #topProductsTable td,
+#dashboard #topProductsTable th {
+    white-space: nowrap;
+}
+
+/* ---- Atajo "Agregar gasto rapido": tap-targets comodos en movil ---- */
+@media (max-width: 768px) {
+    #dashboard #dashGastoForm .form-control {
+        min-height: 44px;
+    }
+    #dashboard #dashGastoForm button[type="submit"] {
+        width: 100%;
+        justify-content: center;
+        min-height: 44px;
+    }
+}
+
+/* ============ PRODUCTS — polishPass3 (encima de polishPass / polishPass2) ============ */
+
+/* ---- Desktop: densidad de tarjetas (menos aire muerto, lista de precios más ceñida) ---- */
+@media (min-width: 641px){
+    #products #productsList > div{
+        padding: 16px 18px !important;
+        margin-bottom: 12px !important;
+    }
+    /* Lista Precio Compra/Venta/Comisión/Envío: interlineado más compacto */
+    #products #productsList > div > div:first-child > div:first-child > div:nth-child(2){
+        gap: 6px !important;
+    }
+    /* Columna ganancia y precios alineadas arriba (evita panel "flotando") */
+    #products #productsList > div > div:first-child{
+        align-items: start !important;
+    }
+}
+
+/* ---- Móvil: compactar tarjetas, panel de ganancia y formulario ---- */
+@media (max-width: 480px){
+    /* Tarjeta: padding y separación más ajustados */
+    #products #productsList > div{
+        padding: 14px !important;
+        margin-bottom: 12px !important;
+    }
+    /* Panel "Ganancia por Unidad": cuerpo más compacto */
+    #products #productsList > div > div:first-child > div:nth-child(2) > div:first-child{
+        padding: 12px !important;
+    }
+    /* Cifra grande: un punto menos para equilibrio en 390px (mantiene Fira Code) */
+    #products #productsList > div > div:first-child > div:nth-child(2) > div:first-child > div:nth-child(2){
+        font-size: 24px !important;
+        letter-spacing: -.5px !important;
+    }
+    /* Botones Editar / Archivar: tap-target cómodo */
+    #products #productsList .btn-small{
+        min-height: 42px;
+        font-size: 13px;
+    }
+    /* Banner de ganancia del formulario: más compacto */
+    #products #prodProfitLive{
+        font-size: 13px;
+        padding: 11px 12px !important;
+    }
+    #products #prodProfitLive strong{ font-size: 15px; }
+    /* Formulario: recortar el aire vertical entre bloques en pantalla chica */
+    #products #prodVariantsBlock{
+        margin: 10px 0 4px !important;
+        padding-top: 12px !important;
+    }
+    #products #prodShippingToggleRow,
+    #products #prodCommissionToggleRow{ margin: 8px 0 4px !important; }
+}
+
+/* ===================== INVENTORY — tercer pase (polishPass3, aditivo) =====================
+   Construye SOBRE polishPass/polishPass2. No repite barras, leyenda, chips ni alineación numérica.
+   Foco: tabla de stock legible en móvil (390px) -> tarjetas apiladas; barra y % siempre visibles. */
+
+@media (max-width: 600px) {
+
+    /* El contenedor deja de scrollear: las filas pasan a tarjetas verticales */
+    #inventory .table-container {
+        overflow-x: hidden;
+        border: none;
+        background: transparent;
+        box-shadow: none;
+        border-radius: 0;
+    }
+    #inventory .table-container > table,
+    #inventory .table-container > table > tbody {
+        display: block;
+        width: 100%;
+        background: transparent;
+    }
+
+    /* Cabecera de tabla oculta accesiblemente (las etiquetas van por fila) */
+    #inventory .table-container > table > thead {
+        position: absolute;
+        width: 1px; height: 1px;
+        padding: 0; margin: -1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+        border: 0;
+    }
+
+    /* Cada producto = una tarjeta */
+    #inventory tbody tr:not([data-inv-var-row]) {
+        display: block;
+        background: var(--bg-tertiary);
+        border: 1px solid var(--border-soft);
+        border-radius: var(--radius);
+        padding: 4px 14px;
+        margin-bottom: 10px;
+        box-shadow: var(--shadow-sm);
+    }
+    #inventory tbody tr:not([data-inv-var-row]):hover {
+        background: var(--bg-tertiary);
+        border-color: var(--accent-border);
+    }
+
+    /* Cada celda = una fila etiqueta / valor dentro de la tarjeta */
+    #inventory tbody tr:not([data-inv-var-row]) > td {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        width: 100%;
+        box-sizing: border-box;
+        padding: 10px 0 !important;
+        border: none;
+        border-bottom: 1px solid var(--border-soft);
+        white-space: normal;
+        text-align: right;
+        color: var(--text-primary);
+        font-size: 13px;
+    }
+    #inventory tbody tr:not([data-inv-var-row]) > td:last-child {
+        border-bottom: none;
+    }
+
+    /* Etiqueta de columna (orden fijo: 2=Estado, 3=Stock actual, 4=Stock inicial, 5=Nivel) */
+    #inventory tbody tr:not([data-inv-var-row]) > td:not(:first-child)::before {
+        flex: 0 0 auto;
+        text-align: left;
+        font-size: 10.5px;
+        font-weight: 700;
+        letter-spacing: .05em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+    }
+    #inventory tbody tr:not([data-inv-var-row]) > td:nth-child(2)::before { content: "Estado"; }
+    #inventory tbody tr:not([data-inv-var-row]) > td:nth-child(3)::before { content: "Stock actual"; }
+    #inventory tbody tr:not([data-inv-var-row]) > td:nth-child(4)::before { content: "Stock inicial"; }
+    #inventory tbody tr:not([data-inv-var-row]) > td:nth-child(5)::before { content: "Nivel"; }
+
+    /* Nombre del producto = cabecera de la tarjeta, a ancho completo */
+    #inventory tbody tr:not([data-inv-var-row]) > td:first-child {
+        justify-content: flex-start;
+        text-align: left;
+        font-size: 14.5px;
+        padding: 6px 0 12px !important;
+        border-bottom: 1px solid var(--border-soft);
+    }
+    #inventory tbody tr:not([data-inv-var-row]) > td:first-child strong {
+        font-weight: 700;
+        color: var(--text-primary);
+    }
+
+    /* Stock actual editable: mejor tap-target a fila completa */
+    #inventory tbody tr:not([data-inv-var-row]) > td.editable-stock {
+        min-height: 44px;
+        font-family: 'Fira Code', monospace;
+        font-variant-numeric: tabular-nums;
+        font-weight: 600;
+    }
+    #inventory tbody tr:not([data-inv-var-row]) > td.num {
+        font-family: 'Fira Code', monospace;
+        font-variant-numeric: tabular-nums;
+    }
+
+    /* Barra de nivel: crece a todo el ancho disponible y el % se lee claro */
+    #inventory tbody tr:not([data-inv-var-row]) > td.inv-pct {
+        gap: 12px;
+        min-width: 0;
+    }
+    #inventory td.inv-pct .inv-bar {
+        flex: 1 1 auto;
+        width: auto;
+        min-width: 0;
+        height: 9px;
+    }
+    #inventory td.inv-pct .inv-pct-val {
+        flex: 0 0 auto;
+        margin-left: 0;
+        min-width: 40px;
+        text-align: right;
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--text-primary);
+    }
+
+    /* Estado: el badge cabe holgado, sin recorte */
+    #inventory tbody tr:not([data-inv-var-row]) > td:nth-child(2) .badge {
+        flex: 0 0 auto;
+        white-space: nowrap;
+    }
+
+    /* Fila de panel de variantes: que respete el layout en bloque sin tarjeta */
+    #inventory tbody tr[data-inv-var-row] {
+        display: block;
+        background: transparent;
+    }
+    #inventory tbody tr[data-inv-var-row] > td {
+        display: block;
+        padding: 0 !important;
+        border: none;
+        white-space: normal;
+    }
+
+    /* Mini-tarjetas de valor: a ancho completo y cómodas en columna */
+    #inventory .inv-value-row { gap: 10px !important; }
+    #inventory .inv-value-row > div {
+        flex: 1 1 100% !important;
+        min-width: 0 !important;
+        padding: 14px 16px !important;
+    }
+    #inventory .inv-value-row > div > div:last-child { font-size: 20px !important; }
+}
+
+/* ===== FINANZAS — polishPass3 (responsive movil de tablas) ===== */
+
+/* En movil real (~390px) las tablas de 4-5 columnas con montos no caben y el
+   scroll horizontal esconde justamente los valores importantes. En vez de
+   romper el ancho, transformamos cada fila en una mini-tarjeta etiqueta/valor.
+   Estructura de columnas conocida y fija -> etiquetas via ::before. */
+@media (max-width: 480px) {
+
+    /* El contenedor deja de scrollear: ya no hay tabla ancha que contener */
+    #finanzas #finGananciaProductos .table-container,
+    #finanzas #finGastosFijosList .table-container,
+    #finanzas #finGastosList .table-container {
+        overflow-x: visible;
+        border: 0;
+        box-shadow: none;
+        background: transparent;
+        border-radius: 0;
+    }
+
+    #finanzas #finGananciaProductos table,
+    #finanzas #finGastosFijosList table,
+    #finanzas #finGastosList table {
+        display: block;
+        width: 100%;
+        min-width: 0;
+        background: transparent;
+        table-layout: auto;
+    }
+    #finanzas #finGananciaProductos tbody,
+    #finanzas #finGastosFijosList tbody,
+    #finanzas #finGastosList tbody,
+    #finanzas #finGananciaProductos tfoot,
+    #finanzas #finGastosFijosList tfoot,
+    #finanzas #finGastosList tfoot { display: block; }
+
+    /* La cabecera real se oculta accesiblemente; las etiquetas viajan en cada celda */
+    #finanzas #finGananciaProductos thead,
+    #finanzas #finGastosFijosList thead,
+    #finanzas #finGastosList thead {
+        position: absolute !important;
+        width: 1px; height: 1px;
+        padding: 0; margin: -1px;
+        overflow: hidden; clip: rect(0 0 0 0);
+        white-space: nowrap; border: 0;
+    }
+
+    /* Cada fila de datos = tarjeta */
+    #finanzas #finGananciaProductos tbody tr,
+    #finanzas #finGastosFijosList tbody tr,
+    #finanzas #finGastosList tbody tr {
+        display: block;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-soft);
+        border-radius: var(--radius-sm);
+        padding: 4px 12px;
+        margin-bottom: 10px;
+        transition: border-color var(--transition-fast);
+    }
+    /* el hover heredado no aplica en tactil; neutralizamos por si acaso */
+    #finanzas .table-container table tbody tr:hover { background: var(--bg-secondary); }
+
+    /* Celda = fila etiqueta (izq) / valor (der) */
+    #finanzas #finGananciaProductos tbody td,
+    #finanzas #finGastosFijosList tbody td,
+    #finanzas #finGastosList tbody td {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        padding: 8px 0;
+        border: 0 !important;
+        white-space: normal;
+        text-align: right;
+        font-size: 13px;
+        word-break: break-word;
+    }
+    #finanzas #finGananciaProductos tbody td + td,
+    #finanzas #finGastosFijosList tbody td + td,
+    #finanzas #finGastosList tbody td + td {
+        border-top: 1px solid var(--border-soft) !important;
+    }
+
+    /* Etiqueta de cada celda */
+    #finanzas #finGananciaProductos tbody td::before,
+    #finanzas #finGastosFijosList tbody td::before,
+    #finanzas #finGastosList tbody td::before,
+    #finanzas #finGananciaProductos tfoot td:nth-child(n+2)::before {
+        flex: 0 0 auto;
+        color: var(--text-muted);
+        font-family: 'Inter', system-ui, sans-serif;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: .04em;
+        text-transform: uppercase;
+        text-align: left;
+    }
+
+    /* Ganancia neta por producto */
+    #finanzas #finGananciaProductos tbody td:nth-child(1)::before { content: "Producto"; }
+    #finanzas #finGananciaProductos tbody td:nth-child(2)::before { content: "Unidades"; }
+    #finanzas #finGananciaProductos tbody td:nth-child(3)::before { content: "Costo total"; }
+    #finanzas #finGananciaProductos tbody td:nth-child(4)::before { content: "Ingresos"; }
+    #finanzas #finGananciaProductos tbody td:nth-child(5)::before { content: "Ganancia neta"; }
+
+    /* Gastos fijos */
+    #finanzas #finGastosFijosList tbody td:nth-child(1)::before { content: "Nombre"; }
+    #finanzas #finGastosFijosList tbody td:nth-child(2)::before { content: "Monto"; }
+    #finanzas #finGastosFijosList tbody td:nth-child(3)::before { content: "Frecuencia"; }
+    #finanzas #finGastosFijosList tbody td:nth-child(4)::before { content: "Equiv. mensual"; }
+
+    /* Registro de gastos */
+    #finanzas #finGastosList tbody td:nth-child(1)::before { content: "Fecha"; }
+    #finanzas #finGastosList tbody td:nth-child(2)::before { content: "Nombre"; }
+    #finanzas #finGastosList tbody td:nth-child(3)::before { content: "Monto"; }
+
+    /* La primera celda (titulo de la tarjeta) destaca un poco */
+    #finanzas #finGananciaProductos tbody td:nth-child(1),
+    #finanzas #finGastosFijosList tbody td:nth-child(1) {
+        font-weight: 600;
+        color: var(--text-primary);
+    }
+
+    /* Celda de accion (borrar): boton alineado a la derecha, tap-target comodo */
+    #finanzas #finGastosFijosList tbody td:nth-child(5),
+    #finanzas #finGastosList tbody td:nth-child(4) {
+        justify-content: flex-end;
+        padding-top: 12px;
+    }
+    #finanzas #finGastosFijosList tbody td:nth-child(5) .btn-danger,
+    #finanzas #finGastosList tbody td:nth-child(4) .btn-danger {
+        min-height: 40px;
+        min-width: 44px;
+    }
+
+    /* ---- Footers (TOTAL) como barra/tarjeta de cierre ---- */
+
+    /* Ganancia: 5 celdas (sin colspan) -> apiladas etiqueta/valor con acento */
+    #finanzas #finGananciaProductos tfoot tr {
+        display: block;
+        background: var(--accent-soft);
+        border: 1px solid var(--accent-border);
+        border-radius: var(--radius-sm);
+        padding: 4px 12px;
+        margin-top: 2px;
+    }
+    #finanzas #finGananciaProductos tfoot td {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        padding: 8px 0 !important;
+        border: 0 !important;
+        background: transparent !important;
+        text-align: right;
+        font-size: 13px;
+    }
+    #finanzas #finGananciaProductos tfoot td + td {
+        border-top: 1px solid var(--accent-border) !important;
+    }
+    #finanzas #finGananciaProductos tfoot td:nth-child(2)::before { content: "Unidades"; }
+    #finanzas #finGananciaProductos tfoot td:nth-child(3)::before { content: "Costo total"; }
+    #finanzas #finGananciaProductos tfoot td:nth-child(4)::before { content: "Ingresos"; }
+    #finanzas #finGananciaProductos tfoot td:nth-child(5)::before { content: "Ganancia neta"; }
+
+    /* Gastos fijos y registro: el TOTAL es una sola linea (colspan) -> barra */
+    #finanzas #finGastosFijosList tfoot tr,
+    #finanzas #finGastosList tfoot tr {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        flex-wrap: wrap;
+        background: var(--accent-soft);
+        border: 1px solid var(--accent-border);
+        border-radius: var(--radius-sm);
+        padding: 12px 14px;
+        margin-top: 2px;
+    }
+    #finanzas #finGastosFijosList tfoot td,
+    #finanzas #finGastosList tfoot td {
+        display: inline-block;
+        padding: 0 !important;
+        border: 0 !important;
+        background: transparent !important;
+        font-size: 13px;
+    }
+    #finanzas #finGastosFijosList tfoot td:empty,
+    #finanzas #finGastosList tfoot td:empty { display: none; }
+
+    /* Boton "Ver todos" pegado bajo las tarjetas */
+    #finanzas #finGananciaProductos > .btn,
+    #finanzas #finGastosList > .btn { width: 100%; justify-content: center; }
+
+    /* Leyenda del donut centrada para equilibrio bajo el grafico */
+    #finanzas #finGastosLegend > div { justify-content: center; }
+}
+
+/* ===================== SETTINGS — polishPass3 (aditivo, namespaced #settings) ===================== */
+/* Construye SOBRE #setStyles y los polishPass previos: solo refina responsive + detalle. */
+
+/* Scroll-snap suave en la barra de pestañas (no afecta desktop visualmente) */
+#settings #settingsTabs { scroll-behavior: smooth; }
+#settings #settingsTabs .pi-tab { scroll-snap-align: start; }
+
+/* ----- Móvil: barra de pestañas como fila única con scroll horizontal limpio ----- */
+@media (max-width: 768px) {
+    #settings #settingsTabs {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        overflow-y: hidden;
+        scroll-snap-type: x proximity;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        margin-bottom: 18px;
+        /* desvanecido sutil en los extremos para insinuar que hay más pestañas */
+        -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+                mask-image: linear-gradient(90deg, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+    }
+    #settings #settingsTabs::-webkit-scrollbar { display: none; height: 0; }
+    #settings #settingsTabs .pi-tab {
+        flex: 0 0 auto;
+        /* el glow grande se recorta dentro del overflow: lo cambiamos por uno contenido */
+        min-height: 40px;
+        padding: 9px 15px;
+    }
+    #settings #settingsTabs .pi-tab.active {
+        box-shadow: 0 2px 8px rgba(var(--accent-rgb), 0.30);
+    }
+
+    /* Header del panel un poco más compacto en móvil */
+    #settings .set-panel > h2 { padding: 15px 16px; font-size: 15px; gap: 10px !important; }
+    #settings .set-panel > h2 > i,
+    #settings .set-panel > h2 > svg { width: 32px !important; height: 32px !important; padding: 7px; }
+    #settings .set-panel > div[id^="body"] { padding: 16px 16px 18px; }
+
+    /* Dropzone de logo: bloque cómodo y tap-target generoso */
+    #settings .set-upload { padding: 14px 14px; gap: 12px; }
+    #settings .set-upload > i, #settings .set-upload > svg { width: 22px; height: 22px; }
+
+    /* Zona de peligro con respiración coherente */
+    #settings .set-danger { padding: 14px; margin-top: 18px; }
+
+    /* Clearance para que el FAB no tape el botón full-width inferior */
+    #settings { padding-bottom: 76px; }
+}
+
+/* ----- Muy estrecho (~375px): aprieta lo justo, mantiene legibilidad ----- */
+@media (max-width: 380px) {
+    #settings #settingsTabs .pi-tab { padding: 9px 13px; font-size: 13px; }
+    #settings #settingsTabs .pi-tab i, #settings #settingsTabs .pi-tab svg { width: 15px; height: 15px; }
+}
+
+</style>
+<style id="polishPass3b">
+/* polishPass3b — subagentes en paralelo */
+
+/* ===== SALES — polishPass3b (responsive movil ~390px, aditivo, namespaced) ===== */
+
+/* Hint de "desliza": oculto por defecto, solo aparece en movil sobre el historial */
+#sales .sales-scroll-hint { display: none; }
+
+/* Tabla del historial (10 columnas): scroll horizontal con inercia y celdas que NO se aplastan.
+   Construye sobre el .table-container del polishPass2 (ya tiene overflow:auto + header sticky). */
+#sales #salesTable .table-container {
+    -webkit-overflow-scrolling: touch;   /* inercia en iOS */
+    overscroll-behavior-x: contain;       /* no arrastra el scroll de pagina */
+}
+#sales #salesTable table { width: auto; min-width: 100%; }
+#sales #salesTable th,
+#sales #salesTable td { white-space: nowrap; }   /* fecha, montos y badges nunca se parten */
+/* El nombre de producto puede ser largo: techo + elipsis para no estirar la tabla de mas */
+#sales #salesTable tbody td:nth-child(2) {
+    max-width: 240px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+@media (max-width: 480px) {
+    /* --- Tap targets >=44px en todo el formulario de registro --- */
+    #sales #salesForm .form-control,
+    #sales #salesForm .btn,
+    #sales #salesForm .venta-modo-btn { min-height: 44px; }
+    #sales #salesForm input[type="radio"] {
+        width: 20px; height: 20px; flex-shrink: 0;
+    }
+    /* Las etiquetas-radio (precio / envio / comision) son area tactil comoda */
+    #sales #salesForm label[style*="cursor:pointer"] {
+        min-height: 40px; padding: 4px 0;
+    }
+    /* Acciones a ancho completo: pulgar comodo */
+    #sales #salesForm button[type="submit"],
+    #sales #salesForm button[type="reset"] {
+        flex: 1 1 100%; justify-content: center;
+    }
+
+    /* --- Controles del historial con tap target comodo --- */
+    #sales #ventasBuscar,
+    #sales .card .btn-small,
+    #sales #ventasDesde,
+    #sales #ventasHasta { min-height: 44px; }
+
+    /* --- Hint visible: invita al swipe lateral --- */
+    #sales .sales-scroll-hint {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin: 0 0 8px;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: .2px;
+        color: var(--text-muted);
+    }
+
+    /* --- Tabla: se MANTIENE el scroll horizontal (sin card-transform) para que
+       los 10 valores sigan legibles; reforzamos el borde y la barra de scroll --- */
+    #sales #salesTable .table-container {
+        max-height: 460px;
+        border: 1px solid var(--border-strong);
+        border-radius: var(--radius);
+    }
+    /* Scrollbar horizontal siempre visible y con acento: senal clara de "hay mas" */
+    #sales #salesTable .table-container::-webkit-scrollbar { height: 8px; }
+    #sales #salesTable .table-container::-webkit-scrollbar-thumb {
+        background: var(--accent-border);
+        border: 2px solid var(--bg-elevated);
+    }
+    /* Densidad un punto mas compacta en movil sin apretar */
+    #sales #salesTable table th,
+    #sales #salesTable table td { padding: 10px 12px; }
+    #sales #salesTable tbody td:nth-child(2) { max-width: 150px; }
+}
+
+/* ===== polishPass3b — Análisis: scroll horizontal evidente + ritmo móvil ===== */
+@media (max-width: 768px) {
+  /* Cada tabla a su ancho natural de contenido: nada de columnas aplastadas
+     (la "Análisis Detallado" de 10 columnas dejaba de caber en el piso fijo). */
+  #analytics .table-container table { min-width: max-content; }
+
+  /* Sombras de scroll (técnica background-attachment local/scroll):
+     señal clara de que hay más columnas a la derecha; se ocultan solas
+     al llegar a cada extremo. */
+  #analytics .table-container {
+    background:
+      linear-gradient(to right, var(--bg-elevated), rgba(0,0,0,0)) 0 0 / 34px 100%,
+      linear-gradient(to left,  var(--bg-elevated), rgba(0,0,0,0)) 100% 0 / 34px 100%,
+      radial-gradient(farthest-side at 0   50%, rgba(0,0,0,.5), rgba(0,0,0,0)) 0 0 / 15px 100%,
+      radial-gradient(farthest-side at 100% 50%, rgba(0,0,0,.5), rgba(0,0,0,0)) 100% 0 / 15px 100%;
+    background-repeat: no-repeat;
+    background-attachment: local, local, scroll, scroll;
+    overscroll-behavior-x: contain;
+  }
+
+  /* Ritmo entre bloques: más aire entre tarjetas en móvil (vencen los
+     margin-bottom:14px inline). */
+  #analytics .card { margin-bottom: 18px !important; }
+}
+
+@media (max-width: 480px) {
+  /* Refuerzo de apilado: KPIs e inventario con separación cómoda. */
+  #analytics .grid-4,
+  #analytics .grid-3 { gap: 12px !important; }
+}
+
+</style>
+<style id="polishPass4">
+/* polishPass4 — subagentes en paralelo */
+
+/* ===== REPORTES — polishPass4 (chip cabecera + alineación numérica + barras + responsive) ===== */
+
+/* 1) Chip de icono en cabeceras de tarjeta (mismo lenguaje que Finanzas/Config). */
+#reportes .card > h2 { gap: 12px; }
+#reportes .card > h2 > i,
+#reportes .card > h2 > svg {
+    width: 34px; height: 34px; padding: 8px; border-radius: 10px;
+    background: var(--accent-soft); color: var(--accent-primary);
+    box-sizing: border-box; flex: none;
+}
+
+/* 2) Alineación numérica (tabular-nums) */
+#reportes #repTopSemana div[style*="font-weight:700"],
+#reportes #repTopMes div[style*="font-weight:700"] {
+    font-family: 'Fira Code', ui-monospace, 'SFMono-Regular', monospace;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+}
+#reportes #repTopMes div[style*="border-top"] span[style*="--text-muted"] {
+    font-family: 'Fira Code', ui-monospace, 'SFMono-Regular', monospace;
+    font-variant-numeric: tabular-nums;
+}
+#reportes #repDias div[style*="text-align:right"],
+#reportes #repHoras div[style*="text-align:right"] {
+    font-family: 'Fira Code', ui-monospace, 'SFMono-Regular', monospace;
+    font-variant-numeric: tabular-nums;
+}
+
+/* 3) Barras Días/Horarios: pista más limpia + barra activa con gradiente y glow verde */
+#reportes #repDias div[style*="background:var(--bg-secondary)"],
+#reportes #repHoras div[style*="background:var(--bg-secondary)"] {
+    border-radius: 7px !important;
+    border-color: var(--border-soft) !important;
+}
+#reportes #repDias div[style*="height:100%"][style*="var(--accent-primary)"],
+#reportes #repHoras div[style*="height:100%"][style*="var(--accent-primary)"] {
+    background: linear-gradient(90deg, var(--accent-primary-strong), var(--accent-primary)) !important;
+    box-shadow: 0 0 12px -2px var(--accent-border);
+}
+
+/* 4) RESPONSIVE móvil (~390px) */
+@media (max-width: 480px) {
+    #reportes .card > h2 > i,
+    #reportes .card > h2 > svg { width: 30px; height: 30px; padding: 7px; }
+
+    #reportes div[style*="height:320px"] { height: 260px !important; }
+    #reportes #repCompareChart { touch-action: pan-y; }
+
+    #reportes #repBtnSemanas,
+    #reportes #repBtnMeses { flex: 1 1 100%; justify-content: center; }
+
+    #reportes #repTopSemana div[style*="font-weight:700"],
+    #reportes #repTopMes div[style*="font-weight:700"] { font-size: 17px !important; }
+
+    #reportes #repDias div[style*="width:84px"] { width: 62px !important; font-size: 12px !important; }
+    #reportes #repDias div[style*="width:120px"] { width: 96px !important; font-size: 11px !important; }
+
+    #reportes #repHoras div[style*="width:74px"] { width: 56px !important; font-size: 12px !important; }
+    #reportes #repHoras div[style*="width:60px"] { width: 40px !important; font-size: 11px !important; }
+}
+
+/* ===== ALERTS — polishPass4 (aditivo, sobre polishPass/2) ===== */
+
+/* Estado vacío: tarjeta centrada, no una fila más.
+   .alert-success solo se renderiza cuando NO hay alertas. */
+#alerts .alert-success {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 14px;
+    padding: 34px 22px;
+    border-left-width: 1px;            /* simétrico: sin barra de acento lateral */
+}
+#alerts .alert-success [data-lucide] {
+    width: 46px; height: 46px; padding: 11px;
+}
+#alerts .alert-success span {
+    color: var(--text-primary);
+    font-weight: 600;
+    max-width: 36ch;
+}
+
+/* Las palabras largas (SKU/nombres) nunca desbordan la tarjeta. */
+#alerts .alert-box span { overflow-wrap: anywhere; }
+
+/* Móvil ~390px: el chip se ancla a la 1ª línea cuando el texto envuelve,
+   en vez de quedar a media altura de dos líneas. El vacío sigue centrado. */
+@media (max-width: 480px) {
+    #alerts .alert-box:not(.alert-success) { align-items: flex-start; }
+    #alerts .alert-box:not(.alert-success) [data-lucide] { margin-top: 1px; }
+    #alerts .alert-success { padding: 28px 18px; }
+    #alerts .alert-success [data-lucide] { width: 42px; height: 42px; padding: 10px; }
+    /* resumen de conteos sin apretarse */
+    #alerts #alertsList > div:first-child:not(.alert-box) { gap: 6px; }
+}
+
+/* ===== AGENDA — polishPass4 (responsive móvil ~390px, aditivo, namespaced) ===== */
+
+@media (max-width:480px){
+  /* --- KPIs del día: 3 tiles en una sola fila en vez del 2+1 huérfano --- */
+  #agenda #agSummary{
+    grid-template-columns:repeat(3,1fr) !important;
+    gap:8px !important;
+  }
+  #agenda #agSummary .card{ padding:12px 10px !important; }
+  #agenda #agSummary .card > div:first-child{ font-size:21px !important; }
+  #agenda #agSummary .card > div:last-child{
+    font-size:9.5px !important;
+    letter-spacing:.3px;
+    line-height:1.25;
+  }
+
+  /* --- Items de tarea: tap-targets de las acciones a nivel móvil --- */
+  #agenda #agPendientes > div[style*="border-left"]{
+    gap:6px !important;
+    padding:10px !important;
+  }
+  #agenda #agPendientes > div > button[title="Marcar como hecha"]{
+    width:40px !important; height:40px !important;
+  }
+  #agenda #agPendientes > div > button[title="Editar"],
+  #agenda #agPendientes > div > button[title="Eliminar"]{
+    min-width:44px; min-height:44px;
+    display:inline-flex; align-items:center; justify-content:center;
+    border-radius:var(--radius-sm);
+  }
+  #agenda #agPendientes > div > button[title="Editar"]:active{ background:var(--accent-soft); }
+  #agenda #agPendientes > div > button[title="Eliminar"]:active{ background:var(--danger-soft); }
+
+  /* --- Calendario: título del mes en una sola línea --- */
+  #agenda #agCalTitulo{ white-space:nowrap; font-size:14px; }
+  /* Celdas de día con cuerpo tocable (sube sobre la regla de 560px) --- */
+  #agenda #agCalGrid > div > div[onclick]{
+    min-height:42px !important;
+    font-size:12.5px !important;
+  }
+}
+
+/* ===== Metas — polishPass4 (responsive móvil ~390px, aditivo, namespaced) ===== */
+
+/* Valor de cada mini-tarjeta de stats: evita desbordes de montos CLP largos */
+#metas #metasProgreso > div:first-child > div{ min-width:0; }
+#metas #metasProgreso > div:first-child > div > div:last-child{
+    overflow-wrap:anywhere;
+    word-break:break-word;
+    line-height:1.2;
+}
+
+/* Tablet/medio: 3 stats por fila en vez de 5 apretadas */
+@media (max-width:768px){
+    #metas #metasProgreso > div:first-child > div{ flex:1 1 calc(33.333% - 12px); }
+}
+
+@media (max-width:480px){
+    /* Fila de stats: 2 columnas parejas, sin texto apretado */
+    #metas #metasProgreso > div:first-child{ gap:10px !important; }
+    #metas #metasProgreso > div:first-child > div{
+        flex:1 1 calc(50% - 10px);
+        padding:10px 12px;
+    }
+    /* Tarjeta impar suelta al final → ocupa la fila completa (sin hueco) */
+    #metas #metasProgreso > div:first-child > div:last-child:nth-child(odd){
+        flex-basis:100%;
+    }
+    #metas #metasProgreso > div:first-child > div > div:last-child{
+        font-size:14px !important;
+    }
+
+    /* % de progreso compacto en móvil */
+    #metas .metas-bar + div{ font-size:16px !important; }
+
+    /* Bloque "Meta cumplida": botones cómodos, sin desbordar */
+    #metas #metasProgreso .btn-small{ flex:1 1 auto; justify-content:center; }
+
+    /* Formulario: una sola columna y botón full width (refuerzo) */
+    #metas #metasForm{ grid-template-columns:1fr !important; gap:12px !important; }
+    #metas #metasForm .btn-primary{ width:100%; }
+
+    /* Historial: celdas un poco más aireadas al hacer scroll horizontal */
+    #metas #metasHistorial tbody td{ padding:10px; }
+}
+
+@media (max-width:375px){
+    /* En lo más estrecho, stats a una sola columna evita 2-col aplastadas */
+    #metas #metasProgreso > div:first-child > div{ flex-basis:100%; }
+}
+
+/* ===== polishPass4 — Logros: responsive móvil (medallas + stats) ===== */
+/* Las grillas llevan grid-template-columns inline; en ≤480px colapsan a 1
+   columna y las medallas quedan gigantes/estiradas. Las compactamos a 2 col. */
+
+@media (max-width:480px){
+    /* Medallas: rejilla compacta de 2 tiles por fila (no apretadas, no gigantes) */
+    #logros #logrosGrid > div[style*="grid-template-columns"]{
+        grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+        gap:10px !important;
+        margin-bottom:22px !important;
+    }
+    #logros #logrosGrid .logros-badge{
+        padding:13px !important;
+        border-radius:12px !important;
+    }
+    /* Chip de icono de la medalla un punto más chico para equilibrar el tile */
+    #logros #logrosGrid .logros-badge > div[style*="width:46px"]{
+        width:40px !important; height:40px !important;
+        border-radius:11px !important; margin-bottom:9px !important;
+    }
+    #logros #logrosGrid .logros-badge > div[style*="width:46px"] i,
+    #logros #logrosGrid .logros-badge > div[style*="width:46px"] svg{
+        width:19px !important; height:19px !important;
+    }
+    /* Cabecera de categoría: nombre que no se corte y pill alineado */
+    #logros #logrosGrid > div[style*="display:flex"]{ gap:8px !important; }
+
+    /* Estadísticas generales: 2 por fila en vez de 1 columna estirada */
+    #logros #logrosStats > div[style*="grid-template-columns"]{
+        grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+        gap:10px !important;
+    }
+    #logros #logrosStats > div > div{ padding:12px !important; }
+
+    /* Récords: ritmo más ajustado en pantalla angosta */
+    #logros #logrosRecords > div{ gap:11px !important; padding:11px 2px !important; }
+}
+
+/* Refinamiento muy angosto (≤360px): un respiro extra de padding/typos */
+@media (max-width:360px){
+    #logros #logrosGrid .logros-badge{ padding:11px !important; }
+    #logros #logrosGrid > div[style*="grid-template-columns"]{ gap:8px !important; }
+    #logros #logrosStats > div[style*="grid-template-columns"]{ gap:8px !important; }
+}
+
+</style>
 </body>
 </html>
