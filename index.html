@@ -2181,6 +2181,8 @@
         /* La burbuja vive en <body> y la muestra el JS con .is-visible (ya no por :hover
            descendiente), para escapar de transform/overflow de las tarjetas del dashboard. */
         .help-tip__bubble.is-visible { opacity: 1; visibility: visible; }
+        /* Cuando no cabe arriba del ícono, el JS la voltea hacia abajo. */
+        .help-tip__bubble.is-below { transform: translate(-50%, 0); }
         /* ---- Pestañas Productos / Inventario ---- */
         .pi-tabs { display: inline-flex; gap: 4px; padding: 4px; margin-bottom: 18px; background: var(--bg-secondary); border: 1px solid var(--border-soft); border-radius: 11px; }
         .pi-tab {
@@ -4187,6 +4189,10 @@
                 b = document.createElement('span');
                 b.id = 'helpTipBubble'; b.className = 'help-tip__bubble';
                 document.body.appendChild(b);
+                // Al desplazar o cambiar el tamaño, la posición fija queda obsoleta: ocultar.
+                var ocultarB = function(){ b.classList.remove('is-visible'); };
+                window.addEventListener('scroll', ocultarB, true);
+                window.addEventListener('resize', ocultarB);
             }
             return b;
         }
@@ -4195,13 +4201,32 @@
             s.className = 'help-tip'; s.tabIndex = 0; s.setAttribute('role', 'note');
             s.setAttribute('aria-label', 'Ayuda: ' + text);
             s.appendChild(document.createTextNode('?'));
+            // Posiciona la burbuja clampándola al viewport: nunca se sale por los lados
+            // (clave en móvil) y se voltea hacia abajo si no cabe arriba del ícono.
+            var posicionar = function(){
+                var b = document.getElementById('helpTipBubble');
+                if (!b || !b.classList.contains('is-visible')) return;
+                var r = s.getBoundingClientRect();
+                var margen = 8;
+                // La burbuja se centra horizontalmente con translateX(-50%); el clamp se
+                // hace sobre el centro para que sus bordes queden dentro de [margen, ancho-margen].
+                var w = b.offsetWidth, h = b.offsetHeight;
+                var centro = r.left + r.width / 2;
+                var minC = margen + w / 2;
+                var maxC = window.innerWidth - margen - w / 2;
+                if (maxC < minC) maxC = minC = window.innerWidth / 2; // pantalla más angosta que la burbuja
+                centro = Math.max(minC, Math.min(maxC, centro));
+                b.style.left = Math.round(centro) + 'px';
+                // ¿Cabe arriba? Si no, voltear debajo del ícono.
+                var abajo = (r.top - h - margen) < 0;
+                if (abajo){ b.style.top = Math.round(r.bottom + margen) + 'px'; b.classList.add('is-below'); }
+                else { b.style.top = Math.round(r.top - margen) + 'px'; b.classList.remove('is-below'); }
+            };
             var mostrar = function(){
                 var b = _helpBubbleEl();
                 b.textContent = text; // textContent: el texto queda escapado, sin riesgo de HTML
-                var r = s.getBoundingClientRect();
-                b.style.left = Math.round(r.left + r.width / 2) + 'px';
-                b.style.top = Math.round(r.top - 8) + 'px';
                 b.classList.add('is-visible');
+                posicionar();
             };
             var ocultar = function(){ var b = document.getElementById('helpTipBubble'); if (b) b.classList.remove('is-visible'); };
             s.addEventListener('mouseenter', mostrar);
@@ -7377,11 +7402,13 @@
             let html = '<div style="display:flex;flex-direction:column;gap:8px;">';
             alerts.forEach(x => {
                 const sin = x.lvl.key === 'sin';
-                html += `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;border:1px solid ${x.lvl.color};background:${sin ? 'rgba(220,38,38,0.14)' : 'rgba(127,127,127,0.06)'};">
+                html += `<div class="stock-alert-row" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;border:1px solid ${x.lvl.color};background:${sin ? 'rgba(220,38,38,0.14)' : 'rgba(127,127,127,0.06)'};">
                     <i data-lucide="${x.lvl.icon}" style="color:${x.lvl.color};flex-shrink:0;"></i>
-                    <div style="flex:1;min-width:0;font-weight:600;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${DOMPurify.sanitize(x.p.name)}</div>
-                    <span style="font-size:12px;color:${x.lvl.color};font-weight:700;white-space:nowrap;">${x.lvl.label}</span>
-                    <span style="font-size:12px;color:var(--text-muted);white-space:nowrap;">${x.p.stock} u.</span>
+                    <div class="stock-alert-name" style="flex:1;min-width:0;font-weight:600;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${DOMPurify.sanitize(x.p.name)}</div>
+                    <span class="stock-alert-badges">
+                        <span style="font-size:12px;color:${x.lvl.color};font-weight:700;white-space:nowrap;">${x.lvl.label}</span>
+                        <span style="font-size:12px;color:var(--text-muted);white-space:nowrap;">${x.p.stock} u.</span>
+                    </span>
                 </div>`;
             });
             html += '</div>';
@@ -12789,6 +12816,22 @@
 #dashboard #dashStockAlerts > div[style*="flex-direction"] > div {
     height: 100%;
     box-sizing: border-box;
+}
+
+/* ---- Alertas de stock: que el nombre se vea completo en móvil ----
+   En desktop la fila va en una línea (nombre con ellipsis + badges a la
+   derecha). En móvil dejamos que la fila envuelva: el nombre ocupa todo el
+   ancho sin truncarse y la etiqueta + unidades caen debajo.              */
+.stock-alert-badges { display: inline-flex; align-items: center; gap: 10px; flex-shrink: 0; }
+/* Los spans internos llevan estilos inline (nowrap/overflow/flex), así que estas
+   reglas necesitan !important para ganarles en móvil. */
+@media (max-width: 480px) {
+    #dashboard #dashStockAlerts .stock-alert-row { flex-wrap: wrap !important; }
+    #dashboard #dashStockAlerts .stock-alert-name {
+        flex: 1 1 100% !important; white-space: normal !important;
+        overflow: visible !important; text-overflow: clip !important;
+    }
+    #dashboard #dashStockAlerts .stock-alert-badges { flex: 0 0 auto; }
 }
 
 /* ---- Charts: panel enmarcado para densidad y estructura ----
