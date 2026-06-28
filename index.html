@@ -483,12 +483,14 @@
                     save: async (data) => {
                         let remoteSales = [];
                         let remotePending = [];
+                        let remoteReturns = [];
                         try {
                             const snap = await getDoc(stateDocRef);
                             if (snap.exists()) {
                                 const rd = snap.data() || {};
                                 if (Array.isArray(rd.sales)) remoteSales = rd.sales;
                                 if (Array.isArray(rd.pendingMappings)) remotePending = rd.pendingMappings;
+                                if (Array.isArray(rd.returns)) remoteReturns = rd.returns;
                             }
                         } catch (e) { /* sin red: seguimos con lo local */ }
                         // Unión por id: parte de las ventas locales y agrega las remotas
@@ -517,9 +519,19 @@
                             if (seenP.has(iid) || localDismissed.has(iid) || localMappings[iid]) continue;
                             mergedPending.push(rp); seenP.add(iid);
                         }
+                        // Unión por id de `returns` (devoluciones): mismo criterio anti-race que sales,
+                        // para no perder una devolución que otro dispositivo agregó entre snapshots.
+                        const localReturns = Array.isArray(data.returns) ? data.returns : [];
+                        const seenR = new Set(localReturns.map(r => String(r && r.id)));
+                        const mergedReturns = localReturns.slice();
+                        for (const rr of remoteReturns) {
+                            const id = String(rr && rr.id);
+                            if (!seenR.has(id)) { mergedReturns.push(rr); seenR.add(id); }
+                        }
                         return setDoc(stateDocRef, {
                             products: data.products || [],
                             sales: mergedSales,
+                            returns: mergedReturns,
                             mappings: data.mappings || {},
                             pendingMappings: mergedPending,
                             dismissedPending: data.dismissedPending || [],
@@ -4656,6 +4668,7 @@
                     if (!Array.isArray(data.sales)) throw new Error('sales debe ser array');
                     STATE.products = data.products;
                     STATE.sales = data.sales;
+                    STATE.returns = Array.isArray(data.returns) ? data.returns : [];
                     STATE.mappings = data.mappings || {};
                     STATE.pendingMappings = Array.isArray(data.pendingMappings) ? data.pendingMappings : [];
                     STATE.dismissedPending = Array.isArray(data.dismissedPending) ? data.dismissedPending.map(String) : [];
