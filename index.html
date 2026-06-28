@@ -2729,9 +2729,22 @@
                                 <i data-lucide="sliders-horizontal"></i> Desplegar <i data-lucide="chevron-down" id="ventasChevron"></i>
                             </button>
                             <div id="ventasBar" style="display:none;margin-top:12px;padding:14px;border:1px solid var(--border-soft);border-radius:12px;background:var(--bg-tertiary);">
-                                <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                                    <button type="button" id="ventasVerTodoBtn" class="btn btn-secondary btn-small" onclick="window.__ventasVerTodo && window.__ventasVerTodo()"><i data-lucide="list"></i> Ver toda la venta</button>
-                                    <button type="button" id="ventasVerPeriodoBtn" class="btn btn-secondary btn-small" onclick="window.__ventasVerPeriodo && window.__ventasVerPeriodo()"><i data-lucide="calendar-range"></i> Ver por período</button>
+                                <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+                                    <div><label class="form-label">Canal</label>
+                                        <select id="ventasCanal" class="form-control" style="min-height:auto;min-width:170px;" onchange="window.__ventasFiltrarCanal && window.__ventasFiltrarCanal()">
+                                            <option value="">Todos los canales</option>
+                                        </select>
+                                    </div>
+                                    <div><label class="form-label">Fecha de referencia</label>
+                                        <input type="date" id="ventasRefDate" class="form-control" style="min-height:auto;" onchange="window.__ventasRefDateChange && window.__ventasRefDateChange()">
+                                    </div>
+                                </div>
+                                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
+                                    <button type="button" id="ventasVerTodoBtn" class="btn btn-secondary btn-small" onclick="window.__ventasVerTodo && window.__ventasVerTodo()"><i data-lucide="list"></i> Todas</button>
+                                    <button type="button" class="btn btn-secondary btn-small" onclick="window.__ventasVerDia && window.__ventasVerDia()"><i data-lucide="calendar"></i> Día</button>
+                                    <button type="button" class="btn btn-secondary btn-small" onclick="window.__ventasVerSemana && window.__ventasVerSemana()"><i data-lucide="calendar-days"></i> Semana</button>
+                                    <button type="button" class="btn btn-secondary btn-small" onclick="window.__ventasVerMes && window.__ventasVerMes()"><i data-lucide="calendar-range"></i> Mes</button>
+                                    <button type="button" id="ventasVerPeriodoBtn" class="btn btn-secondary btn-small" onclick="window.__ventasVerPeriodo && window.__ventasVerPeriodo()"><i data-lucide="sliders-horizontal"></i> Rango</button>
                                 </div>
                                 <div id="ventasRango" style="display:none;margin-top:12px;gap:10px;flex-wrap:wrap;align-items:flex-end;">
                                     <div><label class="form-label">Desde</label><input type="date" id="ventasDesde" class="form-control" style="min-height:auto;"></div>
@@ -2755,13 +2768,35 @@
                     <div class="card">
                         <h2><i data-lucide="plus-circle"></i>Registrar devolución</h2>
                         <form id="returnForm" onsubmit="return registerReturn(event)">
-                            <div class="form-group" style="margin-bottom:12px;">
-                                <label class="form-label">Venta a devolver</label>
-                                <select class="form-control" id="returnSale" onchange="if(window.returnFillFromSale)returnFillFromSale()" required>
-                                    <option value="">Elige la venta original…</option>
-                                </select>
-                                <p style="color:var(--text-muted);font-size:12px;margin:6px 0 0;">El canal, la comisión y el envío se toman de la venta elegida.</p>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label">1. Producto</label>
+                                    <select class="form-control" id="returnProduct" onchange="if(window.returnProductChange)returnProductChange()" required>
+                                        <option value="">Elige producto…</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">2. Canal</label>
+                                    <select class="form-control" id="returnChannel" onchange="if(window.returnChannelChange)returnChannelChange()">
+                                        <option value="__all__">Todos los canales</option>
+                                    </select>
+                                </div>
                             </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label">3. Día de la venta</label>
+                                    <select class="form-control" id="returnDay" onchange="if(window.returnDayChange)returnDayChange()">
+                                        <option value="__all__">Todos los días</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">4. Venta a devolver</label>
+                                    <select class="form-control" id="returnSale" onchange="if(window.returnFillFromSale)returnFillFromSale()" required>
+                                        <option value="">Elige la venta…</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <p style="color:var(--text-muted);font-size:12px;margin:0 0 12px;">El canal, la comisión y el envío se toman de la venta elegida.</p>
                             <div class="form-row">
                                 <div class="form-group">
                                     <label class="form-label">Cantidad devuelta</label>
@@ -3984,7 +4019,7 @@
             if (seccion === 'dashboard') renderDashboard();
             if (seccion === 'inventory') renderInventory();
             if (seccion === 'mapeos') { if (window.renderMapeos) renderMapeos(); }
-            if (seccion === 'sales') { updateDropdowns(); renderSalesList(); if (window.ventaPoblarCanales) ventaPoblarCanales(); }
+            if (seccion === 'sales') { updateDropdowns(); if (window.__ventasPoblarCanales) window.__ventasPoblarCanales(); renderSalesList(); if (window.ventaPoblarCanales) ventaPoblarCanales(); }
             if (seccion === 'devoluciones') { if (window.returnPoblarVentas) returnPoblarVentas(); renderReturns(); }
             if (seccion === 'products') renderProductsList();
             if (seccion === 'finanzas') { if (window.renderFinanzas) renderFinanzas(); }
@@ -5637,11 +5672,18 @@
 
         function renderSalesList() {
             const container = document.getElementById('salesTable');
-            // Estado de DESPLIEGUE (no toca cálculos ni STATE): recent=últimas 10 | all=todas | range=por período.
-            const V = window.__salesView || (window.__salesView = { mode: 'recent', desde: '', hasta: '', search: '' });
+            // Estado de DESPLIEGUE (no toca cálculos ni STATE): recent=últimas 5 | all=todas
+            // | range/day/week/month=por período. channel=filtro de canal ('' = todos).
+            const V = window.__salesView || (window.__salesView = { mode: 'recent', desde: '', hasta: '', search: '', channel: '', refDate: '' });
             let base = getSalesByPeriod(STATE.sales).slice().sort((a, b) => new Date(b.date) - new Date(a.date));
-            if (V.mode === 'range' && V.desde && V.hasta) {
-                base = base.filter(s => s.date >= V.desde && s.date <= V.hasta);
+            // Filtro por canal (normaliza undefined/'' -> 'manual').
+            if (V.channel) {
+                base = base.filter(s => String(s.source || 'manual') === String(V.channel));
+            }
+            // Filtros por período: rango libre, o día/semana/mes a partir de una fecha de referencia.
+            const _periodo = ventasPeriodoRango(V);
+            if (_periodo) {
+                base = base.filter(s => s.date >= _periodo.desde && s.date <= _periodo.hasta);
             }
             const q = (V.search || '').trim().toLowerCase();
             if (q) {
@@ -5654,8 +5696,8 @@
                 });
             }
             const totalBase = base.length;
-            // Por defecto solo las últimas 10. Con búsqueda o "ver todas"/período se muestran todas las que apliquen.
-            const filtered = (V.mode === 'recent' && !q) ? base.slice(0, 10) : base;
+            // Por defecto solo las últimas 5. Con búsqueda o "ver todas"/período se muestran todas las que apliquen.
+            const filtered = (V.mode === 'recent' && !q) ? base.slice(0, 5) : base;
             if (filtered.length === 0) {
                 container.innerHTML = '<div class="empty-state"><i data-lucide="receipt"></i><div>' + (q ? 'Sin resultados para la búsqueda' : 'Sin ventas en este período') + '</div></div>';
                 const _info0 = document.getElementById('ventasInfo'); if (_info0) { _info0.style.color = 'var(--text-muted)'; _info0.textContent = q ? ('0 resultados para “' + q + '”.') : ''; }
@@ -5717,17 +5759,43 @@
             const info = document.getElementById('ventasInfo');
             if (info) {
                 info.style.color = 'var(--text-muted)';
-                if (V.mode === 'recent' && !q && totalBase > 10) {
-                    info.innerHTML = 'Mostrando las 10 ventas más recientes de ' + totalBase + '. <a href="#" onclick="window.__ventasVerTodo();return false;" style="color:var(--accent-primary);">Ver todas</a>';
+                const _canalTxt = V.channel ? (' · canal ' + canalNombreDe(V.channel)) : '';
+                if (V.mode === 'recent' && !q && totalBase > 5) {
+                    info.innerHTML = 'Mostrando las 5 ventas más recientes de ' + totalBase + '. <a href="#" onclick="window.__ventasVerTodo();return false;" style="color:var(--accent-primary);">Ver todas</a>';
                 } else if (q) {
                     info.textContent = filtered.length + ' resultado(s) para “' + q + '”.';
-                } else if (V.mode === 'range' && V.desde && V.hasta) {
-                    info.textContent = 'Del ' + V.desde + ' al ' + V.hasta + ': ' + filtered.length + ' venta(s).';
+                } else if (_periodo) {
+                    info.textContent = ventasPeriodoLabel(V) + ': ' + filtered.length + ' venta(s)' + _canalTxt + '.';
                 } else {
-                    info.textContent = 'Mostrando ' + filtered.length + ' venta(s).';
+                    info.textContent = 'Mostrando ' + filtered.length + ' venta(s)' + _canalTxt + '.';
                 }
             }
             refreshIcons();
+        }
+
+        // Calcula el rango {desde, hasta} (YYYY-MM-DD) de la vista de ventas, o null si no aplica
+        // filtro por período. Soporta rango libre y día/semana/mes a partir de V.refDate.
+        function ventasPeriodoRango(V){
+            if (V.mode === 'range') return (V.desde && V.hasta) ? { desde: V.desde, hasta: V.hasta } : null;
+            var ref = V.refDate || new Date().toLocaleDateString('en-CA');
+            if (V.mode === 'day')   return { desde: ref, hasta: ref };
+            if (V.mode === 'week')  {
+                var d = new Date(ref + 'T12:00:00');
+                var dow = (d.getDay() + 6) % 7;            // 0 = lunes
+                var lunes = new Date(d); lunes.setDate(d.getDate() - dow);
+                var dom = new Date(lunes); dom.setDate(lunes.getDate() + 6);
+                return { desde: lunes.toLocaleDateString('en-CA'), hasta: dom.toLocaleDateString('en-CA') };
+            }
+            if (V.mode === 'month') return { desde: ref.slice(0, 7) + '-01', hasta: ref.slice(0, 7) + '-31' };
+            return null;
+        }
+        // Etiqueta legible del período activo para el aviso del historial.
+        function ventasPeriodoLabel(V){
+            var r = ventasPeriodoRango(V); if (!r) return '';
+            if (V.mode === 'day')   return 'Día ' + r.desde;
+            if (V.mode === 'week')  return 'Semana del ' + r.desde + ' al ' + r.hasta;
+            if (V.mode === 'month') return 'Mes ' + (V.refDate || r.desde).slice(0, 7);
+            return 'Del ' + r.desde + ' al ' + r.hasta;
         }
 
         function deleteSale(id) {
@@ -5898,6 +5966,15 @@
             if (source === 'otro') return 'Otro';
             return String(source);
         }
+        // Lista de canales presentes en las ventas + los canales propios del usuario (sin repetir).
+        function canalesConVentas(){
+            var set = {}; var out = [];
+            (STATE.sales || []).forEach(function(s){ var c = String(s.source || 'manual'); if (!set[c]) { set[c] = 1; out.push(c); } });
+            (STATE.customChannels || []).forEach(function(c){ var v = String(c); if (!set[v]) { set[v] = 1; out.push(v); } });
+            return out;
+        }
+        window.canalesConVentas = canalesConVentas;
+        window.canalNombreDe = canalNombreDe;
         // Badge HTML del canal (ML amarillo; el resto, neutro).
         function canalBadgeHtml(source){
             if (source === 'mercadolibre') return '<span class="badge" style="background:#FFE600;color:#2D3277;font-weight:700;font-size:10px;">Mercado Libre</span>';
@@ -5948,28 +6025,115 @@
             product.lastModified = new Date().toISOString();
         }
 
-        // Llena el <select> de ventas devolvibles (solo las que aún tienen unidades por devolver).
-        function returnPoblarVentas(){
-            var sel = document.getElementById('returnSale');
-            if (!sel) return;
+        // ---- Selección escalonada de la venta a devolver: Producto → Canal → Día → Venta ----
+        // Ventas que aún tienen unidades por devolver (saldo > 0).
+        function _ventasDevolvibles(){
+            return (STATE.sales || []).filter(function(s){ return devolvibles(s) > 0; });
+        }
+        // Helper corto para leer un <select> del formulario de devolución.
+        function _retEl(id){ return document.getElementById(id); }
+        // Ventas devolvibles que cumplen el filtro producto/canal/día (canal/día '__all__' = sin filtrar).
+        function _retVentasDe(prod, canal, dia){
+            return _ventasDevolvibles().filter(function(s){
+                if (prod && String(s.productId) !== String(prod)) return false;
+                if (canal && canal !== '__all__' && String(s.source || 'manual') !== String(canal)) return false;
+                if (dia && dia !== '__all__' && String(s.date) !== String(dia)) return false;
+                return true;
+            }).sort(function(a, b){ return new Date(b.date) - new Date(a.date); });
+        }
+
+        // Paso 1: productos con ventas devolvibles.
+        function returnPoblarProductos(){
+            var sel = _retEl('returnProduct'); if (!sel) return;
             var prev = sel.value;
+            var vistos = {}; var prods = [];
+            _ventasDevolvibles().forEach(function(s){
+                if (vistos[s.productId]) return; vistos[s.productId] = 1;
+                var p = (STATE.products || []).find(function(x){ return x.id === s.productId; });
+                prods.push({ id: s.productId, name: (p && p.name) || s.productName || 'Producto' });
+            });
+            prods.sort(function(a, b){ return String(a.name).localeCompare(String(b.name)); });
             sel.innerHTML = '';
-            var ph = document.createElement('option'); ph.value = ''; ph.textContent = 'Elige la venta original…'; sel.appendChild(ph);
-            var ventas = (STATE.sales || []).slice().sort(function(a, b){ return new Date(b.date) - new Date(a.date); });
-            var conSaldo = 0;
+            var ph = document.createElement('option'); ph.value = '';
+            ph.textContent = prods.length ? 'Elige producto…' : 'No hay ventas con unidades por devolver';
+            sel.appendChild(ph);
+            prods.forEach(function(p){
+                var op = document.createElement('option'); op.value = String(p.id); op.textContent = p.name; sel.appendChild(op);
+            });
+            if (prev && prods.some(function(p){ return String(p.id) === String(prev); })) sel.value = prev;
+        }
+        // Paso 2: canales presentes en las ventas devolvibles del producto elegido.
+        function returnPoblarCanales(){
+            var sel = _retEl('returnChannel'); if (!sel) return;
+            var prev = sel.value;
+            var prod = (_retEl('returnProduct') || {}).value || '';
+            var canales = []; var vistos = {};
+            _retVentasDe(prod, '__all__', '__all__').forEach(function(s){
+                var c = String(s.source || 'manual');
+                if (!vistos[c]) { vistos[c] = 1; canales.push(c); }
+            });
+            sel.innerHTML = '<option value="__all__">Todos los canales</option>';
+            canales.forEach(function(c){
+                var op = document.createElement('option'); op.value = c; op.textContent = canalNombreDe(c); sel.appendChild(op);
+            });
+            sel.value = (prev && (prev === '__all__' || vistos[prev])) ? prev : '__all__';
+        }
+        // Paso 3: días con ventas devolvibles del producto (+canal) elegido.
+        function returnPoblarDias(){
+            var sel = _retEl('returnDay'); if (!sel) return;
+            var prev = sel.value;
+            var prod = (_retEl('returnProduct') || {}).value || '';
+            var canal = (_retEl('returnChannel') || {}).value || '__all__';
+            var dias = []; var vistos = {};
+            _retVentasDe(prod, canal, '__all__').forEach(function(s){
+                var d = String(s.date || '');
+                if (d && !vistos[d]) { vistos[d] = 1; dias.push(d); }
+            });
+            dias.sort(function(a, b){ return new Date(b) - new Date(a); });
+            sel.innerHTML = '<option value="__all__">Todos los días</option>';
+            dias.forEach(function(d){
+                var op = document.createElement('option'); op.value = d; op.textContent = d; sel.appendChild(op);
+            });
+            sel.value = (prev && (prev === '__all__' || vistos[prev])) ? prev : '__all__';
+        }
+        // Paso 4: ventas concretas que cumplen producto/canal/día.
+        function returnPoblarSelectVentas(){
+            var sel = _retEl('returnSale'); if (!sel) return;
+            var prev = sel.value;
+            var prod = (_retEl('returnProduct') || {}).value || '';
+            var canal = (_retEl('returnChannel') || {}).value || '__all__';
+            var dia = (_retEl('returnDay') || {}).value || '__all__';
+            sel.innerHTML = '';
+            var ph = document.createElement('option'); ph.value = '';
+            ph.textContent = prod ? 'Elige la venta…' : 'Elige primero un producto';
+            sel.appendChild(ph);
+            var ventas = prod ? _retVentasDe(prod, canal, dia) : [];
             ventas.forEach(function(s){
                 var rest = devolvibles(s);
-                if (rest <= 0) return;
-                conSaldo++;
-                var nombre = String(s.productName || 'Producto') + (s.variantLabel ? ' (' + s.variantLabel + ')' : '');
-                var txt = s.date + ' · ' + nombre + ' · ' + canalNombreDe(s.source) + ' · ' + rest + '× ' + formatCurrency(s.salePrice);
-                var op = document.createElement('option');
-                op.value = String(s.id);
-                op.textContent = txt;           // textContent evita inyección por nombres con comillas
-                sel.appendChild(op);
+                var nombre = (s.variantLabel ? '(' + s.variantLabel + ') ' : '');
+                var txt = s.date + (s.time ? ' ' + s.time : '') + ' · ' + nombre + canalNombreDe(s.source) + ' · ' + rest + '× ' + formatCurrency(s.salePrice);
+                var op = document.createElement('option'); op.value = String(s.id); op.textContent = txt; sel.appendChild(op);
             });
-            if (prev) sel.value = prev;
-            if (!conSaldo) { ph.textContent = 'No hay ventas con unidades por devolver'; }
+            // Conservar selección o, si solo hay una venta posible, elegirla automáticamente.
+            if (prev && ventas.some(function(s){ return String(s.id) === String(prev); })) sel.value = prev;
+            else if (ventas.length === 1) sel.value = String(ventas[0].id);
+            else sel.value = '';
+        }
+
+        // Handlers de la cascada (cada nivel repuebla los siguientes).
+        function returnProductChange(){ returnPoblarCanales(); returnPoblarDias(); returnPoblarSelectVentas(); returnFillFromSale(); }
+        function returnChannelChange(){ returnPoblarDias(); returnPoblarSelectVentas(); returnFillFromSale(); }
+        function returnDayChange(){ returnPoblarSelectVentas(); returnFillFromSale(); }
+        window.returnProductChange = returnProductChange;
+        window.returnChannelChange = returnChannelChange;
+        window.returnDayChange = returnDayChange;
+
+        // Refresca toda la cascada respetando las selecciones actuales (llamada tras registrar/editar/borrar).
+        function returnPoblarVentas(){
+            returnPoblarProductos();
+            returnPoblarCanales();
+            returnPoblarDias();
+            returnPoblarSelectVentas();
         }
         window.returnPoblarVentas = returnPoblarVentas;
 
@@ -8869,7 +9033,7 @@
             if(chev) chev.style.transform = open ? 'rotate(180deg)' : 'none';
         };
 
-        function _vView(){ return window.__salesView || (window.__salesView = { mode:'recent', desde:'', hasta:'', search:'' }); }
+        function _vView(){ return window.__salesView || (window.__salesView = { mode:'recent', desde:'', hasta:'', search:'', channel:'', refDate:'' }); }
 
         window.__ventasVerTodo = function(){
             const rango = el('ventasRango'); if(rango) rango.style.display = 'none';
@@ -8902,6 +9066,43 @@
             _vView().search = '';
             if (window.renderSalesList) renderSalesList();
         };
+
+        // ---- Filtros por canal y por día/semana/mes (aditivos) ----
+        // Puebla el <select> de canal del historial (Todos + canales con ventas / propios).
+        window.__ventasPoblarCanales = function(){
+            var sel = el('ventasCanal'); if(!sel) return;
+            var prev = sel.value;
+            var canales = (window.canalesConVentas ? window.canalesConVentas() : []);
+            var nombre = window.canalNombreDe || function(c){ return c; };
+            sel.innerHTML = '<option value="">Todos los canales</option>';
+            canales.forEach(function(c){ var op = document.createElement('option'); op.value = c; op.textContent = nombre(c); sel.appendChild(op); });
+            var existe = Array.prototype.some.call(sel.options, function(o){ return o.value === prev; });
+            sel.value = existe ? prev : '';
+            _vView().channel = sel.value || '';
+        };
+        // Filtro por canal.
+        window.__ventasFiltrarCanal = function(){
+            var s = el('ventasCanal'); _vView().channel = s ? s.value : '';
+            if (window.renderSalesList) renderSalesList();
+        };
+        // Fecha de referencia para los períodos día/semana/mes (default: hoy).
+        function _ventasRefOrHoy(){
+            var i = el('ventasRefDate'); var v = i ? i.value : '';
+            if (!v) { v = new Date().toLocaleDateString('en-CA'); if (i) i.value = v; }
+            return v;
+        }
+        window.__ventasRefDateChange = function(){
+            var i = el('ventasRefDate'); var V = _vView(); V.refDate = i ? i.value : '';
+            if (['day','week','month'].indexOf(V.mode) >= 0 && window.renderSalesList) renderSalesList();
+        };
+        function _ventasVerPeriodo(mode){
+            var rango = el('ventasRango'); if (rango) rango.style.display = 'none';
+            var V = _vView(); V.mode = mode; V.refDate = _ventasRefOrHoy();
+            if (window.renderSalesList) renderSalesList();
+        }
+        window.__ventasVerDia    = function(){ _ventasVerPeriodo('day'); };
+        window.__ventasVerSemana = function(){ _ventasVerPeriodo('week'); };
+        window.__ventasVerMes    = function(){ _ventasVerPeriodo('month'); };
 
         // ===== CAMBIO 3 — Notificaciones del chat =====
         // El conteo del badge cuenta SOLO pendientes ACTIVAS (no descartadas/cargadas).
