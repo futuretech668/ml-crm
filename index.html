@@ -7610,28 +7610,18 @@
             try { await miaTurn(text); } catch (e) { /* ya renderizado */ }
         }
 
-        // ---- Abrir conversación: briefing inicial + sugerencias (op:'open') ----
+        // ---- Abrir conversación: saludo LOCAL e instantáneo ----
+        // No llamamos al servidor (op:'open') al abrir. Ventajas:
+        //  1) Abrir NOVA es inmediato (cero espera de red).
+        //  2) NO se crea un hilo en el servidor solo por abrir el chat: el hilo se crea
+        //     recién con el primer mensaje del usuario (op:'send' con threadId=null), así
+        //     las conversaciones donde el usuario no escribió NO se guardan.
         async function miaOpen(force) {
             if (CHAT.opened && !force) return;
             CHAT.opened = true;
             _miaClearMessages();
-            CHAT.busy = true; _miaSetSending(true); chatTyping(true);
-            try {
-                const r = await MIA_API.open(CHAT.threadId);
-                chatTyping(false);
-                if (r.threadId) CHAT.threadId = r.threadId;
-                if (r.reply) chatRenderMessage('assistant', r.reply);
-                else chatRenderMessage('assistant', 'Hola, soy **NOVA** 👋 Tu copiloto de ventas. ¿En qué te ayudo hoy?');
-                renderSuggestions(r.suggestions && r.suggestions.length ? r.suggestions : null);
-            } catch (e) {
-                chatTyping(false);
-                CHAT.opened = false;   // permitir reintento al reabrir
-                _miaRenderEmpty();
-                chatRenderMessage('assistant', _miaErr(e));
-                renderSuggestions(null);
-            } finally {
-                CHAT.busy = false; _miaSetSending(false);
-            }
+            _miaRenderEmpty();            // onboarding/saludo local
+            renderSuggestions(null);      // sugerencias estáticas de arranque
         }
 
         // El reconocimiento de producto por foto se relocaliza como herramienta del agente
@@ -13963,8 +13953,17 @@
 /* Cabecera con velo de degradado del acento */
 .mia-head { background: linear-gradient(180deg, rgba(var(--accent-rgb), .07), var(--bg-secondary)) !important; }
 
-/* Burbuja del usuario con el degradado de marca */
-.mia-msg.user .bubble { background: var(--nova-grad) !important; color: #fff !important; border: none !important; }
+/* Mensaje del usuario: "cuadradito" limpio y elegante (esquinas parejas, sombra suave) */
+.mia-msg.user .bubble {
+    background: var(--nova-grad) !important;
+    color: #fff !important;
+    border: none !important;
+    border-radius: 14px !important;
+    padding: 10px 14px !important;
+    font-weight: 500;
+    line-height: 1.45;
+    box-shadow: 0 4px 14px rgba(var(--accent-rgb), .25);
+}
 
 /* Botón enviar con degradado */
 #chatSend { background: var(--nova-grad) !important; color: #fff !important; }
