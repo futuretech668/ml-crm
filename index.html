@@ -2178,7 +2178,9 @@
             box-shadow: var(--shadow-lg, 0 12px 32px rgba(0,0,0,.4)); font-size: 12.5px; font-weight: 400; line-height: 1.45;
             text-align: left; white-space: normal; opacity: 0; visibility: hidden; transition: opacity .15s ease;
             z-index: 9999; pointer-events: none; }
-        .help-tip:hover .help-tip__bubble, .help-tip:focus .help-tip__bubble { opacity: 1; visibility: visible; }
+        /* La burbuja vive en <body> y la muestra el JS con .is-visible (ya no por :hover
+           descendiente), para escapar de transform/overflow de las tarjetas del dashboard. */
+        .help-tip__bubble.is-visible { opacity: 1; visibility: visible; }
         /* ---- Pestañas Productos / Inventario ---- */
         .pi-tabs { display: inline-flex; gap: 4px; padding: 4px; margin-bottom: 18px; background: var(--bg-secondary); border: 1px solid var(--border-soft); border-radius: 11px; }
         .pi-tab {
@@ -3977,6 +3979,8 @@
             setActiveTab('rtab', id);
             // Renderizar solo la subsección visible.
             try { RENDER_SECCION[id](); } catch (e) {}
+            // Reaplicar ayuda "?" sobre lo recién renderizado (idempotente).
+            if (window.initHelpTips) try { initHelpTips(); } catch (e) {}
             const contentArea = document.getElementById('contentArea');
             if (contentArea) contentArea.scrollTop = 0;
             if (window.syncRail) syncRail();
@@ -4040,6 +4044,11 @@
                 try { RENDER_SECCION[tabRendimientoActiva()](); } catch (e) {}
             }
             if (window.applyBusinessConfig) applyBusinessConfig();
+
+            // Reaplicar los íconos de ayuda "?": las secciones dinámicas (analytics, reportes,
+            // metas, logros, finanzas) construyen su HTML recién ahora. helpOnEl es idempotente
+            // (no duplica), así que volver a llamarlo es seguro y cubre lo recién renderizado.
+            if (window.initHelpTips) try { initHelpTips(); } catch (e) {}
 
             // Scroll hacia arriba
             const contentArea = document.getElementById('contentArea');
@@ -4169,24 +4178,40 @@
 
         // ===== AYUDA CONTEXTUAL: íconos (?) con tooltip por toda la app =====
         // Crea el span del ícono de ayuda con su burbuja (texto ya escapado por textContent).
+        // Burbuja ÚNICA compartida, montada en <body>: así ningún ancestro con transform
+        // (p.ej. .kpi-card:hover translateY) ni overflow:hidden la descoloca o recorta, y no se
+        // acumulan burbujas huérfanas cuando un re-render elimina los íconos "?".
+        function _helpBubbleEl(){
+            var b = document.getElementById('helpTipBubble');
+            if (!b){
+                b = document.createElement('span');
+                b.id = 'helpTipBubble'; b.className = 'help-tip__bubble';
+                document.body.appendChild(b);
+            }
+            return b;
+        }
         function mkHelpTip(text){
             var s = document.createElement('span');
             s.className = 'help-tip'; s.tabIndex = 0; s.setAttribute('role', 'note');
             s.setAttribute('aria-label', 'Ayuda: ' + text);
             s.appendChild(document.createTextNode('?'));
-            var b = document.createElement('span');
-            b.className = 'help-tip__bubble'; b.textContent = text;
-            s.appendChild(b);
-            // La burbuja es position:fixed; la ubicamos sobre el ícono al mostrarla
-            // (así no la recorta ninguna tarjeta con overflow:hidden, p.ej. en el dashboard).
-            var ubicar = function(){
+            var mostrar = function(){
+                var b = _helpBubbleEl();
+                b.textContent = text; // textContent: el texto queda escapado, sin riesgo de HTML
                 var r = s.getBoundingClientRect();
                 b.style.left = Math.round(r.left + r.width / 2) + 'px';
                 b.style.top = Math.round(r.top - 8) + 'px';
+                b.classList.add('is-visible');
             };
-            s.addEventListener('mouseenter', ubicar);
-            s.addEventListener('focus', ubicar);
-            s.addEventListener('touchstart', ubicar, { passive: true });
+            var ocultar = function(){ var b = document.getElementById('helpTipBubble'); if (b) b.classList.remove('is-visible'); };
+            s.addEventListener('mouseenter', mostrar);
+            s.addEventListener('mouseleave', ocultar);
+            s.addEventListener('focus', mostrar);
+            s.addEventListener('blur', ocultar);
+            s.addEventListener('touchstart', function(){
+                var b = document.getElementById('helpTipBubble');
+                if (b && b.classList.contains('is-visible') && b.textContent === text) ocultar(); else mostrar();
+            }, { passive: true });
             return s;
         }
         // Agrega un (?) al final de un elemento (si no tiene ya uno).
@@ -4218,12 +4243,29 @@
             var sec = document.getElementById(sectionId); if (!sec) return;
             helpOnEl(sec.querySelector('.page-title'), text);
         }
-        // (?) sobre el primer h3 (dentro de scope) cuyo texto contenga `frag`.
+        // (?) sobre el primer encabezado (h2 o h3, dentro de scope) cuyo texto contenga `frag`.
         function helpOnHeading(sectionId, frag, text){
             var sec = document.getElementById(sectionId); if (!sec) return;
-            var hs = sec.querySelectorAll('h3');
+            var hs = sec.querySelectorAll('h2, h3');
             for (var i = 0; i < hs.length; i++){
                 if ((hs[i].textContent || '').toLowerCase().indexOf(frag.toLowerCase()) !== -1){ helpOnEl(hs[i], text); return; }
+            }
+        }
+        // (?) sobre un control (checkbox/switch/select) por su id: cuelga el ícono del label
+        // que lo envuelve, del .form-label de su grupo, o de su contenedor. Robusto para toggles.
+        function helpOnControl(id, text){
+            var el = document.getElementById(id); if (!el) return;
+            var host = el.closest('label')
+                || (el.closest('.form-group') ? el.closest('.form-group').querySelector('.form-label') : null)
+                || el.parentElement;
+            helpOnEl(host, text);
+        }
+        // (?) sobre un .kpi-label DENTRO de una sección concreta (no solo el dashboard).
+        function helpOnKpiIn(sectionId, labelText, text){
+            var sec = document.getElementById(sectionId); if (!sec) return;
+            var labs = sec.querySelectorAll('.kpi-label');
+            for (var i = 0; i < labs.length; i++){
+                if ((labs[i].textContent || '').trim().toLowerCase() === labelText.toLowerCase()){ helpOnEl(labs[i], text); return; }
             }
         }
         window.initHelpTips = function(){
@@ -4231,37 +4273,96 @@
             helpOnKpi('Ingresos Totales', 'Todo el dinero que entró por ventas, antes de descontar costos, comisiones y envíos.');
             helpOnKpi('Ganancia Neta', 'Lo que realmente te queda: ventas menos costo del producto, comisiones y envíos. Es tu ganancia real.');
             helpOnKpi('Comisiones', 'Total que te cobraron las plataformas (ej. Mercado Libre) por tus ventas.');
-            helpOnKpi('Envíos', 'Lo que pagaste en despachos de tus ventas.');
+            helpOnKpi('Costo de Envíos', 'Lo que pagaste en despachos de tus ventas.');
+            helpOnKpi('Unidades Vendidas', 'Cuántos productos vendiste en total (suma de cantidades), no el número de ventas.');
             helpOnKpi('IVA', 'Impuesto estimado (19%) sobre tus ventas. Puedes ajustarlo con el dato real del SII en Finanzas.');
             helpOnKpi('Publicidad', 'Lo que gastaste en publicidad este mes (lo cargas en Finanzas).');
+            // Headings/gráficos del dashboard con jerga.
+            helpOnHeading('dashboard', 'Ingresos vs Costo', 'Compara cuánto entró por ventas contra cuánto te costaron los productos. La diferencia es tu ganancia bruta.');
+            helpOnHeading('dashboard', 'Margen por Producto', 'Qué porcentaje del precio de venta te queda como ganancia en cada producto. Mientras más alto, mejor.');
+            helpOnHeading('dashboard', 'Mayor Margen', 'El producto que te deja el mayor porcentaje de ganancia por cada venta.');
+            helpOnHeading('dashboard', 'Stock Disponible', 'Cuántas unidades te quedan de cada producto para seguir vendiendo.');
+            helpOnHeading('dashboard', 'Top 5 Productos', 'Tus 5 productos que más han vendido.');
+            helpOnHeading('dashboard', 'Gastos adicionales', 'Gastos sueltos de la empresa de este mes (no ligados a un producto). Se descuentan de tu ganancia real.');
             // --- Productos ---
             helpOnField('prodCostPrice', 'Lo que te costó comprar o fabricar el producto.');
             helpOnField('prodSalePrice', 'El precio al que se lo vendes a tu cliente.');
             helpOnField('prodStock', 'Cuántas unidades tienes disponibles para vender ahora.');
             helpOnField('prodStockMin', 'Cuando el stock baje a este número, la app te avisa para reponer.');
+            helpOnField('prodShipping', 'Cuánto te cuesta a ti despachar este producto. Se descuenta de la ganancia de cada venta.');
+            helpOnControl('prodCommissionType', 'Elige cómo te cobran la comisión: en porcentaje (%) sobre el precio, o un monto fijo ($) por venta.');
             helpOnLabelText('¿Pagas envío?', 'Marca Sí si tú pagas el despacho de este producto. Si no, déjalo en No.');
             helpOnLabelText('¿Pagas comisión?', 'Marca Sí si una plataforma te cobra comisión por venderlo. En % se calcula sobre el precio de venta; en $ es un monto fijo.');
             helpOnLabelText('¿Este producto tiene variantes?', 'Úsalo solo si vendes el mismo producto en varios colores o tallas, cada uno con su stock.');
+            // Bloque de variantes (color/talla, stock y SKU por combinación).
+            helpOnControl('varUseColor', 'Actívalo si este producto viene en varios colores. Cada color llevará su propio stock.');
+            helpOnControl('varUseTalla', 'Actívalo si este producto viene en varias tallas. Cada talla llevará su propio stock.');
+            helpOnField('varColorName', 'Nombre del color de esta variante (ej. Negro). Así la identificas en ventas y stock.');
+            helpOnField('varTallaName', 'Nombre de la talla de esta variante (ej. M, L, 42).');
+            helpOnProfitLive();
+            helpOnVarCombos();
             // --- Ventas ---
             helpOnField('saleChannel', "Por dónde se hizo la venta. 'Manual' es para ventas fuera de plataformas. Con 'Añadir canal…' creas los tuyos (Instagram, Marketplace, etc.). Mercado Libre aparece solo si conectaste tu cuenta.");
+            helpOnField('saleQuantity', 'Cuántas unidades se vendieron. No puede superar el stock disponible.');
+            helpOnControl('saleVariant', 'Elige el color/talla exacto que se vendió. El stock se descuenta solo de esa variante.');
             helpOnLabelText('Precio de venta', 'Usa el precio guardado del producto, o elige "A otro precio" si esta vez vendiste a un valor distinto.');
             var _envR = document.getElementById('saleEnvioResumen');
             if (_envR) helpOnEl(_envR.parentElement, 'El envío se toma del producto. Pulsa "Ajustar" si esta venta tuvo un envío distinto, o para agregarlo si el producto no tenía.');
             var _comR = document.getElementById('saleComisionResumen');
             if (_comR) helpOnEl(_comR.parentElement, 'La comisión se toma del producto. Pulsa "Ajustar" si esta venta tuvo una comisión distinta, o para agregarla si el producto no tenía.');
+            helpOnField('ventasCanal', 'Filtra el historial para ver solo las ventas de un canal (Manual, Mercado Libre, etc.).');
+            // --- Devoluciones ---
+            helpOnSection('devoluciones', 'Registra cuando un cliente te devuelve un producto. Repone el stock y descuenta la ganancia de esa venta.');
+            helpOnField('returnChannel', 'Filtra por canal para encontrar la venta original que se está devolviendo.');
+            helpOnField('returnDay', 'Filtra por el día de la venta original para ubicarla más rápido.');
+            helpOnField('returnSale', 'Elige la venta exacta que se devuelve. De ahí se toman el producto, la variante, el canal y la comisión.');
+            helpOnField('returnShipping', 'Cuánto te costó el envío de esta devolución (si lo hubo). Se descuenta de tu ganancia.');
+            helpOnControl('returnRestock', 'Si lo dejas marcado, las unidades devueltas vuelven a sumarse al stock (a la variante correcta). Desmárcalo si el producto volvió dañado.');
+            // --- Inventario ---
+            helpOnSection('inventory', 'El stock de todos tus productos en un solo lugar, con avisos cuando algo está por agotarse.');
+            var _invLeg = document.querySelector('#inventory .inv-legend') || document.getElementById('inv-legend');
+            if (_invLeg) helpOnEl(_invLeg, 'Estados según tu Stock Mínimo: OK (holgado), En riesgo (acercándose), Crítico (muy bajo) y Sin stock (agotado).');
             // --- Finanzas ---
             helpOnSection('finanzas', 'Tu dinero real del mes: ganancia neta, IVA, gastos y publicidad.');
+            helpOnHeading('finanzas', 'Resumen del mes', 'Una foto rápida de tus números del mes: ventas, ganancia, gastos e impuestos.');
+            helpOnHeading('finanzas', 'Distribución de costos', 'En qué se va tu dinero: costo de productos, comisiones, envíos, IVA y gastos.');
+            helpOnHeading('finanzas', 'Ganancia neta por producto', 'Cuánto te deja realmente cada producto después de costos, comisiones y envíos.');
             helpOnHeading('finanzas', 'IVA', 'El 19% se calcula automático sobre tus ventas. Si tienes el monto exacto del SII, puedes escribirlo a mano para ese mes.');
-            helpOnHeading('finanzas', 'gasto', 'Gastos variables son los que cambian mes a mes (insumos, bolsas). Los gastos fijos se repiten siempre (arriendo, internet).');
+            helpOnHeading('finanzas', 'Publicidad', 'Lo que inviertes en publicidad este mes. Se descuenta de tu ganancia real.');
+            helpOnHeading('finanzas', 'Gastos fijos', 'Los que se repiten siempre (arriendo, internet). Se cargan automático cada mes.');
+            helpOnHeading('finanzas', 'Registro de gastos', 'Gastos variables que cambian mes a mes (insumos, bolsas, transporte).');
             // --- Rendimiento (subsecciones) ---
             helpOnSection('analytics', 'Rentabilidad y margen de cada producto, para saber cuál te conviene vender más.');
+            helpOnKpiIn('analytics', 'Margen Neto', 'Qué porcentaje de tus ingresos te queda como ganancia real, después de todos los descuentos.');
             helpOnSection('metas', 'Define cuánto quieres vender o ganar en el mes y sigue tu avance.');
+            helpOnControl('metasInTipo', 'Qué quieres medir: monto vendido ($), ganancia neta ($) o unidades vendidas.');
+            helpOnControl('metasInObjetivo', 'El número que quieres alcanzar este mes según el tipo de meta elegido.');
             helpOnSection('reportes', 'Tus productos más vendidos y los días y horarios en que más vendes.');
+            helpOnHeading('reportes', 'Días con más ventas', 'Los días de la semana en que más vendes. Útil para reforzar stock o publicidad.');
+            helpOnHeading('reportes', 'Horarios con más ventas', 'Las horas del día en que más vendes.');
             helpOnSection('alerts', 'Avisos de productos con stock bajo, según el Stock Mínimo que pusiste en cada producto.');
+            helpOnSection('logros', 'Tus medallas y récords de ventas: una forma de seguir tu progreso y motivarte.');
+            helpOnHeading('logros', 'Tus récords', 'Tus mejores marcas: el mejor día, el mejor mes, la racha más larga, etc.');
+            // --- Configuración ---
+            helpOnSection('settings', 'Ajustes de tu cuenta y negocio: perfil, moneda, notificaciones, conexión con Mercado Libre y tus datos.');
+            helpOnHeading('settings', 'Mercado Libre', 'Conecta tu cuenta de Mercado Libre para que las ventas entren solas. Aparece como canal al registrar ventas.');
+            helpOnHeading('settings', 'Datos', 'Exporta o importa tu información en Excel, o borra todo. Ten cuidado: borrar es permanente.');
             // --- Agenda ---
             helpOnSection('agenda', 'Tus tareas y recordatorios. Los despachos de tus ventas pueden aparecer aquí automáticamente.');
             try { if (window.lucide && lucide.createIcons) lucide.createIcons(); } catch(e){}
         };
+        // (?) sobre la "ganancia por unidad" en vivo del formulario de producto (calculada).
+        function helpOnProfitLive(){
+            var el = document.getElementById('prodProfitLive'); if (!el) return;
+            var host = el.closest('.form-group') ? (el.closest('.form-group').querySelector('.form-label') || el.parentElement) : el.parentElement;
+            helpOnEl(host, 'Lo que te queda por cada unidad vendida: precio de venta menos costo, envío y comisión.');
+        }
+        // (?) sobre el bloque de combinaciones de variante (stock y SKU por color/talla).
+        function helpOnVarCombos(){
+            var sec = document.getElementById('varCombosSection'); if (!sec) return;
+            var h = sec.querySelector('h3, h4, .form-label, label');
+            helpOnEl(h || sec, 'Aquí defines precio, costo y stock de cada combinación (ej. Negro-M). El SKU es el código que usas en Mercado Libre: si coincide, las ventas se asignan solas a la variante correcta.');
+        }
 
         document.addEventListener('DOMContentLoaded', () => {
             // Restaurar estado colapsado del sidebar (preferencia de UI por dispositivo)
