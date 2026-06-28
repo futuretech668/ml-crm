@@ -2468,7 +2468,7 @@
         <nav class="rail-nav">
             <div class="rail-cap">General</div>
             <div class="rail-item" data-sec="dashboard" onclick="irASeccion('dashboard')"><i data-lucide="layout-dashboard"></i>Dashboard</div>
-            <div class="rail-item" data-sec="sales" onclick="irASeccion('sales')"><i data-lucide="shopping-cart"></i>Ventas</div>
+            <div class="rail-item rail-parent" data-sec="sales" data-group="ventas" onclick="irASeccion('sales')"><i data-lucide="shopping-cart"></i>Ventas<span class="rail-caret"><i data-lucide="chevron-down"></i></span></div>
             <div class="rail-item rail-parent" data-sec="products" data-group="productos" onclick="irASeccion('products')"><i data-lucide="package"></i>Productos<span class="rail-caret"><i data-lucide="chevron-down"></i></span></div>
             <div class="rail-item" data-sec="finanzas" onclick="irASeccion('finanzas')"><i data-lucide="wallet"></i>Finanzas</div>
             <div class="rail-item rail-parent" data-sec="rendimiento" data-group="rendimiento" onclick="irASeccion('rendimiento')"><i data-lucide="bar-chart-3"></i>Rendimiento<span class="rail-caret"><i data-lucide="chevron-down"></i></span></div>
@@ -2743,6 +2743,65 @@
                         </div>
                         <p class="sales-scroll-hint" aria-hidden="true"><i data-lucide="move-horizontal"></i> Desliza la tabla para ver todas las columnas</p>
                         <div id="salesTable"></div>
+                    </div>
+                </div>
+
+                <!-- DEVOLUCIONES (subsección de Ventas, multicanal) -->
+                <div class="section" id="devoluciones">
+                    <div class="page-head">
+                        <div class="page-title"><i data-lucide="undo-2"></i>Devoluciones</div>
+                        <div class="page-sub">Registra devoluciones de cualquier canal y refleja su impacto en stock y ganancia</div>
+                    </div>
+                    <div class="card">
+                        <h2><i data-lucide="plus-circle"></i>Registrar devolución</h2>
+                        <form id="returnForm" onsubmit="return registerReturn(event)">
+                            <div class="form-group" style="margin-bottom:12px;">
+                                <label class="form-label">Venta a devolver</label>
+                                <select class="form-control" id="returnSale" onchange="if(window.returnFillFromSale)returnFillFromSale()" required>
+                                    <option value="">Elige la venta original…</option>
+                                </select>
+                                <p style="color:var(--text-muted);font-size:12px;margin:6px 0 0;">El canal, la comisión y el envío se toman de la venta elegida.</p>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label">Cantidad devuelta</label>
+                                    <input type="number" class="form-control" id="returnQty" min="1" value="1" oninput="if(window.returnSyncResumen)returnSyncResumen()" required>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Fecha de la devolución</label>
+                                    <input type="date" class="form-control" id="returnDate" required>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Envío de la devolución <span style="color:var(--text-muted);font-weight:400;">(opcional)</span></label>
+                                    <input type="number" class="form-control" id="returnShipping" min="0" step="1" value="0" placeholder="0" oninput="if(window.returnSyncResumen)returnSyncResumen()">
+                                </div>
+                            </div>
+                            <div class="form-group" style="margin-bottom:12px;">
+                                <label class="form-label">Motivo <span style="color:var(--text-muted);font-weight:400;">(opcional)</span></label>
+                                <input type="text" class="form-control" id="returnReason" maxlength="200" placeholder="Ej: producto defectuoso, arrepentimiento, talla equivocada…">
+                            </div>
+                            <div class="form-group" style="margin-bottom:14px;">
+                                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;">
+                                    <input type="checkbox" id="returnRestock" checked onchange="if(window.returnSyncResumen)returnSyncResumen()">
+                                    Devolver el producto al inventario (sumar stock)
+                                </label>
+                            </div>
+                            <div id="returnResumen" style="display:none;font-size:13px;margin:0 0 14px;padding:10px 12px;border-radius:10px;background:var(--bg-secondary);border:1px solid var(--border-color);"></div>
+                            <div style="display:flex;gap:12px;flex-wrap:wrap;">
+                                <button type="submit" id="returnSubmitBtn" class="btn btn-primary"><i data-lucide="check"></i>Registrar devolución</button>
+                                <button type="reset" class="btn btn-secondary" onclick="setTimeout(function(){if(window.returnSyncResumen)returnSyncResumen();},0)"><i data-lucide="eraser"></i>Limpiar</button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <div class="card">
+                        <h3><i data-lucide="history"></i>Historial de devoluciones</h3>
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:4px 0 14px;">
+                            <input type="text" id="returnsBuscar" class="form-control" style="flex:1;min-width:220px;" placeholder="🔍 Buscar por producto, fecha (AAAA-MM-DD) o canal…" oninput="window.__returnsBuscarInput && window.__returnsBuscarInput()">
+                            <button type="button" class="btn btn-secondary btn-small" onclick="window.__returnsBuscarClear && window.__returnsBuscarClear()"><i data-lucide="x"></i> Limpiar</button>
+                        </div>
+                        <p class="sales-scroll-hint" aria-hidden="true"><i data-lucide="move-horizontal"></i> Desliza la tabla para ver todas las columnas</p>
+                        <div id="returnsTable"></div>
                     </div>
                 </div>
 
@@ -3769,6 +3828,7 @@
         const STATE = {
             products: [],
             sales: [],
+            returns: [],           // Devoluciones (multicanal): vinculadas a una venta original
             mappings: {},          // PASO 4: mapeo item_id de ML -> producto confirmado
             pendingMappings: [],   // PASO 4: publicaciones nuevas esperando confirmación
             dismissedPending: [],  // item_id de pendientes descartadas/cargadas (se guarda en BD → nunca reaparecen)
@@ -3835,8 +3895,11 @@
         // La sección #mapeos y renderMapeos() siguen en el código pero inaccesibles.
         const GRUPO_PRODUCTOS = ['products','inventory'];
         const PRODUCTOS_LABELS = { products:'Catálogo', inventory:'Inventario', mapeos:'Mapeos ML' };
+        // Subsecciones (pestañas internas) de "Ventas": el registro de ventas y las devoluciones.
+        const GRUPO_VENTAS = ['sales','devoluciones'];
+        const VENTAS_LABELS = { sales:'Ventas', devoluciones:'Devoluciones' };
         // Etiqueta para la miga de pan de cada sección de primer nivel.
-        const SECCION_LABELS = { dashboard:'Dashboard', sales:'Ventas', finanzas:'Finanzas', agenda:'Agenda', settings:'Configuración', products:'Productos', inventory:'Productos', mapeos:'Productos', rendimiento:'Rendimiento' };
+        const SECCION_LABELS = { dashboard:'Dashboard', sales:'Ventas', devoluciones:'Ventas', finanzas:'Finanzas', agenda:'Agenda', settings:'Configuración', products:'Productos', inventory:'Productos', mapeos:'Productos', rendimiento:'Rendimiento' };
         // Despachador de render por sección (reutilizado por irASeccion y por el sync de nube).
         const RENDER_SECCION = {
             analytics: () => renderAnalytics(),
@@ -3895,8 +3958,10 @@
             seccionActiva = seccion;
             STATE.currentSection = seccion;
 
-            // Resaltar item activo en el rail. 'inventory'/'mapeos' mantienen activo el item "Productos".
-            const railSec = (seccion === 'inventory' || seccion === 'mapeos') ? 'products' : seccion;
+            // Resaltar item activo en el rail. 'inventory'/'mapeos' mantienen activo "Productos";
+            // 'devoluciones' mantiene activo "Ventas".
+            const railSec = (seccion === 'inventory' || seccion === 'mapeos') ? 'products'
+                          : (seccion === 'devoluciones') ? 'sales' : seccion;
             document.querySelectorAll('.rail-item').forEach(el => {
                 el.classList.toggle('active', el.dataset.sec === railSec);
             });
@@ -3908,6 +3973,10 @@
             if (seccion === 'products' || seccion === 'inventory' || seccion === 'mapeos') {
                 setActiveTab('pi', seccion);
             }
+            // Sincronizar pestañas Ventas / Devoluciones
+            if (seccion === 'sales' || seccion === 'devoluciones') {
+                setActiveTab('pv', seccion);
+            }
 
             // Renderizar según sección
             if (seccion === 'analytics') renderAnalytics();
@@ -3916,6 +3985,7 @@
             if (seccion === 'inventory') renderInventory();
             if (seccion === 'mapeos') { if (window.renderMapeos) renderMapeos(); }
             if (seccion === 'sales') { updateDropdowns(); renderSalesList(); if (window.ventaPoblarCanales) ventaPoblarCanales(); }
+            if (seccion === 'devoluciones') { if (window.returnPoblarVentas) returnPoblarVentas(); renderReturns(); }
             if (seccion === 'products') renderProductsList();
             if (seccion === 'finanzas') { if (window.renderFinanzas) renderFinanzas(); }
             if (seccion === 'settings') { if (window.fillProfileInputs) fillProfileInputs(); if (window.fillBusinessInputs) fillBusinessInputs(); if (window.mlRefreshStatus) mlRefreshStatus(); }
@@ -3959,6 +4029,13 @@
             injectTabBar(['products', 'inventory'], botones, 'pi', (id) => { if (window.irASeccion) window.irASeccion(id); });
         }
 
+        // Inyecta la barra de pestañas Ventas / Devoluciones al inicio de ambas secciones.
+        function injectVentasTabs(){
+            const botones = '<button type="button" class="pi-tab" data-pv="sales">Ventas</button>'
+                          + '<button type="button" class="pi-tab" data-pv="devoluciones">Devoluciones</button>';
+            injectTabBar(['sales', 'devoluciones'], botones, 'pv', (id) => { if (window.irASeccion) window.irASeccion(id); });
+        }
+
         // Inyecta la barra de pestañas de Rendimiento al inicio de cada subsección,
         // de modo que las pestañas estén siempre visibles sin importar cuál esté activa.
         function injectRendimientoTabs(){
@@ -3984,6 +4061,7 @@
                 });
                 parent.insertAdjacentElement('afterend', box);
             };
+            mk('ventas', GRUPO_VENTAS, VENTAS_LABELS, (id) => { if (window.irASeccion) irASeccion(id); });
             mk('productos', GRUPO_PRODUCTOS, PRODUCTOS_LABELS, (id) => { if (window.irASeccion) irASeccion(id); });
             mk('rendimiento', GRUPO_RENDIMIENTO, RENDIMIENTO_LABELS, (id) => { _rendimientoTab = id; if (window.irASeccion) irASeccion('rendimiento'); });
         }
@@ -4146,6 +4224,7 @@
             initializeDateFields();
             setupEventListeners();
             injectProductTabs();
+            injectVentasTabs();
             injectRendimientoTabs();
             injectRailSubmenus();
             document.querySelectorAll('.rail-parent .rail-caret').forEach(c => {
@@ -4649,6 +4728,7 @@
             window.FB.save({
                 products: STATE.products || [],
                 sales: STATE.sales || [],
+                returns: STATE.returns || [],
                 mappings: STATE.mappings || {},
                 pendingMappings: STATE.pendingMappings || [],
                 dismissedPending: STATE.dismissedPending || [],
@@ -4673,6 +4753,7 @@
             if (!data) return;
             if (Array.isArray(data.products)) STATE.products = data.products;
             if (Array.isArray(data.sales)) STATE.sales = data.sales;
+            if (Array.isArray(data.returns)) STATE.returns = data.returns;
             if (data.mappings && typeof data.mappings === 'object') STATE.mappings = data.mappings;
             if (Array.isArray(data.pendingMappings)) STATE.pendingMappings = data.pendingMappings;
             // Descartados: UNIÓN local+nube. Así un descarte hecho en CUALQUIER dispositivo
@@ -4720,6 +4801,7 @@
             updateDropdowns();
             renderProductsList();
             renderSalesList();
+            if (window.renderReturns) renderReturns();
             renderInventory();
             renderDashboard();
             renderAlerts();
@@ -5805,6 +5887,352 @@
             };
         };
 
+        // ===================== DEVOLUCIONES (subsección de Ventas, multicanal) =====================
+        // Modelo: cada devolución se vincula a una venta original (saleId). Comisión y envío se
+        // prorratean desde el snapshot de esa venta, así el cálculo respeta el canal real.
+
+        // Nombre legible del canal de una venta (reutiliza la convención de renderSalesList).
+        function canalNombreDe(source){
+            if (source === 'mercadolibre') return 'Mercado Libre';
+            if (!source || source === 'manual') return 'Manual';
+            if (source === 'otro') return 'Otro';
+            return String(source);
+        }
+        // Badge HTML del canal (ML amarillo; el resto, neutro).
+        function canalBadgeHtml(source){
+            if (source === 'mercadolibre') return '<span class="badge" style="background:#FFE600;color:#2D3277;font-weight:700;font-size:10px;">Mercado Libre</span>';
+            var n = canalNombreDe(source);
+            return '<span class="badge" style="background:var(--bg-tertiary);color:var(--text-secondary);font-size:10px;">' + (window.DOMPurify ? DOMPurify.sanitize(n) : n) + '</span>';
+        }
+        // Unidades ya devueltas de una venta (suma de devoluciones que la referencian).
+        function unidadesDevueltas(saleId, exceptReturnId){
+            return (STATE.returns || []).reduce(function(acc, r){
+                if (String(r.saleId) !== String(saleId)) return acc;
+                if (exceptReturnId != null && String(r.id) === String(exceptReturnId)) return acc;
+                return acc + (Number(r.quantity) || 0);
+            }, 0);
+        }
+        // Unidades aún devolvibles de una venta (cantidad de la venta − ya devueltas).
+        function devolvibles(sale, exceptReturnId){
+            return Math.max(0, (Number(sale.quantity) || 0) - unidadesDevueltas(sale.id, exceptReturnId));
+        }
+        // Prorrateo de los importes de la venta según las unidades devueltas + impacto en ganancia.
+        function calcReturn(sale, qty, envioDev){
+            var qVenta = Math.max(1, Number(sale.quantity) || 1);
+            var q = Number(qty) || 0;
+            var refund = (Number(sale.salePrice) || 0) * q;
+            var comPror = (Number(sale.commission) || 0) / qVenta * q;
+            var envVentaPror = (Number(sale.shipping) || 0) / qVenta * q;
+            var profitVenta = (sale.profit != null)
+                ? Number(sale.profit)
+                : ((Number(sale.totalPrice) || (Number(sale.salePrice) || 0) * qVenta) - (Number(sale.costPrice) || 0) * qVenta - (Number(sale.commission) || 0) - (Number(sale.shipping) || 0));
+            var profitPror = profitVenta / qVenta * q;        // ganancia que se revierte
+            var envDev = Number(envioDev) || 0;
+            var impact = profitPror + envDev;                 // cuánto BAJA la ganancia del negocio
+            return { refund: refund, commission: comPror, shippingVenta: envVentaPror, shippingDev: envDev, profitPror: profitPror, impact: impact };
+        }
+
+        // Aplica (+1) o revierte (−1) el reingreso de stock de una devolución al inventario.
+        function aplicarStockDevolucion(ret, sign){
+            if (!ret || !ret.restock) return;
+            var product = STATE.products.find(function(p){ return p.id === ret.productId; });
+            if (!product) return;
+            var q = (Number(ret.quantity) || 0) * sign;
+            if (ret.variantId != null && product.hasVariants && Array.isArray(product.variants)) {
+                var v = product.variants.find(function(x){ return String(x.id) === String(ret.variantId); });
+                if (v) { v.stock = Math.max(0, (Number(v.stock) || 0) + q); recalcVariantStock(product); }
+                else { product.stock = Math.max(0, (Number(product.stock) || 0) + q); }
+            } else {
+                product.stock = Math.max(0, (Number(product.stock) || 0) + q);
+            }
+            product.lastModified = new Date().toISOString();
+        }
+
+        // Llena el <select> de ventas devolvibles (solo las que aún tienen unidades por devolver).
+        function returnPoblarVentas(){
+            var sel = document.getElementById('returnSale');
+            if (!sel) return;
+            var prev = sel.value;
+            sel.innerHTML = '';
+            var ph = document.createElement('option'); ph.value = ''; ph.textContent = 'Elige la venta original…'; sel.appendChild(ph);
+            var ventas = (STATE.sales || []).slice().sort(function(a, b){ return new Date(b.date) - new Date(a.date); });
+            var conSaldo = 0;
+            ventas.forEach(function(s){
+                var rest = devolvibles(s);
+                if (rest <= 0) return;
+                conSaldo++;
+                var nombre = String(s.productName || 'Producto') + (s.variantLabel ? ' (' + s.variantLabel + ')' : '');
+                var txt = s.date + ' · ' + nombre + ' · ' + canalNombreDe(s.source) + ' · ' + rest + '× ' + formatCurrency(s.salePrice);
+                var op = document.createElement('option');
+                op.value = String(s.id);
+                op.textContent = txt;           // textContent evita inyección por nombres con comillas
+                sel.appendChild(op);
+            });
+            if (prev) sel.value = prev;
+            if (!conSaldo) { ph.textContent = 'No hay ventas con unidades por devolver'; }
+        }
+        window.returnPoblarVentas = returnPoblarVentas;
+
+        // Venta actualmente seleccionada en el formulario (o null).
+        function returnVentaSeleccionada(){
+            var sel = document.getElementById('returnSale');
+            if (!sel || !sel.value) return null;
+            return (STATE.sales || []).find(function(s){ return String(s.id) === String(sel.value); }) || null;
+        }
+
+        // Al elegir una venta: ajusta el tope de cantidad y refresca el resumen.
+        function returnFillFromSale(){
+            var s = returnVentaSeleccionada();
+            var qty = document.getElementById('returnQty');
+            if (s && qty) {
+                var rest = devolvibles(s);
+                qty.max = rest;
+                if ((Number(qty.value) || 0) > rest || (Number(qty.value) || 0) < 1) qty.value = rest > 0 ? 1 : 0;
+            }
+            returnSyncResumen();
+        }
+        window.returnFillFromSale = returnFillFromSale;
+
+        // Recalcula y muestra el desglose del impacto de la devolución en curso.
+        function returnSyncResumen(){
+            var box = document.getElementById('returnResumen');
+            if (!box) return;
+            var s = returnVentaSeleccionada();
+            var q = parseInt((document.getElementById('returnQty') || {}).value) || 0;
+            var envDev = parseFloat((document.getElementById('returnShipping') || {}).value) || 0;
+            if (!s || q <= 0) { box.style.display = 'none'; return; }
+            var c = calcReturn(s, q, envDev);
+            box.style.display = 'block';
+            box.innerHTML =
+                'Canal: ' + canalBadgeHtml(s.source) +
+                ' &nbsp;·&nbsp; Reembolso al cliente: <strong>' + formatCurrency(c.refund) + '</strong>' +
+                '<br>Comisión de la venta (no se recupera): ' + formatCurrency(c.commission) +
+                ' &nbsp;·&nbsp; Envío de la devolución: ' + formatCurrency(c.shippingDev) +
+                '<br>Impacto en ganancia: <strong style="color:var(--accent-danger);">−' + formatCurrency(c.impact) + '</strong>';
+        }
+        window.returnSyncResumen = returnSyncResumen;
+
+        // Registra la devolución: crea el registro, reingresa stock y refresca todo.
+        function registerReturn(event){
+            if (event && event.preventDefault) event.preventDefault();
+            var s = returnVentaSeleccionada();
+            if (!s) { showToast('❌ Elige la venta a devolver'); return false; }
+            var qty = parseInt((document.getElementById('returnQty') || {}).value) || 0;
+            var rest = devolvibles(s);
+            if (qty < 1) { showToast('❌ La cantidad mínima es 1'); return false; }
+            if (qty > rest) { showToast('❌ Solo quedan ' + rest + ' unidad(es) por devolver'); return false; }
+            var fecha = (document.getElementById('returnDate') || {}).value;
+            if (!fecha) { showToast('❌ Elige la fecha de la devolución'); return false; }
+            var envDev = parseFloat((document.getElementById('returnShipping') || {}).value) || 0;
+            if (envDev < 0) { showToast('❌ Monto de envío inválido'); return false; }
+            var restock = !!(document.getElementById('returnRestock') || {}).checked;
+            var reason = ((document.getElementById('returnReason') || {}).value || '').trim();
+            var c = calcReturn(s, qty, envDev);
+
+            var ret = {
+                id: Date.now(),
+                date: fecha,
+                saleId: s.id,
+                productId: s.productId,
+                productName: s.productName,
+                variantId: s.variantId != null ? s.variantId : null,
+                variantLabel: s.variantLabel || '',
+                quantity: qty,
+                channel: s.source || 'manual',
+                refundAmount: c.refund,
+                commission: c.commission,
+                shipping: envDev,
+                reason: reason ? DOMPurify.sanitize(reason) : '',
+                restock: restock,
+                impact: c.impact,
+                createdAt: new Date().toISOString()
+            };
+            STATE.returns.push(ret);
+            aplicarStockDevolucion(ret, +1);
+            saveToLocalStorage();
+            var form = document.getElementById('returnForm');
+            if (form) form.reset();
+            initializeDateFields();
+            returnPoblarVentas();
+            returnSyncResumen();
+            renderReturns();
+            renderDashboard();
+            renderInventory();
+            renderAlerts();
+            showToast('✅ Devolución registrada');
+            return false;
+        }
+        window.registerReturn = registerReturn;
+
+        // Elimina una devolución y revierte su efecto de stock (para no descuadrar inventario).
+        function deleteReturn(id){
+            var ret = (STATE.returns || []).find(function(r){ return r.id === id; });
+            if (!ret) return;
+            if (!confirm('¿Eliminar esta devolución de "' + DOMPurify.sanitize(ret.productName) + '"?\n(' + ret.quantity + ' ' + (ret.quantity === 1 ? 'unidad' : 'unidades') + ')')) return;
+            aplicarStockDevolucion(ret, -1);   // revertir el reingreso de stock
+            STATE.returns = STATE.returns.filter(function(r){ return r.id !== id; });
+            saveToLocalStorage();
+            returnPoblarVentas();
+            renderReturns();
+            renderDashboard();
+            renderInventory();
+            renderAlerts();
+            showToast('✅ Devolución eliminada');
+        }
+        window.deleteReturn = deleteReturn;
+
+        // Edita una devolución (cantidad, fecha, envío, motivo, reingreso de stock) en un modal.
+        window.editReturn = function(id){
+            var ret = (STATE.returns || []).find(function(r){ return r.id === id; });
+            if (!ret) return;
+            var sale = (STATE.sales || []).find(function(s){ return String(s.id) === String(ret.saleId); });
+            // Tope = lo aún devolvible de la venta + lo que esta devolución ya ocupaba.
+            var maxQty = sale ? (devolvibles(sale, ret.id) + (Number(ret.quantity) || 0)) : (Number(ret.quantity) || 1);
+            var hoyStr = new Date().toLocaleDateString('en-CA');
+
+            var ov = document.createElement('div');
+            ov.style.cssText = 'position:fixed;inset:0;z-index:99998;background:rgba(6,8,13,0.92);display:flex;align-items:center;justify-content:center;padding:20px;overflow:auto;';
+            ov.innerHTML =
+                '<div style="max-width:480px;width:100%;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:16px;padding:24px;">' +
+                    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">' +
+                        '<i data-lucide="pencil" style="color:var(--accent-primary);"></i>' +
+                        '<h2 style="margin:0;font-family:\'Poppins\',sans-serif;color:var(--text-primary);font-size:18px;">Editar devolución</h2>' +
+                    '</div>' +
+                    '<p style="color:var(--text-secondary);font-size:13px;margin:0 0 14px;">' + DOMPurify.sanitize(ret.productName) +
+                        (ret.variantLabel ? ' <span style="color:var(--text-muted);">(' + DOMPurify.sanitize(ret.variantLabel) + ')</span>' : '') +
+                        ' &nbsp;·&nbsp; ' + canalBadgeHtml(ret.channel) + '</p>' +
+                    '<div class="form-row" style="display:flex;gap:12px;flex-wrap:wrap;">' +
+                        '<div class="form-group" style="flex:1;min-width:120px;"><label class="form-label">Cantidad</label>' +
+                            '<input type="number" id="editRetQty" class="form-control" min="1" max="' + maxQty + '" value="' + (Number(ret.quantity) || 1) + '"></div>' +
+                        '<div class="form-group" style="flex:1;min-width:120px;"><label class="form-label">Fecha</label>' +
+                            '<input type="date" id="editRetFecha" class="form-control" max="' + hoyStr + '" value="' + (ret.date || hoyStr) + '"></div>' +
+                    '</div>' +
+                    '<div class="form-group"><label class="form-label">Envío de la devolución</label>' +
+                        '<input type="number" id="editRetEnvio" class="form-control" min="0" step="1" value="' + (Number(ret.shipping) || 0) + '"></div>' +
+                    '<div class="form-group"><label class="form-label">Motivo</label>' +
+                        '<input type="text" id="editRetMotivo" class="form-control" maxlength="200" value="' + (ret.reason ? DOMPurify.sanitize(ret.reason).replace(/"/g, '&quot;') : '') + '"></div>' +
+                    '<div class="form-group"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;">' +
+                        '<input type="checkbox" id="editRetRestock"' + (ret.restock ? ' checked' : '') + '> Devolver el producto al inventario</label></div>' +
+                    '<div id="editRetResumen" style="background:rgba(22,199,132,.08);border:1px solid var(--accent-primary);border-radius:10px;padding:10px 12px;margin:6px 0 14px;font-size:13px;color:var(--text-primary);"></div>' +
+                    '<div style="display:flex;gap:10px;">' +
+                        '<button id="editRetSave" class="btn btn-primary" style="flex:1;"><i data-lucide="check"></i>Guardar cambios</button>' +
+                        '<button id="editRetCancel" class="btn btn-secondary"><i data-lucide="x"></i>Cancelar</button>' +
+                    '</div>' +
+                '</div>';
+            document.body.appendChild(ov);
+            refreshIcons();
+            var g = function(i){ return document.getElementById(i); };
+            var close = function(){ ov.remove(); };
+
+            function resumen(){
+                var q = parseInt(g('editRetQty').value) || 0;
+                var envio = parseFloat(g('editRetEnvio').value) || 0;
+                if (!sale || q <= 0) { g('editRetResumen').textContent = 'Devolución sin venta vinculada.'; return; }
+                var c = calcReturn(sale, q, envio);
+                g('editRetResumen').innerHTML = 'Reembolso: <strong>' + formatCurrency(c.refund) + '</strong> · Comisión ' + formatCurrency(c.commission) +
+                    '<br>Impacto en ganancia: <strong style="color:var(--accent-danger);">−' + formatCurrency(c.impact) + '</strong>';
+            }
+            ov.addEventListener('input', resumen);
+            ov.addEventListener('change', resumen);
+            resumen();
+            g('editRetCancel').onclick = close;
+            ov.addEventListener('click', function(e){ if (e.target === ov) close(); });
+
+            g('editRetSave').onclick = function(){
+                var q = parseInt(g('editRetQty').value) || 0;
+                if (q < 1) { showToast('❌ La cantidad mínima es 1'); return; }
+                if (q > maxQty) { showToast('❌ Cantidad inválida (max: ' + maxQty + ')'); return; }
+                var fecha = g('editRetFecha').value;
+                if (!fecha) { showToast('❌ Elige la fecha'); return; }
+                var envio = parseFloat(g('editRetEnvio').value) || 0;
+                if (envio < 0) { showToast('❌ Monto de envío inválido'); return; }
+                var restock = !!g('editRetRestock').checked;
+                var motivo = (g('editRetMotivo').value || '').trim();
+
+                // Reconciliar stock: revertir el efecto anterior y aplicar el nuevo.
+                aplicarStockDevolucion(ret, -1);
+                ret.quantity = q;
+                ret.date = fecha;
+                ret.shipping = envio;
+                ret.reason = motivo ? DOMPurify.sanitize(motivo) : '';
+                ret.restock = restock;
+                if (sale) {
+                    var c = calcReturn(sale, q, envio);
+                    ret.refundAmount = c.refund;
+                    ret.commission = c.commission;
+                    ret.impact = c.impact;
+                }
+                ret.editedAt = new Date().toISOString();
+                aplicarStockDevolucion(ret, +1);
+
+                saveToLocalStorage();
+                returnPoblarVentas();
+                renderReturns();
+                renderDashboard();
+                renderInventory();
+                renderAlerts();
+                close();
+                showToast('✅ Devolución actualizada');
+            };
+        };
+
+        // Estado efímero de la vista (solo búsqueda; no afecta cálculos).
+        window.__returnsBuscarInput = function(){ var el = document.getElementById('returnsBuscar'); window.__returnsView = window.__returnsView || { search: '' }; window.__returnsView.search = el ? el.value : ''; renderReturns(); };
+        window.__returnsBuscarClear = function(){ var el = document.getElementById('returnsBuscar'); if (el) el.value = ''; window.__returnsView = { search: '' }; renderReturns(); };
+
+        // Renderiza el historial de devoluciones (modelo: renderSalesList).
+        function renderReturns(){
+            var container = document.getElementById('returnsTable');
+            if (!container) return;
+            var V = window.__returnsView || (window.__returnsView = { search: '' });
+            var base = (STATE.returns || []).slice().sort(function(a, b){ return new Date(b.date) - new Date(a.date); });
+            var q = (V.search || '').trim().toLowerCase();
+            if (q) {
+                base = base.filter(function(r){
+                    var canal = canalNombreDe(r.channel).toLowerCase();
+                    return String(r.productName || '').toLowerCase().includes(q)
+                        || String(r.variantLabel || '').toLowerCase().includes(q)
+                        || String(r.date || '').toLowerCase().includes(q)
+                        || String(r.reason || '').toLowerCase().includes(q)
+                        || canal.includes(q);
+                });
+            }
+            if (base.length === 0) {
+                container.innerHTML = '<div class="empty-state"><i data-lucide="undo-2"></i><div>' + (q ? 'Sin resultados para la búsqueda' : 'Aún no hay devoluciones registradas') + '</div></div>';
+                refreshIcons();
+                return;
+            }
+            var sum = base.reduce(function(a, r){ a.unidades += (Number(r.quantity) || 0); a.reembolso += (Number(r.refundAmount) || 0); a.impacto += (Number(r.impact) || 0); return a; }, { unidades: 0, reembolso: 0, impacto: 0 });
+            var html = '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px;">' +
+                '<div class="badge" style="background:var(--bg-tertiary);color:var(--text-secondary);font-size:12px;padding:6px 12px;">Devoluciones: <strong style="color:var(--text-primary);">' + base.length + '</strong></div>' +
+                '<div class="badge" style="background:var(--bg-tertiary);color:var(--text-secondary);font-size:12px;padding:6px 12px;">Unidades: <strong style="color:var(--text-primary);">' + sum.unidades + '</strong></div>' +
+                '<div class="badge" style="background:var(--bg-tertiary);color:var(--text-secondary);font-size:12px;padding:6px 12px;">Reembolsado: <strong style="color:var(--text-primary);">' + formatCurrency(sum.reembolso) + '</strong></div>' +
+                '<div class="badge" style="background:var(--bg-tertiary);color:var(--text-secondary);font-size:12px;padding:6px 12px;">Impacto en ganancia: <strong style="color:var(--accent-danger);">−' + formatCurrency(sum.impacto) + '</strong></div>' +
+            '</div>';
+            html += '<div class="table-container"><table><thead><tr>' +
+                '<th>Fecha</th><th>Producto</th><th class="num">Cant</th><th>Canal</th><th class="num">Reembolso</th><th class="num">Comisión</th><th class="num">Envío</th><th>Stock</th><th class="num">Impacto</th><th>Motivo</th><th>Acciones</th>' +
+            '</tr></thead><tbody>';
+            base.forEach(function(r){
+                html += '<tr>' +
+                    '<td>' + r.date + '</td>' +
+                    '<td>' + DOMPurify.sanitize(r.productName || '') + (r.variantLabel ? ' <span style="color:var(--text-muted);font-size:11px;">(' + DOMPurify.sanitize(r.variantLabel) + ')</span>' : '') + '</td>' +
+                    '<td class="num">' + r.quantity + '</td>' +
+                    '<td>' + canalBadgeHtml(r.channel) + '</td>' +
+                    '<td class="num">' + formatCurrency(Number(r.refundAmount) || 0) + '</td>' +
+                    '<td class="num">' + formatCurrency(Number(r.commission) || 0) + '</td>' +
+                    '<td class="num">' + formatCurrency(Number(r.shipping) || 0) + '</td>' +
+                    '<td>' + (r.restock ? '<span class="badge" style="background:var(--bg-tertiary);color:var(--success);font-size:10px;">Reingresado</span>' : '<span class="badge" style="background:var(--bg-tertiary);color:var(--text-muted);font-size:10px;">No</span>') + '</td>' +
+                    '<td class="num" style="color:var(--accent-danger);font-weight:bold;">−' + formatCurrency(Number(r.impact) || 0) + '</td>' +
+                    '<td>' + (r.reason ? DOMPurify.sanitize(r.reason) : '<span style="color:var(--text-muted);">—</span>') + '</td>' +
+                    '<td style="white-space:nowrap;"><button class="btn btn-small btn-secondary" onclick="editReturn(' + r.id + ')" aria-label="Editar" style="margin-right:6px;"><i data-lucide="pencil"></i></button><button class="btn btn-small btn-danger" onclick="deleteReturn(' + r.id + ')" aria-label="Eliminar"><i data-lucide="trash-2"></i></button></td>' +
+                '</tr>';
+            });
+            html += '</tbody></table></div>';
+            container.innerHTML = html;
+            refreshIcons();
+        }
+        window.renderReturns = renderReturns;
+
         // Nivel de stock unificado (Inventario + Dashboard): sin stock / crítico / en riesgo / ok.
         function stockLevel(p){
             var initial = p.stockInit || p.stockMin || p.stock || 1;
@@ -6410,18 +6838,22 @@
             var ivaR = (window.ivaResumenMeses ? window.ivaResumenMeses() : { totalIva: 0 });
             var ivaAmount  = ivaR.totalIva || 0;
             var publicidad = (window.publicidadTotal ? window.publicidadTotal() : 0);
-            // Ganancia NETA REAL = ganancia operativa - IVA - publicidad. ESTE es el número que
-            // deben mostrar TODAS las secciones cuando dicen "Ganancia Neta".
-            var netProfit = totalProfitBruta - ivaAmount - publicidad;
+            // Impacto de las devoluciones: ganancia revertida + envío de retorno (todas, multicanal).
+            var returnsImpact = (window.STATE && Array.isArray(STATE.returns))
+                ? STATE.returns.reduce(function(a,r){ return a + (Number(r.impact) || 0); }, 0) : 0;
+            // Ganancia NETA REAL = ganancia operativa - devoluciones - IVA - publicidad. ESTE es el
+            // número que deben mostrar TODAS las secciones cuando dicen "Ganancia Neta".
+            var netProfit = totalProfitBruta - returnsImpact - ivaAmount - publicidad;
             return {
                 totalRevenue: totalRevenue,
-                totalProfit: totalProfitBruta,   // ganancia operativa (antes de IVA y publicidad)
+                totalProfit: totalProfitBruta,   // ganancia operativa (antes de devoluciones, IVA y publicidad)
                 totalCommissions: totalCommissions,
                 totalShipping: totalShipping,
                 totalCost: totalCost,
                 totalUnits: totalUnits,
                 ivaAmount: ivaAmount,
                 publicidad: publicidad,
+                returnsImpact: returnsImpact,
                 netProfit: netProfit,
                 netMargin:   totalRevenue > 0 ? (netProfit / totalRevenue * 100) : 0,
                 grossMargin: totalRevenue > 0 ? (totalProfitBruta / totalRevenue * 100) : 0,
