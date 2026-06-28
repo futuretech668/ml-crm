@@ -938,7 +938,10 @@
             pointer-events: none;
         }
 
-        #overlay[style*="display: block"] {
+        /* El drawer se abre con la clase .active (no con style inline). Esta regla
+           con especificidad de ID hace que el scrim reciba el toque y cierre el menú
+           al tocar al lado. */
+        #overlay.active {
             pointer-events: auto;
         }
 
@@ -13921,6 +13924,38 @@
     #logros #logrosStats > div[style*="grid-template-columns"]{ gap:8px !important; }
 }
 
+</style>
+<style id="mobileFix">
+/* ===== Arreglos de móvil: drawer + pestañas que se cortaban ===== */
+
+/* Barras de pestañas (Rendimiento, Productos, Configuración): en móvil
+   scrollean en horizontal en lugar de cortarse a la derecha. */
+@media (max-width: 768px) {
+    .pi-tabs {
+        display: flex !important;
+        flex-wrap: nowrap !important;
+        max-width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+    .pi-tabs::-webkit-scrollbar { display: none; }
+    .pi-tab { flex: 0 0 auto; white-space: nowrap; }
+}
+
+/* El menú lateral (drawer) ya no queda tapado por la barra superior en móvil:
+   la marca arranca debajo del topbar de 56px. */
+@media (max-width: 1024px) {
+    .rail-brand { padding-top: 70px; }
+}
+
+/* Dashboard: Observaciones y Alertas a una sola columna en móvil (no desbordan). */
+@media (max-width: 768px) {
+    #dashboard #dashInsights > div,
+    #dashboard #dashStockAlerts > div {
+        grid-template-columns: 1fr !important;
+    }
+}
 </style>
 <style id="novaPolish">
 /* ===== NOVA — interfaz del asistente (estrellas Gemini + look IA) ===== */
