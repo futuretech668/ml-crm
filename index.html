@@ -6693,8 +6693,12 @@
                 var costo = Number(v.precioCosto || 0) || 0;
                 var g = variantGain(v);
                 var sw = v.colorHex ? '<span style="display:inline-block;width:13px;height:13px;border-radius:50%;background:' + v.colorHex + ';border:1px solid var(--border-color);vertical-align:middle;margin-right:7px;"></span>' : '';
+                // Aviso: variante SIN SKU. Sin SKU, las ventas de ML solo pueden resolverse por
+                // el texto del título (frágil); con SKU el match es exacto. Se marca para que el usuario lo cargue.
+                var sinSku = !(v.sku && String(v.sku).trim());
+                var skuBadge = sinSku ? ' <span title="Carga el código/SKU de esta variante para que las ventas de Mercado Libre se asignen solas" style="color:var(--accent-warning,#d97706);font-weight:700;">· sin SKU</span>' : '';
                 return '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12.5px;padding:8px 2px;border-bottom:1px solid var(--border-soft);">' +
-                    '<span style="flex:1;min-width:110px;font-weight:600;">' + sw + DOMPurify.sanitize(variantLabelOf(v) || '—') + (ago ? ' <span style="color:var(--accent-danger);font-weight:700;">· Agotada</span>' : '') + '</span>' +
+                    '<span style="flex:1;min-width:110px;font-weight:600;">' + sw + DOMPurify.sanitize(variantLabelOf(v) || '—') + (ago ? ' <span style="color:var(--accent-danger);font-weight:700;">· Agotada</span>' : '') + skuBadge + '</span>' +
                     '<span class="editable-variant-stock" data-product-id="' + p.id + '" data-variant-id="' + DOMPurify.sanitize(String(v.id)) + '" title="Click para editar el stock de esta variante" style="color:var(--text-muted);cursor:pointer;">Stock: <strong style="color:' + (ago?'var(--accent-danger)':'var(--text-primary)') + ';text-decoration:underline dotted;">' + (Number(v.stock)||0) + '</strong></span>' +
                     '<span style="color:var(--text-muted);">Costo: <strong style="color:var(--text-primary);">' + formatCurrency(costo) + '</strong></span>' +
                     '<span style="color:var(--text-muted);">Venta: <strong style="color:var(--text-primary);">' + formatCurrency(venta) + '</strong></span>' +
@@ -8289,8 +8293,16 @@
             if (product.hasVariants && Array.isArray(product.variants) && product.variants.length) {
                 if (variantId != null) variant = product.variants.find(v => String(v.id) === String(variantId));
                 if (!variant && pending.suggestedVariantId != null) variant = product.variants.find(v => String(v.id) === String(pending.suggestedVariantId));
-                if (!variant) variant = suggestVariant(product, pending.title, pending.mlSku);
+                if (!variant) variant = suggestVariant(product, pending.variationText || pending.title, pending.mlSku);
                 if (!variant) return false; // ambigua -> que el usuario elija en la burbuja
+                // Aprender el SKU: si ML trajo un seller_sku y la variante elegida aún no tiene
+                // SKU propio, guardarlo. Así las próximas ventas de esta variante se resuelven
+                // solas por la rama de alta confianza de suggestVariant (sin volver a preguntar).
+                if (variant && pending.mlSku && !(variant.sku && String(variant.sku).trim())) {
+                    variant.sku = String(pending.mlSku).trim();
+                    product.lastModified = new Date().toISOString();
+                    if (typeof showToast === 'function') showToast('🔗 SKU "' + variant.sku + '" guardado en ' + (variantLabelOf(variant) || 'la variante') + '. Las próximas ventas se asignarán solas.');
+                }
             }
 
             // Guardar mapeo confirmado
@@ -8554,7 +8566,7 @@
                 // 4. Resolución de variante (solo si el producto maneja variantes).
                 var variantId = null;
                 if (product.hasVariants) {
-                    var v = _reassocSuggestVariant(product, pending.title, pending.mlSku);
+                    var v = _reassocSuggestVariant(product, pending.variationText || pending.title, pending.mlSku);
                     if (v) variantId = v.id;
                     else if (pending.suggestedVariantId != null) {
                         var sv = (product.variants || []).find(function (x) { return String(x.id) === String(pending.suggestedVariantId); });
@@ -8664,7 +8676,7 @@
             if (_pp && _pp.hasVariants && Array.isArray(_pp.variants) && _pp.variants.length) {
                 const sv = (p.suggestedVariantId != null)
                     ? _pp.variants.find(v => String(v.id) === String(p.suggestedVariantId))
-                    : suggestVariant(_pp, p.title, p.mlSku);
+                    : suggestVariant(_pp, p.variationText || p.title, p.mlSku);
                 const lbl = document.createElement('div');
                 lbl.style.cssText = 'margin-top:10px;font-size:12.5px;color:var(--text-secondary);';
                 lbl.innerHTML = '¿Qué variante de <strong>' + DOMPurify.sanitize(_pp.name) + '</strong> se vendió?' +
@@ -8680,11 +8692,23 @@
                 _pp.variants.forEach(function (v) {
                     const o = document.createElement('option');
                     o.value = String(v.id);
-                    o.textContent = (variantLabelOf(v) || '—') + ' (' + (Number(v.stock) || 0) + ' u.)';
+                    const skuTxt = (v.sku && String(v.sku).trim()) ? (' · SKU ' + String(v.sku).trim()) : '';
+                    o.textContent = (variantLabelOf(v) || '—') + ' (' + (Number(v.stock) || 0) + ' u.)' + skuTxt;
                     if (sv && String(sv.id) === String(v.id)) o.selected = true;
                     _pendVarSel.appendChild(o);
                 });
                 bubble.appendChild(lbl);
+                // Pista: qué color/talla y SKU reportó Mercado Libre para esta venta. Ayuda a
+                // elegir bien cuando el match automático no fue posible (y a detectar SKU sin cargar).
+                if (p.variationText || p.mlSku) {
+                    const hint = document.createElement('div');
+                    hint.style.cssText = 'margin-top:5px;font-size:11.5px;color:var(--text-muted);';
+                    const partes = [];
+                    if (p.variationText) partes.push('ML reportó: <strong>' + DOMPurify.sanitize(String(p.variationText)) + '</strong>');
+                    if (p.mlSku) partes.push('SKU de ML: <strong>' + DOMPurify.sanitize(String(p.mlSku)) + '</strong>');
+                    hint.innerHTML = '🛈 ' + partes.join(' · ');
+                    bubble.appendChild(hint);
+                }
                 bubble.appendChild(_pendVarSel);
             }
             const row = document.createElement('div');

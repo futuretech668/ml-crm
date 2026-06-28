@@ -1,4 +1,11 @@
 /**
+ * ⚠️ DEPRECADO — NO es el sync activo. El sync en producción corre en
+ *    `render-backend/` (servicio "nexsell-backend" en Render: ml-sync.js + run-sync.js).
+ *    Este script NO captura variantes de ML (variation_attributes / seller_sku), por lo que
+ *    registra ventas SIN variante y descuenta el stock global en vez del de la variante.
+ *    No lo uses como cron. Si alguna vez hiciera falta reactivarlo, primero portar la captura
+ *    de variantes desde `render-backend/ml-sync.js` (mlVarText, mlSku, suggestVariant).
+ *
  * sync-ml.js — Sincronización Mercado Libre → Firebase (PASOS 3, 4 y 5)
  * ---------------------------------------------------------------------
  * - OAuth 2.0 con Mercado Libre

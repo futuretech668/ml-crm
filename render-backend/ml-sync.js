@@ -425,6 +425,9 @@ function applyOrder(order, ctx) {
         const sVar = (suggested && suggested.hasVariants) ? suggestVariant(suggested, vText, mlSku) : null;
         pendingMappings.push({
           item_id: itemId, title, price: unitPrice, quantity: qty, commissionPerUnit, mlSku: mlSku || null,
+          // Texto EXACTO de color/talla que ML manda en variation_attributes (más fiable que
+          // el título). Se conserva en el pendiente para resolver la variante después.
+          variationText: mlVarText || null,
           suggestedProductId: suggested ? suggested.id : null,
           suggestedName: suggested ? suggested.name : null,
           suggestedVariantId: sVar ? sVar.id : null,

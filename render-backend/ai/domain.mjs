@@ -846,7 +846,7 @@ export function reassociatePendingForProduct(state, product, opts) {
     // 4. Resolución de variante (solo si el producto maneja variantes).
     let variantId = null;
     if (product.hasVariants) {
-      const v = suggestVariant(product, pending.title, pending.mlSku);
+      const v = suggestVariant(product, pending.variationText || pending.title, pending.mlSku);
       if (v) variantId = v.id;
       else if (pending.suggestedVariantId != null && findVariant(product, pending.suggestedVariantId)) {
         variantId = findVariant(product, pending.suggestedVariantId).id;
