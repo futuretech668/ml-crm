@@ -3719,7 +3719,7 @@
 
     <!-- Botón flotante -->
     <button id="chatFab" aria-label="Abrir NOVA, tu asistente de ventas" aria-haspopup="dialog">
-        <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2.6l2.7 5.86 6.4.62-4.82 4.25 1.42 6.27L12 16.9l-5.7 3.3 1.42-6.27L2.9 9.08l6.4-.62L12 2.6z"/></svg>
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M10.5 1.5c.4 4.7 3.3 7.6 8 8-4.7.4-7.6 3.3-8 8-.4-4.7-3.3-7.6-8-8 4.7-.4 7.6-3.3 8-8z M18.7 13.6c.17 2 1.33 3.16 3.3 3.4-1.97.24-3.13 1.4-3.3 3.4-.17-2-1.33-3.16-3.3-3.4 1.97-.24 3.13-1.4 3.3-3.4z"/></svg>
         <span id="chatBadge" style="display:none;"></span>
     </button>
 
@@ -3728,7 +3728,7 @@
         <!-- Cabecera plana -->
         <div class="mia-head">
             <div class="mia-head-id">
-                <div class="mia-head-av" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor" style="width:60%;height:60%;"><path d="M12 2.6l2.7 5.86 6.4.62-4.82 4.25 1.42 6.27L12 16.9l-5.7 3.3 1.42-6.27L2.9 9.08l6.4-.62L12 2.6z"/></svg></div>
+                <div class="mia-head-av" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor" style="width:60%;height:60%;"><path d="M10.5 1.5c.4 4.7 3.3 7.6 8 8-4.7.4-7.6 3.3-8 8-.4-4.7-3.3-7.6-8-8 4.7-.4 7.6-3.3 8-8z M18.7 13.6c.17 2 1.33 3.16 3.3 3.4-1.97.24-3.13 1.4-3.3 3.4-.17-2-1.33-3.16-3.3-3.4 1.97-.24 3.13-1.4 3.3-3.4z"/></svg></div>
                 <div style="min-width:0;">
                     <div class="mia-head-title">NOVA <span class="mia-head-dot" title="En línea"></span></div>
                     <div class="mia-head-sub">Tu copiloto de ventas</div>
@@ -7466,7 +7466,7 @@
                 wrap.appendChild(body);
             } else {
                 const av = document.createElement('div');
-                av.className = 'avatar'; av.setAttribute('aria-hidden', 'true'); av.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor" style="width:62%;height:62%;"><path d="M12 2.6l2.7 5.86 6.4.62-4.82 4.25 1.42 6.27L12 16.9l-5.7 3.3 1.42-6.27L2.9 9.08l6.4-.62L12 2.6z"/></svg>';
+                av.className = 'avatar'; av.setAttribute('aria-hidden', 'true'); av.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor" style="width:62%;height:62%;"><path d="M10.5 1.5c.4 4.7 3.3 7.6 8 8-4.7.4-7.6 3.3-8 8-.4-4.7-3.3-7.6-8-8 4.7-.4 7.6-3.3 8-8z M18.7 13.6c.17 2 1.33 3.16 3.3 3.4-1.97.24-3.13 1.4-3.3 3.4-.17-2-1.33-3.16-3.3-3.4 1.97-.24 3.13-1.4 3.3-3.4z"/></svg>';
                 body = document.createElement('div');
                 body.className = 'body';
                 body.innerHTML = _miaMd(text);
@@ -7482,7 +7482,7 @@
             const cont = document.getElementById('chatMessages'); if (!cont) return;
             cont.innerHTML =
                 '<div class="mia-empty" id="miaEmpty">' +
-                '<div class="av" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor" style="width:58%;height:58%;"><path d="M12 2.6l2.7 5.86 6.4.62-4.82 4.25 1.42 6.27L12 16.9l-5.7 3.3 1.42-6.27L2.9 9.08l6.4-.62L12 2.6z"/></svg></div>' +
+                '<div class="av" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor" style="width:58%;height:58%;"><path d="M10.5 1.5c.4 4.7 3.3 7.6 8 8-4.7.4-7.6 3.3-8 8-.4-4.7-3.3-7.6-8-8 4.7-.4 7.6-3.3 8-8z M18.7 13.6c.17 2 1.33 3.16 3.3 3.4-1.97.24-3.13 1.4-3.3 3.4-.17-2-1.33-3.16-3.3-3.4 1.97-.24 3.13-1.4 3.3-3.4z"/></svg></div>' +
                 '<h4>Soy NOVA, tu copiloto de ventas</h4>' +
                 '<p>Pregúntame por tus ganancias, stock, márgenes o pídeme registrar una venta. Toco tus datos reales.</p>' +
                 '</div>';
@@ -7501,7 +7501,7 @@
                 const wrap = document.createElement('div');
                 wrap.id = 'chatTyping'; wrap.className = 'mia-msg assistant';
                 wrap.setAttribute('aria-label', 'NOVA está escribiendo');
-                wrap.innerHTML = '<div class="avatar" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor" style="width:62%;height:62%;"><path d="M12 2.6l2.7 5.86 6.4.62-4.82 4.25 1.42 6.27L12 16.9l-5.7 3.3 1.42-6.27L2.9 9.08l6.4-.62L12 2.6z"/></svg></div><div class="body"><div class="mia-typing" aria-hidden="true"><span></span><span></span><span></span></div></div>';
+                wrap.innerHTML = '<div class="avatar" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor" style="width:62%;height:62%;"><path d="M10.5 1.5c.4 4.7 3.3 7.6 8 8-4.7.4-7.6 3.3-8 8-.4-4.7-3.3-7.6-8-8 4.7-.4 7.6-3.3 8-8z M18.7 13.6c.17 2 1.33 3.16 3.3 3.4-1.97.24-3.13 1.4-3.3 3.4-.17-2-1.33-3.16-3.3-3.4 1.97-.24 3.13-1.4 3.3-3.4z"/></svg></div><div class="body"><div class="mia-typing" aria-hidden="true"><span></span><span></span><span></span></div></div>';
                 cont.appendChild(wrap);
                 _miaScroll(false);
             } else if (el) { el.remove(); }
@@ -13931,6 +13931,55 @@
     #logros #logrosStats > div[style*="grid-template-columns"]{ gap:8px !important; }
 }
 
+</style>
+<style id="novaPolish">
+/* ===== NOVA — interfaz del asistente (estrellas Gemini + look IA) ===== */
+:root { --nova-grad: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary)); }
+
+/* Avatares: degradado verde→azul con la estrellita en blanco */
+#chatFab,
+.mia-head-av,
+.mia-msg.assistant .avatar,
+.mia-empty .av {
+    background: var(--nova-grad) !important;
+    color: #fff !important;
+}
+
+/* FAB: glow suave con pulso sutil (sensación IA) */
+#chatFab {
+    box-shadow: 0 2px 10px rgba(0,0,0,.25), 0 0 0 0 rgba(var(--accent-rgb), .45);
+    animation: novaGlow 3.2s ease-in-out infinite;
+}
+#chatFab:hover { animation-play-state: paused; transform: translateY(-2px) scale(1.04); }
+@keyframes novaGlow {
+    0%, 100% { box-shadow: 0 2px 10px rgba(0,0,0,.25), 0 0 0 0 rgba(var(--accent-rgb), .45); }
+    50%      { box-shadow: 0 2px 16px rgba(0,0,0,.3), 0 0 0 11px rgba(var(--accent-rgb), 0); }
+}
+
+/* Estrellita del header: gira lento al pasar el mouse (viva, no molesta) */
+.mia-head-av > svg { transition: transform .55s var(--transition-base); }
+.mia-head:hover .mia-head-av > svg { transform: rotate(90deg); }
+
+/* Cabecera con velo de degradado del acento */
+.mia-head { background: linear-gradient(180deg, rgba(var(--accent-rgb), .07), var(--bg-secondary)) !important; }
+
+/* Burbuja del usuario con el degradado de marca */
+.mia-msg.user .bubble { background: var(--nova-grad) !important; color: #fff !important; border: none !important; }
+
+/* Botón enviar con degradado */
+#chatSend { background: var(--nova-grad) !important; color: #fff !important; }
+
+/* Chips de sugerencias: borde por defecto para que se lean como acciones */
+.mia-chip { border: 1px solid var(--border-soft); }
+
+/* Avatar del estado vacío: anillo suave + latido de la estrella */
+.mia-empty .av { box-shadow: 0 0 0 6px rgba(var(--accent-rgb), .12); }
+.mia-empty .av > svg { animation: novaTwinkle 2.6s ease-in-out infinite; }
+@keyframes novaTwinkle { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity:.82; transform: scale(.9); } }
+
+@media (prefers-reduced-motion: reduce) {
+    #chatFab, .mia-empty .av > svg { animation: none; }
+}
 </style>
 </body>
 </html>
