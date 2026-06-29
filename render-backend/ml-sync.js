@@ -343,6 +343,7 @@ function recalcVariantStock(product) {
 function applyOrder(order, ctx) {
   const { products, sales, mappings, pendingMappings, notifications } = ctx;
   const dismissed = new Set((ctx.dismissedPending || []).map(String)); // publicaciones que el usuario ya descartó
+  const salesBorradas = new Set((ctx.salesBorradas || []).map(String)); // ventas que el usuario borró: NO recrear
   const items = order.order_items || [];
   const totalQty = items.reduce((s, it) => s + (it.quantity || 1), 0) || 1;
   const { date, time } = orderDateParts(order);
@@ -361,6 +362,8 @@ function applyOrder(order, ctx) {
     const lineShip = realShip != null ? +(realShip * (qty / totalQty)).toFixed(2) : null;
     const saleId = saleIdFor(order, itemId);
 
+    // No re-crear una venta que el usuario borró a propósito (tombstone salesBorradas).
+    if (salesBorradas.has(String(saleId))) continue;
     if (sales.some((s) => s.source === 'mercadolibre' && String(s.item_id) === itemId && s.id === saleId)) continue;
 
     // Si el usuario YA descartó esta publicación (y no la mapeó), no la registres ni la muestres otra vez.
@@ -546,7 +549,8 @@ async function syncOneUser(svc, gtoken, uid, tk, email, clientId, clientSecret) 
       const ctx = {
         products: state.products || [], sales: state.sales || [], mappings: state.mappings || {},
         pendingMappings: state.pendingMappings || [], notifications: state.notifications || [],
-        dismissedPending: state.dismissedPending || []
+        dismissedPending: state.dismissedPending || [],
+        salesBorradas: state.salesBorradas || []
       };
       let added = 0, pend = 0; const newlyDone = [];
       for (const order of fresh) {
