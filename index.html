@@ -3161,7 +3161,7 @@
                         <button type="button" class="pi-tab" data-set="perfil"><i data-lucide="building-2"></i>Perfil</button>
                         <button type="button" class="pi-tab" data-set="negocio"><i data-lucide="briefcase"></i>Mi negocio</button>
                         <button type="button" class="pi-tab" data-set="notif"><i data-lucide="bell"></i>Notificaciones</button>
-                        <button type="button" class="pi-tab" data-set="ml"><i data-lucide="link"></i>Mercado Libre</button>
+                        <button type="button" class="pi-tab" data-set="ml"><i data-lucide="store"></i>Canales</button>
                         <button type="button" class="pi-tab" data-set="datos"><i data-lucide="database"></i>Datos</button>
                     </div>
 
@@ -3318,13 +3318,94 @@
                         </div>
                     </div>
 
-                    <!-- 4) MERCADO LIBRE (conexión) -->
+                    <!-- 4) CANALES DE VENTA (Mercado Libre conectable + otros "Próximamente") -->
                     <div class="card set-panel" data-set="ml">
-                        <h2 style="display:flex;align-items:center;gap:8px;margin:0;"><i data-lucide="link"></i>Mercado Libre</h2>
-                        <div id="bodyML" style="margin-top:16px;">
-                            <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 12px;">Conecta tu propia cuenta de Mercado Libre para que tus ventas se registren automáticamente.</p>
-                            <div id="mlConnStatus" style="font-size: 13px; margin-bottom: 12px; color: var(--text-secondary);">Verificando…</div>
-                            <button class="btn btn-primary" id="mlConnectBtn"><i data-lucide="link"></i>Conectar con Mercado Libre</button>
+                        <h2 style="display:flex;align-items:center;gap:8px;margin:0;"><i data-lucide="store"></i>Canales de venta</h2>
+                        <div style="margin-top:16px;">
+                            <p style="color:var(--text-secondary);font-size:13px;margin-bottom:18px;">Conecta tus canales para que las ventas se registren automáticamente. Estamos sumando más marketplaces de Chile.</p>
+                            <style>
+                                .chan-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:14px; }
+                                .chan-card {
+                                    position:relative; display:flex; flex-direction:column; gap:12px; padding:18px;
+                                    border-radius:14px; border:1.5px solid var(--border-soft); background:var(--bg-secondary);
+                                }
+                                .chan-card.is-soon { opacity:.72; }
+                                .chan-head { display:flex; align-items:center; gap:12px; }
+                                .chan-logo {
+                                    width:42px; height:42px; border-radius:11px; flex:none; display:flex; align-items:center; justify-content:center;
+                                    font-weight:800; font-size:15px; color:#fff; letter-spacing:.5px;
+                                }
+                                .chan-logo.ml { background:#FFE600; color:#2D3277; }
+                                .chan-logo.fl { background:#A4C400; }
+                                .chan-logo.pa { background:#0067B1; }
+                                .chan-logo.ri { background:#E50019; }
+                                .chan-name { font-size:14.5px; font-weight:700; color:var(--text-primary); }
+                                .chan-sub { font-size:12px; color:var(--text-muted); margin-top:2px; }
+                                .chan-badge-soon {
+                                    display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:700;
+                                    padding:3px 9px; border-radius:999px; background:var(--bg-tertiary); color:var(--text-muted);
+                                    border:1px solid var(--border-soft);
+                                }
+                                .chan-foot { margin-top:auto; }
+                                .chan-foot .btn[disabled] { opacity:.6; cursor:not-allowed; }
+                            </style>
+                            <div class="chan-grid">
+                                <!-- Mercado Libre (funcional) -->
+                                <div class="chan-card">
+                                    <div class="chan-head">
+                                        <div class="chan-logo ml">ML</div>
+                                        <div>
+                                            <div class="chan-name">Mercado Libre</div>
+                                            <div class="chan-sub" id="mlConnStatus">Verificando…</div>
+                                        </div>
+                                    </div>
+                                    <div class="chan-foot">
+                                        <button class="btn btn-primary" id="mlConnectBtn"><i data-lucide="link"></i>Conectar con Mercado Libre</button>
+                                    </div>
+                                </div>
+                                <!-- Falabella (próximamente) -->
+                                <div class="chan-card is-soon">
+                                    <div class="chan-head">
+                                        <div class="chan-logo fl">FL</div>
+                                        <div>
+                                            <div class="chan-name">Falabella</div>
+                                            <div class="chan-sub">Marketplace (ex-Linio)</div>
+                                        </div>
+                                    </div>
+                                    <div class="chan-foot" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                                        <button class="btn btn-secondary" disabled><i data-lucide="clock"></i>Disponible pronto</button>
+                                        <span class="chan-badge-soon"><i data-lucide="hammer" style="width:12px;height:12px;"></i>Próximamente</span>
+                                    </div>
+                                </div>
+                                <!-- Paris (próximamente) -->
+                                <div class="chan-card is-soon">
+                                    <div class="chan-head">
+                                        <div class="chan-logo pa">PA</div>
+                                        <div>
+                                            <div class="chan-name">Paris</div>
+                                            <div class="chan-sub">Marketplace (Cencosud)</div>
+                                        </div>
+                                    </div>
+                                    <div class="chan-foot" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                                        <button class="btn btn-secondary" disabled><i data-lucide="clock"></i>Disponible pronto</button>
+                                        <span class="chan-badge-soon"><i data-lucide="hammer" style="width:12px;height:12px;"></i>Próximamente</span>
+                                    </div>
+                                </div>
+                                <!-- Ripley (próximamente) -->
+                                <div class="chan-card is-soon">
+                                    <div class="chan-head">
+                                        <div class="chan-logo ri">RI</div>
+                                        <div>
+                                            <div class="chan-name">Ripley</div>
+                                            <div class="chan-sub">Marketplace</div>
+                                        </div>
+                                    </div>
+                                    <div class="chan-foot" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                                        <button class="btn btn-secondary" disabled><i data-lucide="clock"></i>Disponible pronto</button>
+                                        <span class="chan-badge-soon"><i data-lucide="hammer" style="width:12px;height:12px;"></i>Próximamente</span>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
