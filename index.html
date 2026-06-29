@@ -7588,7 +7588,9 @@
                 ? STATE.returns.reduce(function(a,r){ return a + (Number(r.impact) || 0); }, 0) : 0;
             // Ganancia NETA REAL = ganancia operativa - devoluciones - IVA - publicidad. ESTE es el
             // número que deben mostrar TODAS las secciones cuando dicen "Ganancia Neta".
-            var netProfit = totalProfitBruta - returnsImpact - ivaAmount - publicidad;
+            // Sin ventas no hay ganancia neta: evita que publicidad/IVA configurados sin ninguna
+            // venta (p.ej. una cuenta nueva/vacía) hagan aparecer un negativo de la nada.
+            var netProfit = sales.length === 0 ? 0 : (totalProfitBruta - returnsImpact - ivaAmount - publicidad);
             return {
                 totalRevenue: totalRevenue,
                 totalProfit: totalProfitBruta,   // ganancia operativa (antes de devoluciones, IVA y publicidad)
@@ -7651,6 +7653,9 @@
             }).sort((a, b) => b.gain - a.gain);
 
             const top5 = productAnalysis.slice(0, 5);
+            // Cada gráfico muestra los 5 mejores SEGÚN SU propia métrica (no siempre por ganancia).
+            const top5Income = [...productAnalysis].sort((a, b) => b.income - a.income).slice(0, 5);
+            const top5Margin = [...productAnalysis].filter(p => p.income > 0).sort((a, b) => b.margin - a.margin).slice(0, 5);
             const bestSeller = productAnalysis.reduce((max, p) => p.sold > max.sold ? p : max, { sold: 0, name: '-' });
             const highestMargin = productAnalysis.filter(p => p.income > 0).reduce((max, p) => p.margin > max.margin ? p : max, { margin: 0, name: '-' });
 
@@ -7689,8 +7694,8 @@
 
             renderTopProductsChart(top5);
             renderStockChart();
-            renderIncomeVsCostChart(top5);
-            renderMarginChart(top5);
+            renderIncomeVsCostChart(top5Income);
+            renderMarginChart(top5Margin);
             renderTopProductsTable(productAnalysis);
             renderBestSeller(bestSeller);
             renderHighestMargin(highestMargin);
@@ -8075,7 +8080,7 @@
                 <th>Producto</th><th>Compra</th><th>Venta</th><th>Comisión</th><th>Envío</th><th>Ganancia Unit</th><th>%</th><th>Ventas</th><th>Total Ingresos</th>
             </tr></thead><tbody>`;
 
-            products.slice(0, 10).forEach(p => {
+            products.slice(0, 5).forEach(p => {
                 const product = STATE.products.find(prod => prod.id === p.id);
                 if (!product) return;
                 
@@ -8358,8 +8363,7 @@
                 const _ps = STATE.sales.filter(s => s.productId === p.id);
                 return { p: p, _g: _ps.reduce((sum, s) => sum + (window.saleProfit ? window.saleProfit(s) : (Number(s.profit) || 0)), 0) };
             }).sort((a, b) => b._g - a._g);
-            const ANA_LIM = 15;
-            const _anaVis = window.__anaShowAll ? _anaList : _anaList.slice(0, ANA_LIM);
+            const _anaVis = _anaList.slice(0, 5);
             _anaVis.forEach(({ p }) => {
                 const sales = STATE.sales.filter(s => s.productId === p.id);
                 const totalIncome = sales.reduce((sum, s) => sum + (Number(s.totalPrice) || 0), 0);
@@ -8382,7 +8386,6 @@
                 </tr>`;
             });
             html += `</tbody></table></div>`;
-            if (_anaList.length > _anaVis.length) html += `<button type="button" class="btn btn-small" style="margin-top:10px;background:var(--bg-tertiary);" onclick="window.__anaShowAll=true; if(window.renderAnalytics) renderAnalytics();"><i data-lucide="list"></i> Ver todos (${_anaList.length})</button>`;
             html += `</div>`;
 
             // Productos sin ventas (baja rotación) — al final, como zona de detalle/acción
@@ -10506,7 +10509,7 @@
         }
 
         // ---------- RENDER: ganancia neta por producto ----------
-        var finGanShowAll = false, finGastShowAll = false;
+        var finGastShowAll = false;
         function renderGananciaProductos(){
             var cont = $('finGananciaProductos');
             if (!cont || !window.STATE) return;
@@ -10536,8 +10539,7 @@
             // TOTAL sobre TODOS los productos (no solo los visibles).
             var totQty = 0, totRev = 0, totCost = 0, totProfit = 0;
             rows.forEach(function(r){ totQty += r.qty; totRev += r.revenue; totCost += r.cost; totProfit += r.profit; });
-            var LIMG = 15;
-            var visRows = finGanShowAll ? rows : rows.slice(0, LIMG);
+            var visRows = rows.slice(0, 5);
             var html = '<div class="table-container"><table><thead><tr>' +
                 '<th>Producto</th><th>Unid. vendidas</th><th>Costo total</th><th>Ingresos</th><th>Ganancia neta</th>' +
                 '</tr></thead><tbody>';
@@ -10559,7 +10561,6 @@
                 '<td style="color:var(--accent-primary);">' + money(totRev) + '</td>' +
                 '<td style="color:' + totCol + ';">' + money(totProfit) + '</td>' +
                 '</tr></tfoot></table></div>';
-            if (rows.length > visRows.length) html += '<button type="button" class="btn btn-small" style="margin-top:10px;background:var(--bg-tertiary);" onclick="if(window.__finGanVerTodos)window.__finGanVerTodos()"><i data-lucide="list"></i> Ver todos (' + rows.length + ')</button>';
             cont.innerHTML = html;
         }
 
@@ -10596,7 +10597,6 @@
             if (exp.length > visExp.length) html += '<button type="button" class="btn btn-small" style="margin-top:10px;background:var(--bg-tertiary);" onclick="if(window.__finGastVerTodos)window.__finGastVerTodos()"><i data-lucide="list"></i> Ver todos (' + exp.length + ')</button>';
             cont.innerHTML = html;
         }
-        window.__finGanVerTodos = function(){ finGanShowAll = true; renderGananciaProductos(); };
         window.__finGastVerTodos = function(){ finGastShowAll = true; renderGastosList(); };
 
         // ---------- RENDER: resumen mensual real + comparativa ----------
