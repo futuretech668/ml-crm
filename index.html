@@ -364,6 +364,8 @@
         wrap.className='acct-wrap';
         wrap.innerHTML=`
           <div class="acct-menu" id="accountMenu" role="menu" hidden>
+            <button class="acct-item" type="button" role="menuitem" data-acct="settings"><i data-lucide="settings"></i> Configuración</button>
+            <div class="acct-sep" role="separator"></div>
             <button class="acct-item acct-item-danger" type="button" role="menuitem" data-acct="logout"><i data-lucide="log-out"></i> Cerrar sesión</button>
           </div>
           <button class="acct" id="accountBtn" type="button" aria-haspopup="menu" aria-expanded="false">
@@ -2173,6 +2175,7 @@
         .acct-item i { width: 15px; height: 15px; }
         .acct-item-danger { color: var(--accent-danger, #ef4444); }
         .acct-item-danger:hover { background: var(--danger-soft); }
+        .acct-sep { height: 1px; margin: 4px 6px; background: var(--border-soft); }
         /* ---- Ícono de ayuda (?) con tooltip (hover en escritorio, tap/focus en móvil) ---- */
         .help-tip { position: relative; display: inline-flex; align-items: center; justify-content: center;
             width: 16px; height: 16px; min-width: 16px; border-radius: 50%; margin-left: 6px;
@@ -2498,7 +2501,6 @@
             <div class="rail-item" data-sec="finanzas" onclick="irASeccion('finanzas')"><i data-lucide="wallet"></i>Finanzas</div>
             <div class="rail-item rail-parent" data-sec="rendimiento" data-group="rendimiento" onclick="irASeccion('rendimiento')"><i data-lucide="bar-chart-3"></i>Rendimiento<span class="rail-caret"><i data-lucide="chevron-down"></i></span></div>
             <div class="rail-item" data-sec="agenda" onclick="irASeccion('agenda'); if(window.renderAgenda) renderAgenda();"><i data-lucide="calendar-check"></i>Agenda</div>
-            <div class="rail-item rail-foot-item" data-sec="settings" onclick="irASeccion('settings')"><i data-lucide="settings"></i>Configuración</div>
         </nav>
     </aside>
 
@@ -3118,17 +3120,112 @@
                             margin-top: 22px; border: 1px solid var(--danger-border); border-radius: 12px;
                             padding: 16px; background: var(--danger-soft);
                         }
+
+                        /* ===== Cuenta y seguridad ===== */
+                        .acc-identity {
+                            display: flex; align-items: center; gap: 14px; padding: 16px;
+                            border: 1px solid var(--border-soft); border-radius: 14px;
+                            background: linear-gradient(180deg, var(--bg-elevated), transparent); margin-bottom: 18px;
+                        }
+                        .acc-avatar {
+                            width: 48px; height: 48px; flex: none; border-radius: 50%;
+                            display: flex; align-items: center; justify-content: center;
+                            background: var(--accent-soft); color: var(--accent-primary);
+                            font-weight: 700; font-size: 18px; overflow: hidden;
+                        }
+                        .acc-avatar > i, .acc-avatar > svg { width: 24px; height: 24px; }
+                        .acc-avatar img { width: 100%; height: 100%; object-fit: cover; }
+                        .acc-id-info { min-width: 0; flex: 1; }
+                        .acc-id-name { font-size: 15px; font-weight: 700; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+                        .acc-id-mail { font-size: 13px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+                        .acc-badge {
+                            display: inline-flex; align-items: center; gap: 6px; flex: none;
+                            padding: 5px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 700;
+                            background: var(--accent-soft); color: var(--accent-primary); border: 1px solid var(--accent-border);
+                        }
+                        .acc-badge[hidden] { display: none; }
+                        .acc-badge > i, .acc-badge > svg { width: 13px; height: 13px; }
+                        .acc-row {
+                            border: 1px solid var(--border-soft); border-radius: 14px;
+                            padding: 16px; margin-bottom: 14px; background: var(--bg-secondary);
+                        }
+                        .acc-row-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+                        .acc-row-ttl { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; color: var(--text-primary); }
+                        .acc-row-ttl > i, .acc-row-ttl > svg { width: 17px; height: 17px; color: var(--accent-primary); }
+                        .acc-row-sub { font-size: 12.5px; color: var(--text-muted); margin-top: 4px; max-width: 46ch; }
+                        #accPwMsg.is-err { color: var(--accent-danger); }
+                        #accPwMsg.is-ok { color: var(--accent-primary); }
                     </style>
                     <div class="pi-tabs" id="settingsTabs">
-                        <button type="button" class="pi-tab active" data-set="perfil"><i data-lucide="building-2"></i>Perfil</button>
+                        <button type="button" class="pi-tab active" data-set="cuenta"><i data-lucide="user-circle"></i>Cuenta</button>
+                        <button type="button" class="pi-tab" data-set="perfil"><i data-lucide="building-2"></i>Perfil</button>
                         <button type="button" class="pi-tab" data-set="negocio"><i data-lucide="briefcase"></i>Mi negocio</button>
                         <button type="button" class="pi-tab" data-set="notif"><i data-lucide="bell"></i>Notificaciones</button>
                         <button type="button" class="pi-tab" data-set="ml"><i data-lucide="link"></i>Mercado Libre</button>
                         <button type="button" class="pi-tab" data-set="datos"><i data-lucide="database"></i>Datos</button>
                     </div>
 
+                    <!-- 0) CUENTA Y SEGURIDAD (sesión, correo, contraseña) -->
+                    <div class="card set-panel active" data-set="cuenta">
+                        <h2 style="display:flex;align-items:center;gap:8px;margin:0;"><i data-lucide="user-circle"></i>Cuenta y seguridad</h2>
+                        <div id="bodyCuenta" style="margin-top:16px;">
+                            <p style="color:var(--text-secondary);font-size:13px;margin-bottom:16px;">Tu sesión, tu correo de acceso y tu contraseña. Estos datos son privados de tu cuenta.</p>
+
+                            <!-- Tarjeta de identidad -->
+                            <div class="acc-identity">
+                                <div class="acc-avatar" id="accAvatar"><i data-lucide="user"></i></div>
+                                <div class="acc-id-info">
+                                    <div class="acc-id-name" id="accName">NexSell</div>
+                                    <div class="acc-id-mail" id="accEmail">—</div>
+                                </div>
+                                <span class="acc-badge" id="accBadge" hidden><i data-lucide="shield-check"></i>Dueño</span>
+                            </div>
+
+                            <!-- Cambiar contraseña -->
+                            <div class="acc-row">
+                                <div class="acc-row-head">
+                                    <div>
+                                        <div class="acc-row-ttl"><i data-lucide="key-round"></i>Contraseña</div>
+                                        <div class="acc-row-sub">Te enviaremos un código de 6 dígitos a tu correo para confirmar el cambio.</div>
+                                    </div>
+                                    <button type="button" class="btn btn-secondary" onclick="if(window.accPwToggle)accPwToggle()"><i data-lucide="key-round"></i>Cambiar contraseña</button>
+                                </div>
+                                <div id="accPwFlow" hidden style="margin-top:14px;border-top:1px solid var(--border-soft);padding-top:14px;">
+                                    <!-- Paso 1 -->
+                                    <div id="accPwStep1">
+                                        <p style="color:var(--text-secondary);font-size:13px;margin:0 0 12px;">Te enviaremos un código a <strong id="accPwMail">tu correo</strong>.</p>
+                                        <button type="button" class="btn btn-primary" id="accPwSend" onclick="if(window.accPwSendCode)accPwSendCode()"><i data-lucide="mail"></i>Enviarme el código</button>
+                                    </div>
+                                    <!-- Paso 2 -->
+                                    <div id="accPwStep2" hidden>
+                                        <div class="form-row">
+                                            <div class="form-group"><label class="form-label">Código de 6 dígitos</label><input type="text" inputmode="numeric" maxlength="6" class="form-control" id="accPwCode" placeholder="000000" autocomplete="one-time-code"></div>
+                                            <div class="form-group"><label class="form-label">Nueva contraseña</label><input type="password" class="form-control" id="accPwNew" placeholder="Mínimo 6 caracteres" autocomplete="new-password"></div>
+                                        </div>
+                                        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px;">
+                                            <button type="button" class="btn btn-primary" id="accPwConfirmBtn" onclick="if(window.accPwConfirm)accPwConfirm()"><i data-lucide="check"></i>Confirmar cambio</button>
+                                            <button type="button" class="btn btn-secondary" id="accPwResend" onclick="if(window.accPwSendCode)accPwSendCode()"><i data-lucide="refresh-cw"></i>Reenviar código</button>
+                                        </div>
+                                    </div>
+                                    <div id="accPwMsg" style="margin-top:10px;font-size:13px;"></div>
+                                </div>
+                            </div>
+
+                            <!-- Cerrar sesión -->
+                            <div class="acc-row">
+                                <div class="acc-row-head">
+                                    <div>
+                                        <div class="acc-row-ttl"><i data-lucide="log-out"></i>Sesión</div>
+                                        <div class="acc-row-sub">Cierra tu sesión en este dispositivo.</div>
+                                    </div>
+                                    <button type="button" class="btn btn-danger" onclick="if(window.__AUTH&&window.__AUTH.logout)__AUTH.logout()"><i data-lucide="log-out"></i>Cerrar sesión</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- 1) PERFIL DE LA EMPRESA (identidad) -->
-                    <div class="card set-panel active" data-set="perfil">
+                    <div class="card set-panel" data-set="perfil">
                         <h2 style="display:flex;align-items:center;gap:8px;margin:0;"><i data-lucide="building-2"></i>Perfil de la empresa</h2>
                         <div id="bodyPerfil" style="margin-top:16px;">
                             <p style="color:var(--text-secondary);font-size:13px;margin-bottom:16px;">El nombre y el logo aparecen en la app. La <strong>moneda</strong> afecta todos los montos.</p>
@@ -4058,7 +4155,7 @@
             if (seccion === 'devoluciones') { if (window.returnPoblarVentas) returnPoblarVentas(); renderReturns(); }
             if (seccion === 'products') renderProductsList();
             if (seccion === 'finanzas') { if (window.renderFinanzas) renderFinanzas(); }
-            if (seccion === 'settings') { if (window.fillProfileInputs) fillProfileInputs(); if (window.fillBusinessInputs) fillBusinessInputs(); if (window.mlRefreshStatus) mlRefreshStatus(); }
+            if (seccion === 'settings') { if (window.fillAccountInputs) fillAccountInputs(); if (window.fillProfileInputs) fillProfileInputs(); if (window.fillBusinessInputs) fillBusinessInputs(); if (window.mlRefreshStatus) mlRefreshStatus(); }
             if (seccion === 'rendimiento') {
                 try { RENDER_SECCION[tabRendimientoActiva()](); } catch (e) {}
             }
@@ -4595,6 +4692,97 @@
             }
         }
         window.fillProfileInputs = fillProfileInputs;
+
+        // ===== Cuenta y seguridad =====
+        function _accCurrentEmail(){
+            try { var c = (window.__AUTH && window.__AUTH.current) ? window.__AUTH.current() : null; return (c && c.email) ? c.email : ''; }
+            catch(e){ return ''; }
+        }
+        function _accMsg(txt, kind){ var m = document.getElementById('accPwMsg'); if(!m) return; m.textContent = txt || ''; m.className = kind ? ('is-' + kind) : ''; }
+        function _accResetFlow(){
+            var s1 = document.getElementById('accPwStep1'); if (s1) s1.hidden = false;
+            var s2 = document.getElementById('accPwStep2'); if (s2) s2.hidden = true;
+            var c = document.getElementById('accPwCode'); if (c) c.value = '';
+            var n = document.getElementById('accPwNew'); if (n) n.value = '';
+            _accMsg('');
+        }
+        async function _accApi(path, body){
+            try {
+                var r = await fetch(window.API_BASE + '/api/' + path, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body || {}) });
+                var j = await r.json().catch(function(){ return {}; });
+                return j || { ok:false, reason:'neterror' };
+            } catch(e){ return { ok:false, reason:'neterror' }; }
+        }
+        window.fillAccountInputs = function(){
+            var p = window.ensureProfile ? ensureProfile() : {};
+            var name = (p && p.companyName) ? p.companyName : 'NexSell';
+            var email = _accCurrentEmail();
+            var set = function(id, txt){ var el = document.getElementById(id); if (el) el.textContent = txt; };
+            set('accName', name);
+            set('accEmail', email || 'Sin correo registrado en este dispositivo');
+            var mailEl = document.getElementById('accPwMail'); if (mailEl) mailEl.textContent = email || 'tu correo';
+            var av = document.getElementById('accAvatar');
+            if (av){
+                if (p && p.logo){ av.innerHTML = '<img src="' + p.logo + '" alt="logo">'; }
+                else { av.textContent = (String(name || 'N').trim().charAt(0) || 'N').toUpperCase(); }
+            }
+            var badge = document.getElementById('accBadge');
+            if (badge){
+                var owner = null, uid = null;
+                try { owner = localStorage.getItem('ml_auth_owner'); uid = localStorage.getItem('ml_auth_uid'); } catch(e){}
+                badge.hidden = !(owner && uid && owner === uid);
+            }
+            var flow = document.getElementById('accPwFlow'); if (flow) flow.hidden = true;
+            _accResetFlow();
+            if (window.lucide && lucide.createIcons) try { lucide.createIcons(); } catch(e){}
+        };
+        window.accPwToggle = function(){
+            var flow = document.getElementById('accPwFlow'); if (!flow) return;
+            flow.hidden = !flow.hidden;
+            if (!flow.hidden) _accResetFlow();
+            if (window.lucide && lucide.createIcons) try { lucide.createIcons(); } catch(e){}
+        };
+        window.accPwSendCode = async function(){
+            var email = _accCurrentEmail();
+            if (!email){ _accMsg('No encontramos tu correo en este dispositivo. Cierra sesión y vuelve a entrar.', 'err'); return; }
+            var btns = [document.getElementById('accPwSend'), document.getElementById('accPwResend')];
+            btns.forEach(function(b){ if (b) b.disabled = true; });
+            _accMsg('Enviando código…');
+            var resp = await _accApi('email-verify-start', { email: email });
+            btns.forEach(function(b){ if (b) b.disabled = false; });
+            if (resp && resp.ok){
+                var s1 = document.getElementById('accPwStep1'); if (s1) s1.hidden = true;
+                var s2 = document.getElementById('accPwStep2'); if (s2) s2.hidden = false;
+                _accMsg('Te enviamos un código a ' + email + '. Revisa tu correo (y la carpeta de Spam).', 'ok');
+                var c = document.getElementById('accPwCode'); if (c) c.focus();
+            } else {
+                _accMsg('No se pudo enviar el código ahora. Intenta de nuevo en un momento.', 'err');
+            }
+        };
+        window.accPwConfirm = async function(){
+            var email = _accCurrentEmail();
+            var code = String((document.getElementById('accPwCode') || {}).value || '').trim();
+            var np = (document.getElementById('accPwNew') || {}).value || '';
+            if (!/^\d{6}$/.test(code)){ _accMsg('Escribe el código de 6 dígitos que te llegó al correo.', 'err'); return; }
+            if (np.length < 6){ _accMsg('La nueva contraseña debe tener al menos 6 caracteres.', 'err'); return; }
+            var b = document.getElementById('accPwConfirmBtn'); if (b) b.disabled = true;
+            _accMsg('Verificando…');
+            var resp = await _accApi('auth-recover', { email: email, code: code, newPassword: np });
+            if (b) b.disabled = false;
+            if (resp && resp.ok){
+                _accMsg('¡Contraseña actualizada! La próxima vez inicia sesión con la nueva.', 'ok');
+                if (window.showToast) showToast('✅ Contraseña actualizada');
+                setTimeout(function(){ var flow = document.getElementById('accPwFlow'); if (flow) flow.hidden = true; _accResetFlow(); }, 1900);
+                return;
+            }
+            var reason = resp ? resp.reason : 'neterror';
+            if (reason === 'wrong') return _accMsg('Código incorrecto. Revísalo e inténtalo de nuevo.', 'err');
+            if (reason === 'expired' || reason === 'nocode') return _accMsg('El código venció o no existe. Pide uno nuevo con "Reenviar código".', 'err');
+            if (reason === 'attempts') return _accMsg('Demasiados intentos. Pide un código nuevo.', 'err');
+            if (reason === 'nouser') return _accMsg('No existe una cuenta con ese correo.', 'err');
+            return _accMsg('No se pudo cambiar la contraseña ahora. Inténtalo de nuevo.', 'err');
+        };
+
         window.saveProfile = function(){
             var p = ensureProfile();
             var gv = function(id){ var el = document.getElementById(id); return el ? el.value : ''; };
