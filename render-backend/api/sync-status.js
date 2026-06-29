@@ -95,6 +95,7 @@ exports.handler = async (event) => {
       ok: true,
       connected,
       mlUserId: tk.ml_user_id != null ? Number(tk.ml_user_id) : null,
+      mlNick: tk.nickname || null,
       lastCheck: tk.lastCheck || null,
       lastSyncAt,
       processedOrdersCount,

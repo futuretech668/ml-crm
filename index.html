@@ -558,17 +558,17 @@
                         (snap) => { cb(snap.exists() ? snap.data() : {}); },
                         (err) => console.warn('⚠️ Firestore offline, usando localStorage:', err.message)
                     ),
-                    // Estado REAL de conexión ML: lee el token guardado en la BASE DE DATOS
-                    // (crm_ml_tokens/{uid}), compartido entre dispositivos. Esta es la fuente de verdad.
+                    // Estado REAL de conexión ML: se consulta por el backend
+                    // (/api/sync-status), que devuelve SOLO metadatos seguros. El cliente
+                    // ya NO lee crm_ml_tokens directamente (contiene access/refresh en claro).
                     mlStatus: async () => {
                         try {
-                            if (!_auid) return { connected: false };
-                            const s = await getDoc(doc(db, 'crm_ml_tokens', _auid));
-                            if (s.exists()) {
-                                const d = s.data() || {};
-                                return { connected: !!(d.access_token || d.ml_user_id), mlUser: d.nickname || d.ml_user_id || null };
-                            }
-                            return { connected: false };
+                            const t = auth.currentUser ? await auth.currentUser.getIdToken() : null;
+                            if (!t) return { connected: false };
+                            const r = await fetch(window.API_BASE + '/api/sync-status', { headers: { Authorization: 'Bearer ' + t } });
+                            if (!r.ok) return null;
+                            const d = await r.json();
+                            return { connected: !!d.connected, mlUser: d.mlNick || d.mlUserId || null };
                         } catch (e) { console.warn('mlStatus:', e.message); return null; }
                     },
                     // Desconectar: borra el token de la base de datos (detiene la sincronización).
@@ -9340,10 +9340,14 @@
         }
 
         // Llama a OpenRouter en modo visión reutilizando CHAT.apiKey/endpoint.
-        function askVision(dataURL, catalogNames){
+        async function askVision(dataURL, catalogNames){
             if (typeof CHAT === 'undefined' || !CHAT.apiKey) {
                 return Promise.reject(new Error('NO_API'));
             }
+            // ai-proxy ahora exige una sesión válida (Firebase ID token): así un
+            // tercero no puede gastar la clave de OpenRouter llamando al endpoint.
+            const token = (window.FB && window.FB.getIdToken) ? await window.FB.getIdToken() : null;
+            if (!token) return Promise.reject(new Error('AUTH'));
             var listado = catalogNames && catalogNames.length
                 ? catalogNames.map(function(n,i){ return (i+1)+'. '+n; }).join('\n')
                 : '(catálogo vacío)';
@@ -9369,10 +9373,8 @@
             return fetch(CHAT.endpoint, {
                 method: 'POST',
                 headers: {
-                    'Authorization': 'Bearer ' + CHAT.apiKey,
-                    'Content-Type': 'application/json',
-                    'HTTP-Referer': location.origin || 'https://ml-crm-app',
-                    'X-Title': 'NexSell'
+                    'Authorization': 'Bearer ' + token,
+                    'Content-Type': 'application/json'
                 },
                 body: JSON.stringify(body)
             }).then(function(res){

@@ -14,7 +14,7 @@
 // ============================================================================
 
 const crypto = require('crypto');
-const { getSvc, getGoogleAccessToken, fsGet, emailKey, validEmail, clientIp, checkRate, json } = require('./lib/_core.js');
+const { getSvc, getGoogleAccessToken, fsGet, fsPatch, hashPassword, verifyPassword, isScryptHash, emailKey, validEmail, clientIp, checkRate, json } = require('./lib/_core.js');
 
 function base64url(buf) {
   return Buffer.from(buf).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
@@ -53,12 +53,24 @@ exports.handler = async (event) => {
     if (!(await checkRate(svc, gtoken, 'login_em_' + emailKey(email), 8, 15 * 60 * 1000))) return json(429, { ok: false, reason: 'rate' });
 
     const acc = await fsGet(svc, gtoken, 'crm_accounts/' + emailKey(email));
-    if (!acc || !acc.uid || !acc.hash || !acc.salt) return json(401, { ok: false, reason: 'nouser' });
+    if (!acc || !acc.uid || !acc.hash) return json(401, { ok: false, reason: 'nouser' });
 
-    const h = hashPw(acc.salt, password);
-    // Comparación en tiempo constante para no filtrar info por tiempos.
-    const a = Buffer.from(h), b = Buffer.from(String(acc.hash));
-    const okPass = a.length === b.length && crypto.timingSafeEqual(a, b);
+    // Verificación de contraseña.
+    //  · Cuentas nuevas: hash scrypt (KDF lento) → verifyPassword.
+    //  · Cuentas viejas: hash SHA-256(salt+'|'+pw). Se valida en tiempo constante y,
+    //    si calza, se RE-HASHEA a scrypt de forma transparente (migración al entrar).
+    let okPass = false;
+    const stored = String(acc.hash);
+    if (isScryptHash(stored)) {
+      okPass = verifyPassword(password, stored);
+    } else if (acc.salt) {
+      const h = hashPw(acc.salt, password);
+      const a = Buffer.from(h), b = Buffer.from(stored);
+      okPass = a.length === b.length && crypto.timingSafeEqual(a, b);
+      if (okPass) {
+        try { await fsPatch(svc, gtoken, 'crm_accounts/' + emailKey(email), Object.assign({}, acc, { hash: hashPassword(password), salt: '' })); } catch (_) { /* el login no falla si la migración no se pudo guardar */ }
+      }
+    }
     if (!okPass) return json(401, { ok: false, reason: 'badpass' });
 
     // ¿Es el dueño? Se decide en el SERVIDOR (no en el navegador). Va como Custom Claim

@@ -76,11 +76,10 @@ exports.handler = async (event) => {
     const v = await core.consumeCode(svc, token, email, code);
     if (!v.ok) return core.json(200, v);
 
-    const salt = rndHex(8);
-    const hash = hashPw(salt, password);
+    const hash = core.hashPassword(password); // scrypt (incluye su propio salt)
     const recovery = rndHex(5).toUpperCase();
     const uid = 'u_' + (crypto.randomUUID ? crypto.randomUUID() : rndHex(8));
-    await core.fsPatch(svc, token, path, { uid, email, salt, hash, recovery, createdAt: new Date().toISOString() });
+    await core.fsPatch(svc, token, path, { uid, email, salt: '', hash, recovery, createdAt: new Date().toISOString() });
 
     const isOwner = email === (process.env.OWNER_EMAIL || 'futuretech.cl.668@gmail.com').toLowerCase();
     return core.json(200, { ok: true, uid, recovery, isOwner: isOwner, token: mintToken(svc, uid, isOwner, email) });

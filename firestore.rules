@@ -28,11 +28,13 @@ service cloud.firestore {
       allow read, write: if request.auth != null && request.auth.uid == uid;
     }
 
-    // ---- Tokens de Mercado Libre: el usuario LEE el suyo; escribe solo el backend ----
+    // ---- Tokens de Mercado Libre: el cliente NO los lee (contienen access/refresh
+    //      en claro → robo de cuenta ML vía XSS). El estado de conexión se consulta
+    //      por el endpoint /api/sync-status, que solo devuelve metadatos seguros. ----
     match /crm_ml_tokens/{uid} {
-      allow read: if request.auth != null && request.auth.uid == uid;
+      allow read: if false; // lectura del token: solo el backend (service account, ignora reglas)
       allow delete: if request.auth != null && request.auth.uid == uid; // el usuario puede desconectar SU propio ML
-      allow create, update: if false; // crear/actualizar el token: solo el backend (service account, ignora reglas)
+      allow create, update: if false; // crear/actualizar el token: solo el backend
     }
 
     // ---- Memoria e hilos del copiloto MIA: SOLO backend ----

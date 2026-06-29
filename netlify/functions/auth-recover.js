@@ -38,8 +38,8 @@ exports.handler = async (event) => {
     const v = await core.consumeCode(svc, token, email, code);
     if (!v.ok) return core.json(200, v);
 
-    acc.salt = rndHex(8);
-    acc.hash = hashPw(acc.salt, np);
+    acc.salt = '';
+    acc.hash = core.hashPassword(np); // scrypt (incluye su propio salt)
     await core.fsPatch(svc, token, path, acc);
 
     return core.json(200, { ok: true });

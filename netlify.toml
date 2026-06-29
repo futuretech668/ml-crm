@@ -14,3 +14,13 @@
 # YA NO corren en Netlify: se movieron a Render (carpeta render-backend/) para
 # no gastar los créditos de Netlify. Aquí solo quedan funciones livianas que se
 # usan cuando el usuario actúa (chat IA, verificación de correo, conectar ML).
+
+# Cabeceras de seguridad para todo lo servido estáticamente.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains"
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "geolocation=(), microphone=(), camera=()"

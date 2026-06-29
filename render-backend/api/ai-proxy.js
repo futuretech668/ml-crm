@@ -37,7 +37,18 @@ exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 200, headers: cors(), body: '' };
   if (event.httpMethod !== 'POST') return reply(405, { error: 'method' });
 
-  // Capa extra (no única): solo aceptar llamadas que digan venir del propio sitio.
+  // Autenticación: exige un Firebase ID token válido (igual que ai-agent / sync-status).
+  // Antes la única barrera era el Referer (falsificable con curl) → un tercero podía
+  // gastar la clave de OpenRouter. Ahora hace falta una sesión real.
+  const hh = event.headers || {};
+  const idToken = String(hh.authorization || hh.Authorization || '').replace(/^Bearer\s+/i, '').trim();
+  if (!idToken) return reply(401, { error: 'noauth' });
+  let svc;
+  try { svc = core.getSvc(); } catch (e) { return reply(500, { error: 'config' }); }
+  try { await core.verifyFirebaseIdToken(idToken, svc.project_id); }
+  catch (e) { return reply(401, { error: 'badtoken' }); }
+
+  // Capa extra (no única): preferir llamadas que digan venir del propio sitio.
   const host = (process.env.URL || '').replace(/^https?:\/\//, '').replace(/\/$/, '');
   const ref = ((event.headers && (event.headers.referer || event.headers.Referer)) || '') + ' ' +
               ((event.headers && (event.headers.origin || event.headers.Origin)) || '');
@@ -54,7 +65,6 @@ exports.handler = async (event) => {
 
   // Rate-limit por IP (best-effort: si Firestore falla, no rompe el chat).
   try {
-    const svc = core.getSvc();
     const gtoken = await core.getGoogleAccessToken(svc);
     const ip = core.clientIp(event);
     if (!(await core.checkRate(svc, gtoken, 'ai_ip_' + ip, 40, 60 * 60 * 1000))) return reply(429, { error: 'rate limit' });

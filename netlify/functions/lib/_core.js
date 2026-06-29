@@ -115,6 +115,28 @@ function gmailSmtpSend(user, pass, fromName, to, subject, html) {
 
 // ---- Utilidades varias ----
 function sha256(s) { return crypto.createHash('sha256').update(String(s)).digest('hex'); }
+
+// ---- Hashing de contraseñas con scrypt (KDF lento, sin dependencias externas) ----
+// Formato almacenado: "scrypt$N$r$p$saltHex$hashHex". Sustituye al SHA-256 de una
+// sola pasada (rápido y crackeable por GPU si se filtra crm_accounts). Las cuentas
+// viejas (hash SHA-256 hex) se validan en auth-token y se re-hashean al iniciar sesión.
+function hashPassword(pw) {
+  const N = 16384, r = 8, p = 1, keylen = 32;
+  const salt = crypto.randomBytes(16);
+  const dk = crypto.scryptSync(String(pw), salt, keylen, { N, r, p, maxmem: 64 * 1024 * 1024 });
+  return ['scrypt', N, r, p, salt.toString('hex'), dk.toString('hex')].join('$');
+}
+function verifyPassword(pw, stored) {
+  try {
+    const parts = String(stored || '').split('$');
+    if (parts.length !== 6 || parts[0] !== 'scrypt') return false;
+    const N = +parts[1], r = +parts[2], p = +parts[3];
+    const salt = Buffer.from(parts[4], 'hex'), hash = Buffer.from(parts[5], 'hex');
+    const dk = crypto.scryptSync(String(pw), salt, hash.length, { N, r, p, maxmem: 64 * 1024 * 1024 });
+    return dk.length === hash.length && crypto.timingSafeEqual(dk, hash);
+  } catch (e) { return false; }
+}
+function isScryptHash(stored) { return typeof stored === 'string' && stored.indexOf('scrypt$') === 0; }
 function emailKey(email) { return String(email || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '_'); }
 const validEmail = (e) => /^[^\s@<>"']+@[^\s@<>"']+\.[^\s@<>"']+$/.test(String(e || ''));
 
@@ -213,4 +235,4 @@ function json(status, obj) {
   };
 }
 
-module.exports = { getSvc, getGoogleAccessToken, fsGet, fsPatch, gmailSmtpSend, sha256, emailKey, validEmail, domainHasMx, consumeCode, clientIp, checkRate, verifyFirebaseIdToken, json };
+module.exports = { getSvc, getGoogleAccessToken, fsGet, fsPatch, gmailSmtpSend, sha256, hashPassword, verifyPassword, isScryptHash, emailKey, validEmail, domainHasMx, consumeCode, clientIp, checkRate, verifyFirebaseIdToken, json };

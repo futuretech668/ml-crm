@@ -16,6 +16,6 @@
     "dotenv": "^16.4.5",
     "firebase-admin": "^12.7.0",
     "fuse.js": "^7.0.0",
-    "nodemailer": "^9.0.0"
+    "nodemailer": "^9.0.1"
   }
 }
