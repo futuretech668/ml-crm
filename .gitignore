@@ -16,6 +16,12 @@ _subir-a-github/
 _subir-a-netlify/
 _otros/
 
+# Herramientas de agente y planes locales (no van al repo)
+.agents/
+.claude/
+skills-lock.json
+plans/
+
 # Sistema
 .DS_Store
 Thumbs.db
