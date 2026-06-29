@@ -2588,7 +2588,7 @@
                         <div id="dashInsights"></div>
                     </div>
 
-                    <div class="card" style="margin-bottom: 24px;">
+                    <div class="card" id="dashStockCard" style="margin-bottom: 24px;">
                         <h3><i data-lucide="package-x"></i>Alertas de stock</h3>
                         <div id="dashStockAlerts"></div>
                     </div>
@@ -2598,7 +2598,7 @@
                             <h3><i data-lucide="trophy"></i>Top 5 Productos</h3>
                             <div id="top5ProductsList"></div>
                         </div>
-                        <div class="card">
+                        <div class="card" id="dashStockChartCard">
                             <h3><i data-lucide="boxes"></i>Stock Disponible</h3>
                             <canvas id="stockChart" height="250" style="max-width: 100%; max-height: 250px;"></canvas>
                         </div>
@@ -3254,16 +3254,48 @@
                         <div id="bodyNegocio" style="margin-top:16px;">
                             <p style="color:var(--text-secondary);font-size:13px;margin-bottom:16px;">Estas respuestas ajustan la app a tu negocio (envío, comisiones e IVA). Puedes <strong>omitir</strong> cualquiera y cambiarlas cuando quieras; los cambios se aplican al instante.</p>
                             <style>
-                                .biz-q { margin-bottom: 22px; }
-                                .biz-q > .biz-q-label { display:block; font-size:14px; font-weight:600; color:var(--text-primary); margin-bottom:10px; }
-                                .biz-options { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:10px; }
-                                .biz-opt { display:flex; flex-direction:column; gap:5px; padding:13px 14px; border-radius:12px; border:1.5px solid var(--border-color); background:var(--bg-secondary); cursor:pointer; transition:border-color .18s ease, background .18s ease, transform .12s ease, box-shadow .18s ease; }
-                                .biz-opt:hover { border-color:var(--accent-primary); transform:translateY(-2px); box-shadow:0 6px 16px rgba(0,0,0,.20); }
-                                .biz-opt .biz-ico { width:24px; height:24px; color:var(--text-secondary); transition:color .18s ease; }
+                                .biz-q { margin-bottom: 24px; }
+                                .biz-q > .biz-q-label { display:flex; align-items:center; gap:8px; font-size:14px; font-weight:600; color:var(--text-primary); margin-bottom:12px; }
+                                .biz-q > .biz-q-label > i, .biz-q > .biz-q-label > svg { width:16px; height:16px; color:var(--accent-primary); }
+                                .biz-options { display:grid; grid-template-columns:repeat(auto-fill, minmax(158px, 1fr)); gap:11px; }
+                                .biz-opt {
+                                    position:relative; display:flex; flex-direction:column; gap:9px; padding:15px 15px 14px;
+                                    border-radius:14px; border:1.5px solid var(--border-soft); background:var(--bg-secondary);
+                                    cursor:pointer; overflow:hidden;
+                                    transition:border-color .18s ease, background .18s ease, transform .14s ease, box-shadow .18s ease;
+                                }
+                                .biz-opt::after {
+                                    content:''; position:absolute; top:11px; right:11px; width:20px; height:20px; border-radius:50%;
+                                    border:2px solid var(--border-strong); background:transparent; transition:all .18s ease;
+                                }
+                                .biz-opt:hover { border-color:var(--accent-border); transform:translateY(-2px); box-shadow:0 8px 20px rgba(0,0,0,.22); }
+                                .biz-opt:focus-visible { outline:none; border-color:var(--accent-primary); box-shadow:var(--focus-ring); }
+                                .biz-ico-chip {
+                                    width:40px; height:40px; border-radius:11px; display:flex; align-items:center; justify-content:center;
+                                    background:var(--bg-tertiary); transition:background .18s ease;
+                                }
+                                .biz-opt .biz-ico { width:21px; height:21px; color:var(--text-secondary); transition:color .18s ease; }
                                 .biz-opt .biz-ttl { font-size:13.5px; font-weight:700; color:var(--text-primary); }
                                 .biz-opt .biz-sub { font-size:11.5px; color:var(--text-muted); line-height:1.3; }
-                                .biz-opt.sel { border-color:var(--accent-primary); background:var(--accent-soft); box-shadow:0 0 0 1px var(--accent-primary) inset; }
-                                .biz-opt.sel .biz-ico { color:var(--accent-primary); }
+                                .biz-opt.sel {
+                                    border-color:var(--accent-primary); background:var(--accent-soft);
+                                    box-shadow:0 0 0 1px var(--accent-primary) inset, 0 6px 18px rgba(var(--accent-rgb),.18);
+                                }
+                                .biz-opt.sel .biz-ico-chip { background:var(--accent-primary); }
+                                .biz-opt.sel .biz-ico { color:#04130C; }
+                                .biz-opt.sel::after {
+                                    border-color:var(--accent-primary); background:var(--accent-primary);
+                                    box-shadow:inset 0 0 0 3px var(--accent-soft);
+                                }
+                                /* Nota dinámica de "qué cambia en la app" según la opción elegida */
+                                .biz-effect {
+                                    display:flex; align-items:flex-start; gap:8px; margin-top:11px; padding:10px 12px;
+                                    border-radius:10px; background:var(--accent-soft); border:1px solid var(--accent-border);
+                                    font-size:12.5px; color:var(--text-secondary); line-height:1.4;
+                                }
+                                .biz-effect > i, .biz-effect > svg { width:15px; height:15px; color:var(--accent-primary); flex:none; margin-top:1px; }
+                                .biz-effect.is-muted { background:var(--bg-tertiary); border-color:var(--border-soft); }
+                                .biz-effect.is-muted > i, .biz-effect.is-muted > svg { color:var(--text-muted); }
                             </style>
                             <div id="bizCards"></div>
                             <button type="button" class="btn btn-primary" style="margin-top:6px;" onclick="if(window.saveBusinessConfig)saveBusinessConfig()"><i data-lucide="save"></i>Guardar configuración</button>
@@ -4861,7 +4893,7 @@
             return b;
         };
         var BIZ_QUESTIONS = [
-            { q:'tipo', label:'¿Qué tipo de negocio tienes?', opts:[
+            { q:'tipo', qic:'store', label:'¿Qué tipo de negocio tienes?', opts:[
                 { v:'fisica', ic:'store', t:'Tienda física', s:'Vendo en local' },
                 { v:'mercadolibre', ic:'shopping-bag', t:'Mercado Libre', s:'Vendo en ML' },
                 { v:'marketplace', ic:'shopping-cart', t:'Marketplace', s:'Otro marketplace' },
@@ -4869,24 +4901,46 @@
                 { v:'mixto', ic:'layers', t:'Mixto', s:'Varios canales' },
                 { v:'nose', ic:'help-circle', t:'No sé', s:'Aún no lo defino' },
                 { v:'omitir', ic:'minus-circle', t:'Omitir', s:'Prefiero no decir' }
-            ]},
-            { q:'envio', label:'¿Cobras envío?', opts:[
+            ], eff:{
+                fisica:{ t:'La app se enfoca en tu venta en local.', m:true },
+                mercadolibre:{ t:'La app se enfoca en tus ventas de Mercado Libre.', m:true },
+                marketplace:{ t:'La app se enfoca en tu venta por marketplace.', m:true },
+                servicios:{ t:'La app se adapta a un negocio de servicios.', m:true },
+                mixto:{ t:'La app contempla varios canales de venta.', m:true },
+                nose:{ t:'Sin problema: puedes definirlo más adelante.', m:true },
+                omitir:{ t:'Sin cambios por ahora.', m:true }
+            }},
+            { q:'envio', qic:'truck', label:'¿Cobras envío?', opts:[
                 { v:'si', ic:'check-circle-2', t:'Sí', s:'Siempre cobro' },
                 { v:'no', ic:'x-circle', t:'No', s:'Nunca cobro' },
                 { v:'aveces', ic:'shuffle', t:'A veces', s:'Según el producto' },
                 { v:'omitir', ic:'minus-circle', t:'Omitir', s:'Dejar como está' }
-            ]},
-            { q:'comision', label:'¿Pagas comisiones de plataforma?', opts:[
+            ], eff:{
+                si:{ t:'En tus productos podrás cargar el costo de envío.', m:false },
+                no:{ t:'Ocultamos el envío en el formulario de productos.', m:false },
+                aveces:{ t:'En tus productos podrás cargar el costo de envío.', m:false },
+                omitir:{ t:'El envío se decide por producto, como hasta ahora.', m:true }
+            }},
+            { q:'comision', qic:'percent', label:'¿Pagas comisiones de plataforma?', opts:[
                 { v:'si', ic:'check-circle-2', t:'Sí', s:'Siempre pago' },
                 { v:'no', ic:'x-circle', t:'No', s:'Nunca pago' },
                 { v:'aveces', ic:'shuffle', t:'A veces', s:'Según el producto' },
                 { v:'omitir', ic:'minus-circle', t:'Omitir', s:'Dejar como está' }
-            ]},
-            { q:'iva', label:'¿Tu negocio paga IVA?', opts:[
+            ], eff:{
+                si:{ t:'En tus productos podrás cargar la comisión.', m:false },
+                no:{ t:'Ocultamos las comisiones en Productos y en el Dashboard.', m:false },
+                aveces:{ t:'En tus productos podrás cargar la comisión.', m:false },
+                omitir:{ t:'Las comisiones se deciden por producto, como hasta ahora.', m:true }
+            }},
+            { q:'iva', qic:'receipt', label:'¿Tu negocio paga IVA?', opts:[
                 { v:'si', ic:'check-circle-2', t:'Sí', s:'Pago IVA' },
                 { v:'no', ic:'x-circle', t:'No', s:'No pago IVA' },
                 { v:'omitir', ic:'minus-circle', t:'Omitir', s:'Dejar como está' }
-            ]}
+            ], eff:{
+                si:{ t:'Mostramos el detalle de IVA en Finanzas.', m:false },
+                no:{ t:'Ocultamos la tarjeta de IVA en Finanzas.', m:false },
+                omitir:{ t:'El IVA queda como esté configurado.', m:true }
+            }}
         ];
         function renderBusinessCards(){
             var cont = document.getElementById('bizCards');
@@ -4895,17 +4949,20 @@
             var html = '';
             BIZ_QUESTIONS.forEach(function(Q){
                 var sel = b[Q.q] || 'omitir';
-                html += '<div class="biz-q"><span class="biz-q-label">' + Q.label + '</span><div class="biz-options">';
+                html += '<div class="biz-q"><span class="biz-q-label"><i data-lucide="' + (Q.qic || 'circle-help') + '"></i>' + Q.label + '</span><div class="biz-options">';
                 Q.opts.forEach(function(o){
                     html += '<div class="biz-opt' + (sel === o.v ? ' sel' : '') + '" role="button" tabindex="0"' +
                         ' data-q="' + Q.q + '" data-v="' + o.v + '"' +
                         ' onclick="if(window.bizSelect)bizSelect(\'' + Q.q + '\',\'' + o.v + '\')">' +
-                        '<i data-lucide="' + o.ic + '" class="biz-ico"></i>' +
+                        '<span class="biz-ico-chip"><i data-lucide="' + o.ic + '" class="biz-ico"></i></span>' +
                         '<span class="biz-ttl">' + o.t + '</span>' +
                         '<span class="biz-sub">' + o.s + '</span>' +
                         '</div>';
                 });
-                html += '</div></div>';
+                html += '</div>';
+                var ef = (Q.eff && Q.eff[sel]) ? Q.eff[sel] : null;
+                if (ef) html += '<div class="biz-effect' + (ef.m ? ' is-muted' : '') + '"><i data-lucide="' + (ef.m ? 'info' : 'sparkles') + '"></i><span>' + ef.t + '</span></div>';
+                html += '</div>';
             });
             cont.innerHTML = html;
             // Respaldo robusto: además del onclick, un listener delegado en el contenedor
@@ -4927,9 +4984,20 @@
             var b = window.ensureBusinessConfig();
             if (b[q] === v){ renderBusinessCards(); return; } // ya seleccionado (evita doble trabajo)
             b[q] = v;
+            // Según el tipo de negocio, fijar el canal de Ventas que el usuario usa por defecto
+            // (dónde vende). Se aplica UNA sola vez en la sección Ventas; luego el usuario manda.
+            if (q === 'tipo'){
+                var canalPorTipo = { mercadolibre:'mercadolibre', fisica:'manual', marketplace:'otro', servicios:'manual' };
+                b._channelPref = canalPorTipo[v] || '';
+                b._channelPrefPending = true;
+            }
             if (window.saveToLocalStorage) saveToLocalStorage();
             window.applyBusinessConfig();
             renderBusinessCards();
+            if (q === 'tipo'){
+                if (window.__ventasPoblarCanales) try { window.__ventasPoblarCanales(); } catch(e){}
+                if (window.renderSalesList) try { renderSalesList(); } catch(e){}
+            }
             var info = document.getElementById('bizInfo');
             if (info) info.textContent = '✅ Guardado. La app se ajustó a tu configuración.';
         };
@@ -4950,16 +5018,30 @@
             var check = function(id, val){ var el = document.getElementById(id); if (el) el.checked = val; };
 
             // --- ENVÍO / COMISIÓN (formulario de Productos) ---
-            // La pregunta ¿Pagas envío? / ¿Pagas comisión? SIEMPRE se muestra: se decide por
-            // producto, NO por la config del negocio. Solo se ocultan los campos según el radio.
-            show('prodShippingToggleRow', true);
-            show('prodShippingFields', window.prodToggleOn('prodHasShipping'));
-            show('prodCommissionToggleRow', true);
-            show('prodCommissionFields', window.prodToggleOn('prodHasCommission'));
+            // Si el negocio respondió "No" en Mi negocio, ocultamos por completo ese bloque del
+            // formulario (envío o comisión). Para 'sí' / 'a veces' / 'omitir' se mantiene visible y
+            // la decisión final se toma por producto con su propio toggle.
+            var envioVisible = (b.envio !== 'no');
+            show('prodShippingToggleRow', envioVisible);
+            show('prodShippingFields', envioVisible && window.prodToggleOn('prodHasShipping'));
+            var comisionVisible = (b.comision !== 'no');
+            show('prodCommissionToggleRow', comisionVisible);
+            show('prodCommissionFields', comisionVisible && window.prodToggleOn('prodHasCommission'));
             // --- IVA (sección Finanzas): ocultar la tarjeta si "No paga IVA" ---
             show('finIvaCard', b.iva !== 'no');
             // --- Dashboard: ocultar la tarjeta de Comisiones (lo de ML) si "No paga comisiones" ---
             show('dashCommissionsCard', b.comision !== 'no');
+
+            // --- TIPO DE NEGOCIO: la app se adapta a lo que vende cada usuario ---
+            // Servicios: un negocio de servicios no maneja stock → ocultar las superficies de
+            // inventario (acceso en el rail, pestañas "Inventario" y tarjetas de stock del Dashboard).
+            var esServicios = (b.tipo === 'servicios');
+            var showAll = function(sel, on){ document.querySelectorAll(sel).forEach(function(el){ el.style.display = on ? '' : 'none'; }); };
+            showAll('.rail-subitem[data-sub="inventory"]', !esServicios);
+            showAll('.pi-tab[data-pi="inventory"]', !esServicios);
+            show('dashStockCard', !esServicios);
+            show('dashStockChartCard', !esServicios);
+
             // --- Tabla de Ventas: re-render para mostrar/ocultar columnas ---
             try { if (typeof renderSalesList === 'function') renderSalesList(); } catch(e){}
         };
@@ -9541,6 +9623,18 @@
             var nombre = window.canalNombreDe || function(c){ return c; };
             sel.innerHTML = '<option value="">Todos los canales</option>';
             canales.forEach(function(c){ var op = document.createElement('option'); op.value = c; op.textContent = nombre(c); sel.appendChild(op); });
+            // Preferencia de canal según "Mi negocio": se aplica una sola vez tras elegir el tipo,
+            // y solo si ese canal ya tiene ventas (si no, se deja "Todos" para no ocultar todo).
+            try {
+                var bizp = (window.ensureBusinessConfig ? window.ensureBusinessConfig() : null);
+                if (bizp && bizp._channelPrefPending) {
+                    bizp._channelPrefPending = false;
+                    var pref = bizp._channelPref || '';
+                    var prefExiste = pref && Array.prototype.some.call(sel.options, function(o){ return o.value === pref; });
+                    if (prefExiste) prev = pref;
+                    if (window.saveToLocalStorage) saveToLocalStorage();
+                }
+            } catch(e){}
             var existe = Array.prototype.some.call(sel.options, function(o){ return o.value === prev; });
             sel.value = existe ? prev : '';
             _vView().channel = sel.value || '';
