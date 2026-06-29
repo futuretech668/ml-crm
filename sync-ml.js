@@ -357,6 +357,7 @@ async function processOrders(db, tokens) {
             const state = snap.exists ? snap.data() : {};
             const products = state.products || [];
             const sales = state.sales || [];
+            const salesBorradas = new Set((Array.isArray(state.salesBorradas) ? state.salesBorradas : []).map(String));
             const mappings = state.mappings || {};
             const pendingMappings = state.pendingMappings || [];
             const notifications = state.notifications || [];
@@ -377,6 +378,8 @@ async function processOrders(db, tokens) {
                 const lineShip = realShip != null ? +(realShip * (qty / totalQty)).toFixed(2) : null;
                 const saleId = saleIdFor(order, itemId);
 
+                // No re-crear una venta que el usuario borró a propósito (tombstone salesBorradas).
+                if (salesBorradas.has(String(saleId))) continue;
                 // Evitar duplicados por venta ML ya registrada
                 if (sales.some(s => s.source === 'mercadolibre' && String(s.item_id) === itemId && s.id === saleId)) continue;
 

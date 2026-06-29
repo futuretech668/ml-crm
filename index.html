@@ -499,6 +499,7 @@
                         // que el local no tenga (las que agregó el cron). Las locales ganan
                         // ante un mismo id (reflejan ediciones del usuario).
                         const localSales = Array.isArray(data.sales) ? data.sales : [];
+                        const _salesDeleted = new Set((Array.isArray(data.salesBorradas) ? data.salesBorradas : []).map(String));
                         const seen = new Set(localSales.map(s => String(s && s.id)));
                         const mergedSales = localSales.slice();
                         // Campos de tracking que el cron actualiza: se copian desde la remota SOLO si
@@ -506,6 +507,7 @@
                         const _TRACK_FIELDS = ['shipmentId','shippingStatus','shippingSubstatus','trackingNumber','trackingUrl','logisticType','estimatedDelivery','dateShipped','lastShipUpdate'];
                         for (const rs of remoteSales) {
                             const id = String(rs && rs.id);
+                            if (_salesDeleted.has(id)) continue;   // venta borrada por el usuario: NO resucitar
                             if (!seen.has(id)) { mergedSales.push(rs); seen.add(id); }
                             else if (rs && rs.source === 'mercadolibre' && rs.lastShipUpdate) {
                                 const local = mergedSales.find(s => String(s && s.id) === id);
@@ -533,10 +535,12 @@
                         // Unión por id de `returns` (devoluciones): mismo criterio anti-race que sales,
                         // para no perder una devolución que otro dispositivo agregó entre snapshots.
                         const localReturns = Array.isArray(data.returns) ? data.returns : [];
+                        const _returnsDeleted = new Set((Array.isArray(data.returnsBorradas) ? data.returnsBorradas : []).map(String));
                         const seenR = new Set(localReturns.map(r => String(r && r.id)));
                         const mergedReturns = localReturns.slice();
                         for (const rr of remoteReturns) {
                             const id = String(rr && rr.id);
+                            if (_returnsDeleted.has(id)) continue;   // devolución borrada por el usuario: NO resucitar
                             if (!seenR.has(id)) { mergedReturns.push(rr); seenR.add(id); }
                         }
                         return setDoc(stateDocRef, {
@@ -548,6 +552,8 @@
                             dismissedPending: data.dismissedPending || [],
                             despachosBorrados: data.despachosBorrados || [],
                             tasksBorradas: data.tasksBorradas || [],
+                            salesBorradas: data.salesBorradas || [],
+                            returnsBorradas: data.returnsBorradas || [],
                             notifications: data.notifications || [],
                             // Campos nuevos (Finanzas/Agenda/Metas/Logros): se sincronizan también.
                             expenses: data.expenses || [],
@@ -4107,6 +4113,8 @@
             products: [],
             sales: [],
             returns: [],           // Devoluciones (multicanal): vinculadas a una venta original
+            salesBorradas: [],     // tombstones: ids de ventas borradas (no resucitan vía sync/unión de nube)
+            returnsBorradas: [],   // tombstones: ids de devoluciones borradas
             mappings: {},          // PASO 4: mapeo item_id de ML -> producto confirmado
             pendingMappings: [],   // PASO 4: publicaciones nuevas esperando confirmación
             dismissedPending: [],  // item_id de pendientes descartadas/cargadas (se guarda en BD → nunca reaparecen)
@@ -5176,11 +5184,21 @@
                     if (Array.isArray(data.expenses)) STATE.expenses = data.expenses;
                     if (Array.isArray(data.despachosBorrados)) STATE.despachosBorrados = data.despachosBorrados.map(String);
                     if (Array.isArray(data.tasksBorradas)) STATE.tasksBorradas = data.tasksBorradas.map(String);
+                    if (Array.isArray(data.salesBorradas)) STATE.salesBorradas = data.salesBorradas.map(String);
+                    if (Array.isArray(data.returnsBorradas)) STATE.returnsBorradas = data.returnsBorradas.map(String);
                     if (typeof data.reportEmail === 'string') STATE.reportEmail = data.reportEmail;
                     if (Array.isArray(data.tasks)) STATE.tasks = data.tasks;
                     if (Array.isArray(STATE.tasksBorradas) && STATE.tasksBorradas.length && Array.isArray(STATE.tasks)) {
                         var _delTL = new Set(STATE.tasksBorradas.map(String));
                         STATE.tasks = STATE.tasks.filter(function(t){ return !_delTL.has(String(t && t.id)); });
+                    }
+                    if (Array.isArray(STATE.salesBorradas) && STATE.salesBorradas.length && Array.isArray(STATE.sales)) {
+                        var _delSL = new Set(STATE.salesBorradas.map(String));
+                        STATE.sales = STATE.sales.filter(function(s){ return !_delSL.has(String(s && s.id)); });
+                    }
+                    if (Array.isArray(STATE.returnsBorradas) && STATE.returnsBorradas.length && Array.isArray(STATE.returns)) {
+                        var _delRL = new Set(STATE.returnsBorradas.map(String));
+                        STATE.returns = STATE.returns.filter(function(r){ return !_delRL.has(String(r && r.id)); });
                     }
                     if (data.goals && typeof data.goals === 'object') STATE.goals = data.goals;
                     if (data.achievements && typeof data.achievements === 'object') STATE.achievements = data.achievements;
@@ -5277,6 +5295,8 @@
                 dismissedPending: STATE.dismissedPending || [],
                 despachosBorrados: STATE.despachosBorrados || [],
                 tasksBorradas: STATE.tasksBorradas || [],
+                salesBorradas: STATE.salesBorradas || [],
+                returnsBorradas: STATE.returnsBorradas || [],
                 notifications: STATE.notifications || [],
                 // Campos nuevos: se suben con fallback para nunca enviar undefined a Firestore.
                 expenses: STATE.expenses || [],
@@ -5326,6 +5346,23 @@
             if (Array.isArray(STATE.tasksBorradas) && STATE.tasksBorradas.length && Array.isArray(STATE.tasks)) {
                 var _delT = new Set(STATE.tasksBorradas.map(String));
                 STATE.tasks = STATE.tasks.filter(function(t){ return !_delT.has(String(t && t.id)); });
+            }
+            // Ventas borradas: tombstone por UNIÓN local+nube + filtrar para que NI la nube NI el cron
+            // (sync-ml) resuciten una venta que el usuario borró.
+            if (Array.isArray(data.salesBorradas)) {
+                STATE.salesBorradas = Array.from(new Set([].concat(STATE.salesBorradas || [], data.salesBorradas).map(String)));
+            }
+            if (Array.isArray(STATE.salesBorradas) && STATE.salesBorradas.length && Array.isArray(STATE.sales)) {
+                var _delS = new Set(STATE.salesBorradas.map(String));
+                STATE.sales = STATE.sales.filter(function(s){ return !_delS.has(String(s && s.id)); });
+            }
+            // Devoluciones borradas: mismo tombstone anti-resurrección.
+            if (Array.isArray(data.returnsBorradas)) {
+                STATE.returnsBorradas = Array.from(new Set([].concat(STATE.returnsBorradas || [], data.returnsBorradas).map(String)));
+            }
+            if (Array.isArray(STATE.returnsBorradas) && STATE.returnsBorradas.length && Array.isArray(STATE.returns)) {
+                var _delR = new Set(STATE.returnsBorradas.map(String));
+                STATE.returns = STATE.returns.filter(function(r){ return !_delR.has(String(r && r.id)); });
             }
             if (data.goals && typeof data.goals === 'object') STATE.goals = data.goals;
             if (data.achievements && typeof data.achievements === 'object') STATE.achievements = data.achievements;
@@ -5981,7 +6018,8 @@
 
             document.getElementById('clearBtn').addEventListener('click', () => {
                 if (confirm('⚠️ Esto borrará TODOS tus datos: productos, ventas, gastos, tareas/agenda, metas y logros.\nLa configuración (perfil, negocio, conexión Mercado Libre) se conserva.\n\nEsta acción NO se puede deshacer. ¿Seguro?')) {
-                    STATE.products = []; STATE.sales = [];
+                    STATE.products = []; STATE.sales = []; STATE.returns = [];
+                    STATE.salesBorradas = []; STATE.returnsBorradas = [];
                     STATE.expenses = []; STATE.gastosFijos = [];
                     STATE.tasks = []; STATE.despachosBorrados = []; STATE.tasksBorradas = [];
                     STATE.goals = {}; STATE.achievements = {};
@@ -6382,6 +6420,8 @@
                     }
                     product.lastModified = new Date().toISOString();
                 }
+                if (!Array.isArray(STATE.salesBorradas)) STATE.salesBorradas = [];
+                if (STATE.salesBorradas.map(String).indexOf(String(id)) < 0) STATE.salesBorradas.push(String(id));
                 STATE.sales = STATE.sales.filter(s => s.id !== id);
                 saveToLocalStorage();
                 renderSalesList();
@@ -6811,6 +6851,8 @@
             if (!ret) return;
             if (!confirm('¿Eliminar esta devolución de "' + DOMPurify.sanitize(ret.productName) + '"?\n(' + ret.quantity + ' ' + (ret.quantity === 1 ? 'unidad' : 'unidades') + ')')) return;
             aplicarStockDevolucion(ret, -1);   // revertir el reingreso de stock
+            if (!Array.isArray(STATE.returnsBorradas)) STATE.returnsBorradas = [];
+            if (STATE.returnsBorradas.map(String).indexOf(String(id)) < 0) STATE.returnsBorradas.push(String(id));
             STATE.returns = STATE.returns.filter(function(r){ return r.id !== id; });
             saveToLocalStorage();
             returnPoblarVentas();
