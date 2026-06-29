@@ -32,6 +32,7 @@ const OWNER_EMAIL = (process.env.OWNER_EMAIL || process.env.REPORT_EMAIL || 'fut
 const REPORT_EMAIL = process.env.REPORT_EMAIL || 'futuretech.cl.668@gmail.com';
 const FROM_NAME = process.env.EMAIL_FROM_NAME || 'NexSell';
 const MAX_EMAILS_PER_RUN = Number(process.env.MAX_EMAILS_PER_RUN || 6);
+const SHIP_LATE_HOURS = Number(process.env.SHIP_LATE_HOURS || 24);
 
 // ---------------- Google / Firestore (igual que ml-sync) ----------------
 function base64url(buf) {
@@ -260,8 +261,13 @@ exports.handler = async () => {
     if (!est.emailedInit) {
       for (const s of sales) if (s && s.source === 'mercadolibre' && s.id != null) emailedSales.add(String(s.id));
       for (const p of products) { if (!p || p.archived) continue; const st = p.stock || 0, min = (p.stockMin != null ? p.stockMin : 5); const id = (p.id != null ? p.id : (p.name || '')); if (st <= 0) emailedLowStock.add(id + ':out'); else if (st <= min) emailedLowStock.add(id + ':low'); }
+      // Sembrar dedupe de correos de envío: el primer run NO dispara ráfaga por backlog ya demorado.
+      const _initShipLate = new Set(), _initShipDelayed = new Set();
+      for (const s of sales) if (s && s.source === 'mercadolibre' && s.id != null) { _initShipLate.add(String(s.id)); _initShipDelayed.add(String(s.id)); }
       est.emailedInit = true; est.lastWeekly = mondayKey(now); est.lastMonthly = now.toISOString().slice(0, 7);
       est.emailedSales = [...emailedSales].slice(-2000); est.emailedLowStock = [...emailedLowStock].slice(-500);
+      est.emailedShipLate = [..._initShipLate].slice(-2000); est.emailedShipDelayed = [..._initShipDelayed].slice(-2000);
+      est.shipLateByUser = {}; est.shipDelayedByUser = {};
       changed = true; log.push('Avisos del dueño inicializados (línea base, sin envíos del histórico).');
     } else {
       // Resumen DIARIO de ventas (UN solo correo al día, no uno por cada venta) — hora de Chile.
@@ -296,6 +302,33 @@ exports.handler = async () => {
         if (await send(REPORT_EMAIL, subject, html)) { emailedLowStock.add(key); changed = true; }
       }
       for (const p of products) { if (!p) continue; const stock = p.stock || 0, min = (p.stockMin != null ? p.stockMin : 5); if (stock > min) { const id = (p.id != null ? p.id : (p.name || '')); if (emailedLowStock.delete(id + ':low')) changed = true; if (emailedLowStock.delete(id + ':out')) changed = true; } }
+      // Envíos demorados: ventas ML pagadas sin despachar > SHIP_LATE_HOURS (no Full).
+      const emailedShipLate = new Set(est.emailedShipLate || []);
+      const emailedShipDelayed = new Set(est.emailedShipDelayed || []);
+      const nowMs = Date.now();
+      const lateMs = SHIP_LATE_HOURS * 3600 * 1000;
+      for (const s of sales) {
+        if (!s || s.source !== 'mercadolibre' || !s.shipmentId || !s.id) continue;
+        const sid = String(s.id);
+        // ship_late: pagada sin despachar > SHIP_LATE_HOURS (excluir Full).
+        if (['ready_to_ship', 'handling', 'pending'].includes(s.shippingStatus) && s.logisticType !== 'fulfillment') {
+          const createdAt = Date.parse(s.createdAt || s.date || '');
+          if (createdAt && (nowMs - createdAt) >= lateMs && !emailedShipLate.has(sid)) {
+            const { subject, html } = EMAIL_TEMPLATES.buildShipLateEmail({ productName: s.productName, orderId: s.order_id, saleDate: s.date, shippingStatus: s.shippingStatus, trackingNumber: s.trackingNumber, horasLimite: SHIP_LATE_HOURS });
+            if (await send(REPORT_EMAIL, subject, html)) { emailedShipLate.add(sid); changed = true; }
+          }
+        } else if (emailedShipLate.has(sid)) { emailedShipLate.delete(sid); changed = true; } // avanzó: limpiar marca
+        // ship_delayed: en camino con ETA vencida y aún no entregado.
+        if (s.shippingStatus === 'shipped' && s.estimatedDelivery) {
+          const eta = Date.parse(s.estimatedDelivery);
+          if (eta && eta < nowMs && !emailedShipDelayed.has(sid)) {
+            const { subject, html } = EMAIL_TEMPLATES.buildShipDelayedEmail({ productName: s.productName, orderId: s.order_id, estimatedDelivery: s.estimatedDelivery, trackingNumber: s.trackingNumber, shippingSubstatus: s.shippingSubstatus });
+            if (await send(REPORT_EMAIL, subject, html)) { emailedShipDelayed.add(sid); changed = true; }
+          }
+        } else if (['delivered', 'cancelled', 'not_delivered'].includes(s.shippingStatus) && emailedShipDelayed.has(sid)) { emailedShipDelayed.delete(sid); changed = true; }
+      }
+      est.emailedShipLate = [...emailedShipLate].slice(-2000);
+      est.emailedShipDelayed = [...emailedShipDelayed].slice(-2000);
       // Fechas de Chile para semanal/mensual (mismo huso que el diario).
       const [_cy, _cm, _cd] = chileDay.split('-').map(Number);
       const chileDow = new Date(Date.UTC(_cy, _cm - 1, _cd)).getUTCDay();   // 0 = domingo
@@ -354,6 +387,38 @@ exports.handler = async () => {
           if (await send(email, subject, html)) { seen.add(k); changed = true; }
         }
         lsu[uid] = [...seen].slice(-200);
+
+        // 1b) Envíos demorados de SUS ventas (ship_late y ship_delayed).
+        const slu = est.shipLateByUser || {};
+        const sdu = est.shipDelayedByUser || {};
+        const seenSL = new Set(slu[uid] || []);
+        const seenSD = new Set(sdu[uid] || []);
+        const nowMsU = Date.now();
+        const lateMsU = SHIP_LATE_HOURS * 3600 * 1000;
+        for (const s of (data.sales || [])) {
+          if (!s || s.source !== 'mercadolibre' || !s.shipmentId || !s.id) continue;
+          const sid = String(s.id);
+          if (['ready_to_ship', 'handling', 'pending'].includes(s.shippingStatus) && s.logisticType !== 'fulfillment') {
+            const createdAt = Date.parse(s.createdAt || s.date || '');
+            if (createdAt && (nowMsU - createdAt) >= lateMsU && !seenSL.has(sid)) {
+              if (budget.sent >= budget.max) break;
+              const { subject, html } = EMAIL_TEMPLATES.buildShipLateEmail({ productName: s.productName, orderId: s.order_id, saleDate: s.date, shippingStatus: s.shippingStatus, trackingNumber: s.trackingNumber, horasLimite: SHIP_LATE_HOURS });
+              if (await send(email, subject, html)) { seenSL.add(sid); changed = true; }
+            }
+          } else if (seenSL.has(sid)) { seenSL.delete(sid); changed = true; }
+          if (s.shippingStatus === 'shipped' && s.estimatedDelivery) {
+            const eta = Date.parse(s.estimatedDelivery);
+            if (eta && eta < nowMsU && !seenSD.has(sid)) {
+              if (budget.sent >= budget.max) break;
+              const { subject, html } = EMAIL_TEMPLATES.buildShipDelayedEmail({ productName: s.productName, orderId: s.order_id, estimatedDelivery: s.estimatedDelivery, trackingNumber: s.trackingNumber, shippingSubstatus: s.shippingSubstatus });
+              if (await send(email, subject, html)) { seenSD.add(sid); changed = true; }
+            }
+          } else if (['delivered', 'cancelled', 'not_delivered'].includes(s.shippingStatus) && seenSD.has(sid)) { seenSD.delete(sid); changed = true; }
+        }
+        slu[uid] = [...seenSL].slice(-200);
+        sdu[uid] = [...seenSD].slice(-200);
+        est.shipLateByUser = slu;
+        est.shipDelayedByUser = sdu;
 
         // 2) Resumen diario de SUS ventas (21:00, solo si vendió hoy) — a su correo configurado o, si no, al de la cuenta.
         if (dCurHour >= dHour && ldu[uid] !== dDay) {

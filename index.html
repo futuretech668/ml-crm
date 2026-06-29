@@ -499,9 +499,18 @@
                         const localSales = Array.isArray(data.sales) ? data.sales : [];
                         const seen = new Set(localSales.map(s => String(s && s.id)));
                         const mergedSales = localSales.slice();
+                        // Campos de tracking que el cron actualiza: se copian desde la remota SOLO si
+                        // la remota tiene un lastShipUpdate más nuevo. NO se pisan campos financieros editables.
+                        const _TRACK_FIELDS = ['shipmentId','shippingStatus','shippingSubstatus','trackingNumber','trackingUrl','logisticType','estimatedDelivery','dateShipped','lastShipUpdate'];
                         for (const rs of remoteSales) {
                             const id = String(rs && rs.id);
                             if (!seen.has(id)) { mergedSales.push(rs); seen.add(id); }
+                            else if (rs && rs.source === 'mercadolibre' && rs.lastShipUpdate) {
+                                const local = mergedSales.find(s => String(s && s.id) === id);
+                                if (local && (!local.lastShipUpdate || rs.lastShipUpdate > local.lastShipUpdate)) {
+                                    _TRACK_FIELDS.forEach(f => { if (rs[f] !== undefined) local[f] = rs[f]; });
+                                }
+                            }
                         }
                         // Unión por item_id de pendingMappings: el cron puede crear una venta
                         // pendiente (publicación nueva) mientras la pestaña está abierta; si
@@ -2751,6 +2760,15 @@
                                             <option value="">Todos los canales</option>
                                         </select>
                                     </div>
+                                    <div><label class="form-label">Envío</label>
+                                        <select id="ventasShipFilter" class="form-control" style="min-height:auto;min-width:160px;" onchange="window.__ventasFiltrarEnvio && window.__ventasFiltrarEnvio()">
+                                            <option value="">Todos</option>
+                                            <option value="por_despachar">Por despachar</option>
+                                            <option value="shipped">En camino</option>
+                                            <option value="delivered">Entregados</option>
+                                            <option value="problema">Problema envío</option>
+                                        </select>
+                                    </div>
                                     <div><label class="form-label">Fecha de referencia</label>
                                         <input type="date" id="ventasRefDate" class="form-control" style="min-height:auto;" onchange="window.__ventasRefDateChange && window.__ventasRefDateChange()">
                                     </div>
@@ -4336,6 +4354,7 @@
             var _comR = document.getElementById('saleComisionResumen');
             if (_comR) helpOnEl(_comR.parentElement, 'La comisión se toma del producto. Pulsa "Ajustar" si esta venta tuvo una comisión distinta, o para agregarla si el producto no tenía.');
             helpOnField('ventasCanal', 'Filtra el historial para ver solo las ventas de un canal (Manual, Mercado Libre, etc.).');
+            helpOnField('ventasShipFilter', 'Filtra las ventas de Mercado Libre por estado de envío: Por despachar, En camino, Entregados o Problema. El badge bajo el nombre del producto muestra este estado en tiempo real.');
             // --- Devoluciones ---
             helpOnSection('devoluciones', 'Registra cuando un cliente te devuelve un producto. Repone el stock y descuenta la ganancia de esa venta.');
             helpOnField('returnChannel', 'Filtra por canal para encontrar la venta original que se está devolviendo.');
@@ -5809,15 +5828,74 @@
             }
         }
 
+        // ---- Helpers de estado de envío (solo ventas ML; ventas manuales/viejas degradan limpio) ----
+        function shipStatusLabel(status) {
+            if (status === 'ready_to_ship') return 'Listo para despachar';
+            if (status === 'handling') return 'Preparando';
+            if (status === 'pending') return 'Pendiente';
+            if (status === 'shipped') return 'En camino';
+            if (status === 'delivered') return 'Entregado';
+            if (status === 'not_delivered') return 'No entregado';
+            if (status === 'cancelled') return 'Cancelado';
+            return status || '';
+        }
+        function shipLogisticLabel(type) {
+            if (type === 'fulfillment') return 'Full (ML)';
+            if (type === 'self_service') return 'Flex';
+            if (type === 'colect') return 'Colecta';
+            if (type === 'drop_off') return 'Drop-off';
+            if (type === 'xd_drop_off') return 'XD Drop-off';
+            return type || '';
+        }
+        // Badge de estado de envío bajo el nombre del producto (solo ventas ML con tracking).
+        // Ventas sin shippingStatus (manual, viejas) → cadena vacía (no rompe la tabla).
+        function shipBadge(s) {
+            if (!s || !s.shippingStatus || s.source !== 'mercadolibre') return '';
+            const status = s.shippingStatus;
+            const LATE_MS = 24 * 3600 * 1000; // SHIP_LATE_HOURS client-side
+            const isLate = ['ready_to_ship', 'handling', 'pending'].includes(status) &&
+                s.logisticType !== 'fulfillment' &&
+                s.createdAt && (Date.now() - Date.parse(s.createdAt)) > LATE_MS;
+            if (['ready_to_ship', 'handling', 'pending'].includes(status)) {
+                const color = isLate ? 'var(--accent-danger)' : 'var(--warning,#e09b2d)';
+                const title = isLate ? ' title="Lleva más de 24h sin despacharse"' : '';
+                return '<div style="margin-top:3px;"><span class="badge" style="background:' + color + ';color:#fff;font-size:10px;"' + title + '>Por despachar' + (isLate ? ' ⚠️' : '') + '</span></div>';
+            }
+            if (status === 'shipped') {
+                const tracking = s.trackingNumber ? (' · N° ' + (window.DOMPurify ? DOMPurify.sanitize(String(s.trackingNumber)) : String(s.trackingNumber).replace(/[<>]/g, ''))) : '';
+                return '<div style="margin-top:3px;"><span class="badge" style="background:var(--accent-primary);color:#fff;font-size:10px;">En camino' + tracking + '</span></div>';
+            }
+            if (status === 'delivered') {
+                return '<div style="margin-top:3px;"><span class="badge" style="background:var(--success,#1f9d57);color:#fff;font-size:10px;">Entregado ✓</span></div>';
+            }
+            if (['not_delivered', 'cancelled'].includes(status)) {
+                return '<div style="margin-top:3px;"><span class="badge" style="background:var(--accent-danger);color:#fff;font-size:10px;">Problema envío</span></div>';
+            }
+            return '';
+        }
+
         function renderSalesList() {
             const container = document.getElementById('salesTable');
             // Estado de DESPLIEGUE (no toca cálculos ni STATE): recent=últimas 5 | all=todas
             // | range/day/week/month=por período. channel=filtro de canal ('' = todos).
-            const V = window.__salesView || (window.__salesView = { mode: 'recent', desde: '', hasta: '', search: '', channel: '', refDate: '' });
+            const V = window.__salesView || (window.__salesView = { mode: 'recent', desde: '', hasta: '', search: '', channel: '', refDate: '', shipFilter: '' });
             let base = getSalesByPeriod(STATE.sales).slice().sort((a, b) => new Date(b.date) - new Date(a.date));
             // Filtro por canal (normaliza undefined/'' -> 'manual').
             if (V.channel) {
                 base = base.filter(s => String(s.source || 'manual') === String(V.channel));
+            }
+            // Grupos de estado de envío: deben coincidir exactamente con los del badge (shipBadge).
+            // Mismo mapeo que el select #ventasShipFilter.
+            const _SHIP_GROUPS = {
+                por_despachar: ['ready_to_ship', 'handling', 'pending'],
+                shipped: ['shipped'],
+                delivered: ['delivered'],
+                problema: ['not_delivered', 'cancelled']
+            };
+            // Filtro por estado de envío (solo aplica a ventas ML; ventas manuales sin estado no aparecen en filtros activos).
+            if (V.shipFilter) {
+                const _grp = _SHIP_GROUPS[V.shipFilter] || [V.shipFilter];
+                base = base.filter(s => _grp.includes(s.shippingStatus));
             }
             // Filtros por período: rango libre, o día/semana/mes a partir de una fecha de referencia.
             const _periodo = ventasPeriodoRango(V);
@@ -5881,7 +5959,7 @@
                     : '<span class="badge" style="background:var(--bg-tertiary);color:var(--text-secondary);font-size:10px;">' + (window.DOMPurify ? DOMPurify.sanitize(_canalNombre) : _canalNombre) + '</span>';
                 html += `<tr>
                     <td>${s.date}</td>
-                    <td>${DOMPurify.sanitize(s.productName)}${s.variantLabel ? ` <span style="color:var(--text-muted);font-size:11px;">(${DOMPurify.sanitize(s.variantLabel)})</span>` : ''}</td>
+                    <td>${DOMPurify.sanitize(s.productName)}${s.variantLabel ? ` <span style="color:var(--text-muted);font-size:11px;">(${DOMPurify.sanitize(s.variantLabel)})</span>` : ''}${shipBadge(s)}</td>
                     <td class="num">${s.quantity}</td>
                     <td>${canalBadge}</td>
                     <td class="num">${formatCurrency(s.salePrice)}</td>
@@ -6016,6 +6094,16 @@
                         '</div>' +
                     '</div>' +
                     '<div id="editSaleResumen" style="background:rgba(22,199,132,.08);border:1px solid var(--accent-primary);border-radius:10px;padding:10px 12px;margin:6px 0 14px;font-size:13px;color:var(--text-primary);"></div>' +
+                    (sale.shippingStatus ? (
+                        '<div style="background:var(--bg-tertiary);border:1px solid var(--border-soft);border-radius:10px;padding:12px;margin-bottom:14px;">' +
+                            '<div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:8px;">Estado de envío (Mercado Libre)</div>' +
+                            '<div style="font-size:14px;color:var(--text-primary);font-weight:600;">' + (window.shipStatusLabel ? shipStatusLabel(sale.shippingStatus) : DOMPurify.sanitize(String(sale.shippingStatus || ''))) + '</div>' +
+                            (sale.trackingNumber ? '<div style="margin-top:6px;font-size:13px;color:var(--text-secondary);">N° seguimiento: <strong>' + DOMPurify.sanitize(String(sale.trackingNumber)) + '</strong> <button type="button" data-tnum="' + DOMPurify.sanitize(String(sale.trackingNumber)) + '" onclick="navigator.clipboard.writeText(this.dataset.tnum).then(function(){if(window.showToast)showToast(\'✅ Copiado\')})" style="margin-left:6px;padding:2px 8px;font-size:11px;background:var(--bg-secondary);border:1px solid var(--border-soft);border-radius:6px;cursor:pointer;color:var(--text-primary);">Copiar</button></div>' : '') +
+                            (sale.logisticType ? '<div style="margin-top:4px;font-size:13px;color:var(--text-secondary);">Logística: ' + (window.shipLogisticLabel ? shipLogisticLabel(sale.logisticType) : sale.logisticType) + '</div>' : '') +
+                            (sale.estimatedDelivery ? '<div style="margin-top:4px;font-size:13px;color:var(--text-secondary);">ETA: ' + DOMPurify.sanitize(String(sale.estimatedDelivery).slice(0, 10)) + '</div>' : '') +
+                            (sale.dateShipped ? '<div style="margin-top:4px;font-size:13px;color:var(--text-secondary);">Despachado: ' + DOMPurify.sanitize(String(sale.dateShipped).slice(0, 10)) + '</div>' : '') +
+                        '</div>'
+                    ) : '') +
                     '<div style="display:flex;gap:10px;">' +
                         '<button id="editSaleSave" class="btn btn-primary" style="flex:1;"><i data-lucide="check"></i>Guardar cambios</button>' +
                         '<button id="editSaleCancel" class="btn btn-secondary"><i data-lucide="x"></i>Cancelar</button>' +
@@ -8958,6 +9046,31 @@
 
         // Hook llamado cuando llegan cambios remotos (PASO 1)
         function onRemoteSync() {
+            // Auto-completar tareas de despacho cuya venta ya fue despachada/entregada según ML.
+            // BATCH: aplica la misma lógica de agendaToggle (tombstones + borrado) en UNA sola pasada,
+            // seguido de UN save() y UN renderAgenda() para evitar re-entradas N×N.
+            try {
+                if (Array.isArray(STATE.tasks)) {
+                    var _despPend = STATE.tasks.filter(function(t){ return t && t.tipo === 'despacho' && t.ventaId != null && t.estado !== 'hecha'; });
+                    var _batchDelete = [];
+                    _despPend.forEach(function(t){
+                        var v = (STATE.sales || []).find(function(s){ return s && s.id === t.ventaId; });
+                        if (v && ['shipped', 'delivered'].includes(v.shippingStatus)) {
+                            if (!Array.isArray(STATE.despachosBorrados)) STATE.despachosBorrados = [];
+                            if (STATE.despachosBorrados.indexOf(String(t.ventaId)) < 0) STATE.despachosBorrados.push(String(t.ventaId));
+                            if (!Array.isArray(STATE.tasksBorradas)) STATE.tasksBorradas = [];
+                            if (STATE.tasksBorradas.indexOf(String(t.id)) < 0) STATE.tasksBorradas.push(String(t.id));
+                            _batchDelete.push(String(t.id));
+                        }
+                    });
+                    if (_batchDelete.length) {
+                        var _batchDelSet = new Set(_batchDelete);
+                        STATE.tasks = STATE.tasks.filter(function(x){ return !_batchDelSet.has(String(x.id)); });
+                        save();
+                        window.renderAgenda();
+                    }
+                }
+            } catch(e) {}
             if (CHAT.open) flushChatNotifications();
             updateChatBadge();
         }
@@ -9198,7 +9311,7 @@
             if(chev) chev.style.transform = open ? 'rotate(180deg)' : 'none';
         };
 
-        function _vView(){ return window.__salesView || (window.__salesView = { mode:'recent', desde:'', hasta:'', search:'', channel:'', refDate:'' }); }
+        function _vView(){ return window.__salesView || (window.__salesView = { mode:'recent', desde:'', hasta:'', search:'', channel:'', refDate:'', shipFilter:'' }); }
 
         window.__ventasVerTodo = function(){
             const rango = el('ventasRango'); if(rango) rango.style.display = 'none';
@@ -9248,6 +9361,11 @@
         // Filtro por canal.
         window.__ventasFiltrarCanal = function(){
             var s = el('ventasCanal'); _vView().channel = s ? s.value : '';
+            if (window.renderSalesList) renderSalesList();
+        };
+        // Filtro por estado de envío.
+        window.__ventasFiltrarEnvio = function(){
+            var s = el('ventasShipFilter'); _vView().shipFilter = s ? s.value : '';
             if (window.renderSalesList) renderSalesList();
         };
         // Fecha de referencia para los períodos día/semana/mes (default: hoy).
@@ -10790,6 +10908,30 @@
         function genDespachos(notify){
             ensureState();
             var arr = tasks();
+            // Auto-completar tareas cuya venta ya fue despachada/entregada según ML.
+            // BATCH: misma lógica de agendaToggle pero en una sola pasada + UN save().
+            // NO se llama renderAgenda() aquí porque genDespachos ES llamado desde renderAgenda
+            // (hacerlo causaría re-entrada N×N). El render en curso usa arr refrescado.
+            try {
+                var _genToDelete = [];
+                tasks().filter(function(t){ return t && t.tipo === 'despacho' && t.ventaId != null && t.estado !== 'hecha'; })
+                    .forEach(function(t){
+                        var v = (STATE.sales || []).find(function(s){ return s && s.id === t.ventaId; });
+                        if (v && ['shipped', 'delivered'].includes(v.shippingStatus)) {
+                            if (!Array.isArray(STATE.despachosBorrados)) STATE.despachosBorrados = [];
+                            if (STATE.despachosBorrados.indexOf(String(t.ventaId)) < 0) STATE.despachosBorrados.push(String(t.ventaId));
+                            if (!Array.isArray(STATE.tasksBorradas)) STATE.tasksBorradas = [];
+                            if (STATE.tasksBorradas.indexOf(String(t.id)) < 0) STATE.tasksBorradas.push(String(t.id));
+                            _genToDelete.push(String(t.id));
+                        }
+                    });
+                if (_genToDelete.length) {
+                    var _genDelSet = new Set(_genToDelete);
+                    STATE.tasks = STATE.tasks.filter(function(x){ return !_genDelSet.has(String(x.id)); });
+                    save(); // único save; NO renderAgenda() (evitar re-entrada desde render)
+                    arr = tasks(); // releer para que el resto de genDespachos use la lista limpia
+                }
+            } catch(e) {}
             var hoy = startOfDay(new Date());
             var limite = addDays(hoy, -2); // ventas de hoy y ayer (y antier)
             var existentes = {};
@@ -10804,6 +10946,10 @@
                     if (!fd) return;
                     if (startOfDay(fd).getTime() < limite.getTime()) return; // solo recientes
                     if (existentes['v'+v.id]) return;
+                    // ML ya despachó: no crear tarea (evita despachos para ventas enviadas/entregadas).
+                    if (['shipped', 'delivered'].includes(v.shippingStatus)) return;
+                    // Full: ML gestiona el despacho, no corresponde crear tarea manual.
+                    if (v.logisticType === 'fulfillment') return;
                     var nombre = v.productName || 'Producto';
                     var qty = v.quantity || 1;
                     arr.push({

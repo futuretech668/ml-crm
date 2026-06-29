@@ -32,6 +32,27 @@ async function getShip(c, shippingId) {
   } catch (e) { return null; }
 }
 
+// Estado del envío (tracking): port de ml-sync.js getShipStatus.
+// Devuelve objeto normalizado o null si no hay envío / falla.
+async function getShipStatus(c, shippingId) {
+  if (!shippingId) return null;
+  try {
+    const s = await c.get('/shipments/' + shippingId, { allow404: true });
+    if (!s) return null;
+    return {
+      shipmentId: String(shippingId),
+      shippingStatus: s.status || null,
+      shippingSubstatus: s.substatus || null,
+      trackingNumber: s.tracking_number || null,
+      trackingUrl: null,
+      logisticType: s.logistic_type || null,
+      estimatedDelivery: (s.lead_time && s.lead_time.estimated_delivery_final && s.lead_time.estimated_delivery_final.date) || null,
+      dateShipped: (s.shipping_option && s.shipping_option.shipped_at) || null,
+      lastShipUpdate: new Date().toISOString()
+    };
+  } catch (e) { return null; }
+}
+
 // ---- Normalizadores (respuestas crudas de ML → forma estable) ----
 function normOrder(o) {
   const items = (o.order_items || []).map(it => ({
@@ -171,6 +192,7 @@ export function buildMlTools(ctx) {
       const date = iso.slice(0, 10);
       const time = (iso.split('T')[1] || '00:00').slice(0, 5);
       const realShip = await getShip(c, order.shipping && order.shipping.id);
+      const shipSt = await getShipStatus(c, order.shipping && order.shipping.id);
 
       state.sales = state.sales || [];
       state.products = state.products || [];
@@ -252,7 +274,20 @@ export function buildMlTools(ctx) {
           // Auditoría (campos aditivos).
           registeredAt: ctx.nowIso(), registeredBy: 'mia',
           originalTitle: title, resolvedProductName: _resolvedName,
-          nameConflictResolved: !!(title && title !== _resolvedName)
+          nameConflictResolved: !!(title && title !== _resolvedName),
+          // Tracking de envío (aditivos): se llenan si hay envío; degradan limpio si no.
+          // En el próximo refresco (camino B del cron) se actualizan si el estado cambia.
+          ...(shipSt ? {
+            shipmentId: shipSt.shipmentId,
+            shippingStatus: shipSt.shippingStatus,
+            shippingSubstatus: shipSt.shippingSubstatus,
+            trackingNumber: shipSt.trackingNumber,
+            trackingUrl: shipSt.trackingUrl,
+            logisticType: shipSt.logisticType,
+            estimatedDelivery: shipSt.estimatedDelivery,
+            dateShipped: shipSt.dateShipped,
+            lastShipUpdate: shipSt.lastShipUpdate
+          } : {})
         };
         state.sales.push(sale);
         domain.applyStockDelta(product, sale.variantId, -qty);

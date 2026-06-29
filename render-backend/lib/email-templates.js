@@ -347,6 +347,49 @@ function buildUserReport(opts) {
     };
 }
 
+// =================== DESPACHO DEMORADO (pagada sin despachar > N horas) ===================
+function buildShipLateEmail(opts) {
+    const o = opts || {};
+    const horas = o.horasLimite || 24;
+    const inner = `
+      <p style="margin:0 0 18px;font-size:15px;line-height:1.5;color:${BRAND.text};">
+        Una venta de Mercado Libre lleva más de <strong>${esc(horas)} horas</strong> pagada sin despacharse.
+        Despacharla a tiempo evita penalizaciones en tu reputación.
+      </p>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+        ${row('Producto', esc(o.productName || 'Producto'), { strong: true })}
+        ${o.orderId ? row('N° de orden', esc(o.orderId)) : ''}
+        ${o.saleDate ? row('Fecha de venta', esc(o.saleDate)) : ''}
+        ${o.shippingStatus ? row('Estado actual', esc(o.shippingStatus)) : ''}
+        ${o.trackingNumber ? row('N° seguimiento', esc(o.trackingNumber)) : ''}
+      </table>`;
+    return {
+        subject: `⚠️ Despacho pendiente +${horas}h: ${o.productName || 'producto'} (orden ${o.orderId || ''})`,
+        html: layout('Despacho demorado', BRAND.warn, inner, esc(o.productName || 'Producto'))
+    };
+}
+
+// =================== ENVÍO DEMORADO (shipped pero ETA vencida, sin delivered) ===================
+function buildShipDelayedEmail(opts) {
+    const o = opts || {};
+    const inner = `
+      <p style="margin:0 0 18px;font-size:15px;line-height:1.5;color:${BRAND.text};">
+        Un envío de Mercado Libre superó su <strong>fecha estimada de entrega</strong> sin haber sido entregado.
+        Revisa el estado en el panel de Mercado Libre o contacta al comprador.
+      </p>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+        ${row('Producto', esc(o.productName || 'Producto'), { strong: true })}
+        ${o.orderId ? row('N° de orden', esc(o.orderId)) : ''}
+        ${o.estimatedDelivery ? row('ETA original', esc(o.estimatedDelivery.slice(0, 10))) : ''}
+        ${o.trackingNumber ? row('N° seguimiento', esc(o.trackingNumber)) : ''}
+        ${o.shippingSubstatus ? row('Substatus', esc(o.shippingSubstatus)) : ''}
+      </table>`;
+    return {
+        subject: `📦 Entrega demorada: ${o.productName || 'producto'} (ETA ${o.estimatedDelivery ? o.estimatedDelivery.slice(0, 10) : 'vencida'})`,
+        html: layout('Entrega demorada', BRAND.bad, inner, esc(o.productName || 'Producto'))
+    };
+}
+
 module.exports = {
     clp,
     buildSaleEmail,
@@ -355,5 +398,7 @@ module.exports = {
     buildDailySummary,
     buildMonthlyReport,
     buildWelcomeEmail,
-    buildUserReport
+    buildUserReport,
+    buildShipLateEmail,
+    buildShipDelayedEmail
 };

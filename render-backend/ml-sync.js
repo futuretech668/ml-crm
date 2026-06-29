@@ -35,6 +35,13 @@ const COMMISSION_PREMIUM = Number(process.env.COMMISSION_PREMIUM || 0.165);
 // Se puede desactivar con USE_REAL_SHIPPING=false. MAX_ORDERS_PER_RUN acota por corrida.
 const USE_REAL_SHIPPING = (process.env.USE_REAL_SHIPPING || 'true') !== 'false';
 const MAX_ORDERS_PER_RUN = Number(process.env.MAX_ORDERS_PER_RUN || 40);
+// Estado del envío (tracking): se consulta al crear la venta (camino A) y se refresca
+// en cada corrida para ventas recientes no terminales (camino B). FLAG USE_SHIP_STATUS
+// análogo a USE_REAL_SHIPPING; por defecto ON.
+const USE_SHIP_STATUS = (process.env.USE_SHIP_STATUS || 'true') !== 'false';
+const SHIP_LATE_HOURS = Number(process.env.SHIP_LATE_HOURS || 24);
+const SHIP_REFRESH_DAYS = Number(process.env.SHIP_REFRESH_DAYS || 20);
+const MAX_SHIP_REFRESH_PER_RUN = Number(process.env.MAX_SHIP_REFRESH_PER_RUN || 25);
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const fmt = (n) => '$' + Math.round(n).toLocaleString('es-CL');
@@ -240,6 +247,28 @@ async function getShip(ml, shippingId) {
   } catch (e) { return null; }
 }
 
+// Estado del envío (tracking): status, substatus, número de seguimiento, logística, ETA.
+// Porta la llamada de ml_shipment en render-backend/ai/ml.mjs (línea 286-288).
+// Devuelve objeto normalizado o null si el envío no existe / falla.
+async function getShipStatus(ml, shippingId) {
+  if (!shippingId || !USE_SHIP_STATUS) return null;
+  try {
+    const s = await ml.get('/shipments/' + shippingId, { allow404: true });
+    if (!s) return null;
+    return {
+      shipmentId: String(shippingId),
+      shippingStatus: s.status || null,
+      shippingSubstatus: s.substatus || null,
+      trackingNumber: s.tracking_number || null,
+      trackingUrl: null,   // ML no da URL de tracking fiable por transportista
+      logisticType: s.logistic_type || null,
+      estimatedDelivery: (s.lead_time && s.lead_time.estimated_delivery_final && s.lead_time.estimated_delivery_final.date) || null,
+      dateShipped: (s.shipping_option && s.shipping_option.shipped_at) || null,
+      lastShipUpdate: new Date().toISOString()
+    };
+  } catch (e) { return null; }
+}
+
 // ---------------- Lógica de registro (igual que sync-ml.js) ----------------
 function unitCommissionFor(it) {
   if (typeof it.sale_fee === 'number' && it.sale_fee > 0) return { perUnit: it.sale_fee, source: 'sale_fee' };
@@ -318,6 +347,8 @@ function applyOrder(order, ctx) {
   const totalQty = items.reduce((s, it) => s + (it.quantity || 1), 0) || 1;
   const { date, time } = orderDateParts(order);
   const realShip = order.__realShip;
+  // Campos de tracking: ventas viejas/manuales sin __shipStatus degradan limpio (sin badge, sin alertas).
+  const shipStatus = order.__shipStatus || null;
   let added = 0, pending = 0, hadUnmapped = false;
 
   for (const it of items) {
@@ -396,7 +427,20 @@ function applyOrder(order, ctx) {
         variantId, variantLabel,
         // Auditoría (campos aditivos): de dónde vino y cómo se resolvió el nombre.
         registeredAt: new Date().toISOString(), registeredBy: 'sync',
-        originalTitle: title, resolvedProductName: _resolvedName, nameConflictResolved: false
+        originalTitle: title, resolvedProductName: _resolvedName, nameConflictResolved: false,
+        // Tracking de envío (aditivos, opcionales): solo en ventas ML con envío asignado.
+        // Ventas manuales/viejas sin __shipStatus degradan limpio: sin estos campos.
+        ...(shipStatus ? {
+          shipmentId: shipStatus.shipmentId,
+          shippingStatus: shipStatus.shippingStatus,
+          shippingSubstatus: shipStatus.shippingSubstatus,
+          trackingNumber: shipStatus.trackingNumber,
+          trackingUrl: shipStatus.trackingUrl,
+          logisticType: shipStatus.logisticType,
+          estimatedDelivery: shipStatus.estimatedDelivery,
+          dateShipped: shipStatus.dateShipped,
+          lastShipUpdate: shipStatus.lastShipUpdate
+        } : {})
       });
       const idx = products.findIndex((p) => p.id === mapping.productId);
       if (idx >= 0) {
@@ -435,10 +479,15 @@ function applyOrder(order, ctx) {
           needsVariant: !!(suggested && suggested.hasVariants),
           heldSales: [heldSale], createdAt: new Date().toISOString()
         });
+        // Defensa en profundidad: el título viene de ML (dato externo). Aunque el
+        // frontend lo escapa al renderizar (_miaMd → DOMPurify), aquí se neutralizan
+        // ángulos y saltos de línea antes de persistirlo en la notificación.
+        const safeTitle = String(title).replace(/[<>]/g, '').replace(/[\r\n]+/g, ' ').slice(0, 140);
+        const safeSugg = suggested ? String(suggested.name).replace(/[<>]/g, '').replace(/[\r\n]+/g, ' ').slice(0, 140) : '';
         notifications.push({
           id: 'p-' + itemId, type: 'unknown',
-          text: '🆕 Publicación nueva: "' + title + '" (' + fmt(unitPrice) + ' x' + qty + '). ' +
-            (suggested ? '¿Es **' + suggested.name + '**?' : '¿A qué producto corresponde?') + ' Respóndelo en el chat.',
+          text: '🆕 Publicación nueva: "' + safeTitle + '" (' + fmt(unitPrice) + ' x' + qty + '). ' +
+            (suggested ? '¿Es **' + safeSugg + '**?' : '¿A qué producto corresponde?') + ' Respóndelo en el chat.',
           createdAt: new Date().toISOString(), read: false
         });
         pending++;
@@ -467,9 +516,29 @@ async function syncOneUser(svc, gtoken, uid, tk, email, clientId, clientSecret) 
 
   let nuevas = 0, pendientes = 0;
 
-  if (fresh.length) {
-    for (const order of fresh) order.__realShip = USE_REAL_SHIPPING ? await getShip(ml, order.shipping && order.shipping.id) : null;
+  // Caché de estados de envío para camino B: se computa UNA VEZ (intent 0) y se reutiliza
+  // en reintentos para no duplicar llamadas a la API de ML.
+  const shipStatusCache = new Map();
 
+  if (fresh.length) {
+    for (const order of fresh) {
+      order.__realShip = USE_REAL_SHIPPING ? await getShip(ml, order.shipping && order.shipping.id) : null;
+      if (USE_SHIP_STATUS) {
+        const sid = order.shipping && order.shipping.id;
+        if (sid && !shipStatusCache.has(String(sid))) {
+          const st = await getShipStatus(ml, sid);
+          if (st) shipStatusCache.set(String(sid), st);
+        }
+        order.__shipStatus = sid ? (shipStatusCache.get(String(sid)) || null) : null;
+      } else {
+        order.__shipStatus = null;
+      }
+    }
+  }
+
+  // Camino A (fresh.length > 0) y/o Camino B (refresco periódico de estados).
+  // La guarda corre si hay órdenes nuevas O si USE_SHIP_STATUS está activo (puede haber refrescos).
+  if (fresh.length || USE_SHIP_STATUS) {
     let written = false;
     for (let attempt = 0; attempt < 3 && !written; attempt++) {
       const cur = await fsGet(svc, gtoken, statePath);
@@ -485,6 +554,70 @@ async function syncOneUser(svc, gtoken, uid, tk, email, clientId, clientSecret) 
         added += r.added; pend += r.pending;
         if (!r.hadUnmapped) newlyDone.push(String(order.id));
       }
+
+      // Camino B: identificar candidatas (solo en attempt 0, para llamar a ML UNA vez) y
+      // aplicar los estados cacheados en cada reintento (sin llamadas extra a ML).
+      if (USE_SHIP_STATUS && attempt === 0) {
+        const TERMINAL = new Set(['delivered', 'cancelled']);
+        const cutoff = new Date(Date.now() - SHIP_REFRESH_DAYS * 864e5).toISOString().slice(0, 10);
+        // Excluir shipmentIds ya procesados en camino A (ya están frescos).
+        const freshSids = new Set(fresh.map((o) => o.shipping && String(o.shipping.id)).filter(Boolean));
+        const candidates = ctx.sales
+          .filter((s) => s && s.source === 'mercadolibre' && s.shipmentId &&
+            !TERMINAL.has(s.shippingStatus) && (s.date || '') >= cutoff &&
+            !freshSids.has(s.shipmentId))
+          .sort((a, b) => String(a.lastShipUpdate || '').localeCompare(String(b.lastShipUpdate || '')))
+          .slice(0, MAX_SHIP_REFRESH_PER_RUN);
+        for (const s of candidates) {
+          if (!shipStatusCache.has(s.shipmentId)) {
+            const st = await getShipStatus(ml, s.shipmentId);
+            if (st) shipStatusCache.set(s.shipmentId, st);
+          }
+        }
+      }
+
+      // Punto de referencia para detectar si se añadió algo al estado (antes de aplicar cambios).
+      const _prevNotifCount = ctx.notifications.length;
+      // Aplicar refrescos del caché a las ventas recién leídas (idempotente en reintentos).
+      let shipRefreshed = 0;
+      const _shipNow = new Date().toISOString();
+      for (const sale of ctx.sales) {
+        if (!sale || !sale.shipmentId) continue;
+        const st = shipStatusCache.get(sale.shipmentId);
+        if (!st) continue;
+        // Siempre aplicar y actualizar lastShipUpdate (haya o no cambio de estado) para
+        // garantizar rotación justa al ordenar candidatas por lastShipUpdate más antiguo.
+        // Un fetch fallido/null no llega aquí (se omitió antes de guardar en caché).
+        Object.assign(sale, st);
+        sale.lastShipUpdate = _shipNow;
+        shipRefreshed++;
+      }
+
+      // Notificaciones in-app ship_late: ventas ML pagadas sin despachar > SHIP_LATE_HOURS.
+      // No se genera para Full (logisticType === 'fulfillment': ML despacha sola).
+      if (USE_SHIP_STATUS) {
+        const nowMs = Date.now();
+        const lateMs = SHIP_LATE_HOURS * 3600 * 1000;
+        for (const sale of ctx.sales) {
+          if (!sale || !sale.shipmentId) continue;
+          if (sale.logisticType === 'fulfillment') continue;
+          if (!['ready_to_ship', 'handling', 'pending'].includes(sale.shippingStatus)) continue;
+          const createdAt = Date.parse(sale.createdAt || sale.date || '');
+          if (!createdAt || (nowMs - createdAt) < lateMs) continue;
+          const notifId = 'ship-late-' + sale.id;
+          if ((ctx.notifications || []).some((n) => n && n.id === notifId)) continue;
+          ctx.notifications.push({
+            id: notifId, type: 'ship_late',
+            text: '⚠️ Despacho demorado: **' + (sale.productName || 'Venta') + '** lleva más de ' + SHIP_LATE_HOURS + 'h sin despacharse (orden ' + (sale.order_id || '') + ').',
+            createdAt: new Date().toISOString(), read: false
+          });
+        }
+      }
+
+      // Si no hay órdenes nuevas, refrescos de envío ni notificaciones nuevas, no escribir (ahorra escrituras Firestore).
+      const _notifsAdded = ctx.notifications.length > _prevNotifCount;
+      if (!fresh.length && shipRefreshed === 0 && !_notifsAdded) { written = true; break; }
+
       const out = Object.assign({}, state);
       delete out.updatedAt; delete out.updatedBy;
       out.products = ctx.products; out.sales = ctx.sales; out.mappings = ctx.mappings;
