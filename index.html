@@ -5515,6 +5515,13 @@
                 // Variantes (AGENTE 3): si están activas, validar y construir el array.
                 const varData = window.varBuildVariants ? window.varBuildVariants() : { enabled: false };
                 if (varData.enabled && !varData.ok) { showToast('❌ ' + varData.error); return; }
+                // Aviso de margen negativo en variantes (mismo criterio que el producto simple).
+                if (varData.enabled && varData.negativos > 0) {
+                    const _msg = varData.negativos === 1
+                        ? '⚠️ ALERTA: 1 variante queda con margen negativo (pierde plata).\n¿Continuar?'
+                        : '⚠️ ALERTA: ' + varData.negativos + ' variantes quedan con margen negativo (pierden plata).\n¿Continuar?';
+                    if (!confirm(_msg)) return;
+                }
                 const _stockFinal = varData.enabled ? varData.totalStock : stock;
 
                 const formData = {
@@ -5551,11 +5558,8 @@
                         Object.assign(product, formData);
                         product.lastModified = new Date().toISOString();
                         showToast('✅ Producto actualizado');
-                        editingProductId = null;
-                        const submitBtn = document.querySelector('#productForm button[type="submit"]');
-                        submitBtn.innerHTML = '<i data-lucide="save"></i>Guardar producto';
-                        submitBtn.classList.remove('editing');
-                        refreshIcons();
+                        // Salir del modo edición (limpia editingProductId, restaura el botón y quita "Cancelar edición").
+                        window.exitProductEditMode(false);
                         _savedProduct = product;
                     }
                 } else {
@@ -5832,7 +5836,7 @@
                 else { if (envNo) envNo.checked = true; if (envInp) envInp.value = ''; }
                 // Comisión: variante (siempre monto) o producto (% o monto).
                 var comVal = 0, comTipoVal = 'monto';
-                if (v) { if (v.tieneComision) { comVal = Number(v.comisionMonto) || 0; comTipoVal = 'monto'; } }
+                if (v) { if (v.tieneComision) { var _vv = Number(v.precioVenta != null ? v.precioVenta : (v.precio || 0)) || 0; comVal = (v.comisionMonto != null) ? (Number(v.comisionMonto) || 0) : (v.comisionTipo === 'fixed' ? (Number(v.comision) || 0) : _vv * (Number(v.comision) || 0) / 100); comTipoVal = 'monto'; } }
                 else if (p) { comVal = Number(p.commission) || 0; comTipoVal = (p.commissionType === 'percentage') ? 'percentage' : 'monto'; }
                 if (comVal > 0) { if (comSi) comSi.checked = true; if (comTipo) comTipo.value = comTipoVal; if (comInp) comInp.value = comVal; }
                 else { if (comNo) comNo.checked = true; if (comInp) comInp.value = ''; }
@@ -5886,20 +5890,28 @@
                 var btn = document.getElementById('saleSubmitBtn');
                 var p = (prod && prod.value) ? STATE.products.find(function(x){ return x.id === parseInt(prod.value); }) : null;
                 // Si el producto tiene variantes con stock, exige elegir una.
-                var variante = null, variantOk = true;
-                if (p && p.hasVariants && Array.isArray(p.variants) && p.variants.some(function(v){ return (Number(v.stock) || 0) > 0; })) {
-                    var sv = document.getElementById('saleVariant');
-                    variantOk = !!(sv && sv.value);
-                    if (variantOk && p) variante = p.variants.find(function(v){ return String(v.id) === String(sv.value); });
+                var variante = null, variantOk = true, sinStockVar = false;
+                if (p && p.hasVariants && Array.isArray(p.variants)) {
+                    if (p.variants.some(function(v){ return (Number(v.stock) || 0) > 0; })) {
+                        var sv = document.getElementById('saleVariant');
+                        variantOk = !!(sv && sv.value);
+                        if (variantOk) variante = p.variants.find(function(v){ return String(v.id) === String(sv.value); });
+                    } else {
+                        // Todas las variantes agotadas: no se puede registrar (antes el botón quedaba
+                        // habilitado y al enviar mostraba "Elige el color y la talla", un callejón sin salida).
+                        sinStockVar = true; variantOk = false;
+                    }
                 }
                 var ok = !!(prod && prod.value && qty && parseInt(qty.value) >= 1 && variantOk);
                 if (btn) btn.disabled = !ok;
                 var hint = document.getElementById('saleSubmitHint');
                 if (hint){
                     hint.style.display = ok ? 'none' : '';
-                    hint.textContent = (prod && prod.value && !variantOk)
-                        ? 'Elige el color/talla (variante) para continuar.'
-                        : 'Elige un producto y la cantidad para poder registrar la venta.';
+                    hint.textContent = sinStockVar
+                        ? 'Este producto no tiene stock en ninguna variante.'
+                        : ((prod && prod.value && !variantOk)
+                            ? 'Elige el color/talla (variante) para continuar.'
+                            : 'Elige un producto y la cantidad para poder registrar la venta.');
                 }
                 var lbl = document.getElementById('salePrecioGuardadoLbl');
                 if (lbl){
@@ -6194,13 +6206,14 @@
             const product = STATE.products.find(p => p.id === id);
             if (!product) return;
             
-            document.getElementById('prodName').value = product.name;
-            document.getElementById('prodCostPrice').value = product.costPrice;
-            document.getElementById('prodSalePrice').value = product.salePrice;
-            document.getElementById('prodStock').value = product.stock;
-            document.getElementById('prodStockMin').value = product.stockMin;
-            document.getElementById('prodShipping').value = product.shipping;
-            document.getElementById('prodCommission').value = product.commission;
+            // Fallbacks para productos antiguos sin todos los campos (evita meter la cadena "undefined" en los inputs).
+            document.getElementById('prodName').value = product.name || '';
+            document.getElementById('prodCostPrice').value = (product.costPrice != null) ? product.costPrice : '';
+            document.getElementById('prodSalePrice').value = (product.salePrice != null) ? product.salePrice : '';
+            document.getElementById('prodStock').value = (product.stock != null) ? product.stock : 0;
+            document.getElementById('prodStockMin').value = (product.stockMin != null) ? product.stockMin : 0;
+            document.getElementById('prodShipping').value = (product.shipping != null) ? product.shipping : 0;
+            document.getElementById('prodCommission').value = (product.commission != null) ? product.commission : 0;
             document.getElementById('prodCommissionType').value = product.commissionType || 'percentage';
 
             // Marcar los toggles según el producto tenga comisión / envío.
@@ -6219,14 +6232,42 @@
             document.getElementById('prodCommissionType').dispatchEvent(new Event('change'));
             
             editingProductId = id;
-            
+
             const submitBtn = document.querySelector('#productForm button[type="submit"]');
             submitBtn.innerHTML = '<i data-lucide="pencil"></i>Actualizar producto';
             submitBtn.classList.add('editing');
+            // Botón "Cancelar edición": evita que, tras arrepentirse, el usuario cree un producto
+            // "nuevo" que en realidad sobrescribe el que estaba editando (editingProductId seguía puesto).
+            if (submitBtn && !document.getElementById('cancelEditProductBtn')) {
+                const cancelBtn = document.createElement('button');
+                cancelBtn.type = 'button';
+                cancelBtn.id = 'cancelEditProductBtn';
+                cancelBtn.className = 'btn btn-secondary';
+                cancelBtn.style.marginLeft = '8px';
+                cancelBtn.innerHTML = '<i data-lucide="x"></i>Cancelar edición';
+                cancelBtn.onclick = function(){ window.exitProductEditMode(true); };
+                submitBtn.parentNode.insertBefore(cancelBtn, submitBtn.nextSibling);
+            }
             refreshIcons();
-            
+
             document.getElementById('products').scrollIntoView({ behavior: 'smooth' });
         }
+
+        // Sale del modo "editar producto": limpia editingProductId, restaura el botón y quita el
+        // botón Cancelar. Si reset === true, además vacía el formulario y las variantes.
+        window.exitProductEditMode = function(reset){
+            editingProductId = null;
+            const submitBtn = document.querySelector('#productForm button[type="submit"]');
+            if (submitBtn) { submitBtn.innerHTML = '<i data-lucide="save"></i>Guardar producto'; submitBtn.classList.remove('editing'); }
+            const cancelBtn = document.getElementById('cancelEditProductBtn');
+            if (cancelBtn) cancelBtn.remove();
+            if (reset) {
+                const form = document.getElementById('productForm');
+                if (form) form.reset();
+                if (window.varReset) window.varReset();
+            }
+            try { refreshIcons(); } catch (e) {}
+        };
 
         function deleteProduct(id) {
             const product = STATE.products.find(p => p.id === id);
@@ -6455,6 +6496,16 @@
                     }
                     product.lastModified = new Date().toISOString();
                 }
+                // Devoluciones ligadas a esta venta: revertir el reingreso de stock que hicieron
+                // (si no, se contaría dos veces) y eliminarlas con tombstone, para que no queden
+                // huérfanas restando en la Ganancia Neta para siempre.
+                const _linkedReturns = (STATE.returns || []).filter(r => String(r.saleId) === String(id));
+                if (_linkedReturns.length) {
+                    _linkedReturns.forEach(r => aplicarStockDevolucion(r, -1));  // deshacer su reingreso
+                    if (!Array.isArray(STATE.returnsBorradas)) STATE.returnsBorradas = [];
+                    _linkedReturns.forEach(r => { if (STATE.returnsBorradas.map(String).indexOf(String(r.id)) < 0) STATE.returnsBorradas.push(String(r.id)); });
+                    STATE.returns = STATE.returns.filter(r => String(r.saleId) !== String(id));
+                }
                 if (!Array.isArray(STATE.salesBorradas)) STATE.salesBorradas = [];
                 if (STATE.salesBorradas.map(String).indexOf(String(id)) < 0) STATE.salesBorradas.push(String(id));
                 STATE.sales = STATE.sales.filter(s => s.id !== id);
@@ -6463,6 +6514,7 @@
                 renderDashboard();
                 renderInventory();
                 renderAlerts();
+                if (window.renderReturns) renderReturns();
                 showToast('✅ Venta eliminada');
             }
         }
@@ -6568,6 +6620,9 @@
                 const d = leer();
                 if (isNaN(d.qty) || d.qty < 1) { showToast('❌ La cantidad mínima es 1'); return; }
                 if (d.qty > maxQty) { showToast('❌ Cantidad inválida (max: ' + maxQty + ')'); return; }
+                // No permitir bajar la cantidad por debajo de las unidades ya devueltas (dejaría el stock inflado).
+                const _yaDev = unidadesDevueltas(sale.id);
+                if (d.qty < _yaDev) { showToast('❌ Esta venta ya tiene ' + _yaDev + ' unidad(es) devuelta(s); la cantidad no puede ser menor.'); return; }
                 if (!d.precio || d.precio <= 0) { showToast('❌ El precio de venta no puede ser 0 ni vacío'); return; }
                 if (d.envio < 0) { showToast('❌ Monto de envío inválido'); return; }
                 const fecha = g('editSaleFecha').value;
@@ -7575,10 +7630,14 @@
                 if (useColor && !VAR.colors.length) return { enabled:true, ok:false, error:'Agrega al menos un color.' };
                 if (useTalla && !VAR.tallas.length) return { enabled:true, ok:false, error:'Agrega al menos una talla.' };
                 var list = combos();
-                // Costo y Venta son OBLIGATORIOS en cada variante.
+                // Costo y Venta son OBLIGATORIOS en cada variante; mismas reglas que el producto simple:
+                // venta ≥ costo y comisión en % entre 0 y 100.
                 for (var j=0; j<list.length; j++){
                     var dj = ensure(K(list[j].color, list[j].talla));
-                    if (num(dj.costo) <= 0 || num(dj.venta) <= 0) return { enabled:true, ok:false, error:'Cada variante necesita Precio costo y Precio venta (mayores a 0).' };
+                    var _cj = num(dj.costo), _vj = num(dj.venta);
+                    if (_cj <= 0 || _vj <= 0) return { enabled:true, ok:false, error:'Cada variante necesita Precio costo y Precio venta (mayores a 0).' };
+                    if (_vj < _cj) return { enabled:true, ok:false, error:'En cada variante el precio de venta debe ser mayor o igual al costo.' };
+                    if (dj.tieneComision && dj.comisionTipo !== 'fixed' && num(dj.comision) > 100) return { enabled:true, ok:false, error:'La comisión en % de cada variante debe estar entre 0 y 100.' };
                 }
                 var variants = list.map(function(cb, i){
                     var key = K(cb.color, cb.talla); var d = ensure(key);
@@ -7601,7 +7660,9 @@
                     };
                 });
                 var totalStock = variants.reduce(function(a,v){ return a + v.stock; }, 0);
-                return { enabled:true, ok:true, variants:variants, totalStock:totalStock, representative: variants[0] || {} };
+                // Variantes con margen negativo (para avisar antes de guardar, igual que el producto simple).
+                var negativos = variants.filter(function(v){ return v.ganancia < 0; }).length;
+                return { enabled:true, ok:true, variants:variants, totalStock:totalStock, negativos:negativos, representative: variants[0] || {} };
             };
 
             window.varReset = function(){
@@ -7663,12 +7724,17 @@
         // NUNCA se calcula de dos formas distintas. profit ya = ingreso - costo - comisión - envío.
         window.getFinanzas = function getFinanzas() {
             var sales = (window.STATE && Array.isArray(STATE.sales)) ? STATE.sales : [];
-            var totalRevenue     = sales.reduce(function(a,s){ return a + (s.totalPrice || 0); }, 0);
-            var totalProfitBruta = sales.reduce(function(a,s){ return a + (s.profit || 0); }, 0);
-            var totalCommissions = sales.reduce(function(a,s){ return a + (s.commission || 0); }, 0);
-            var totalShipping    = sales.reduce(function(a,s){ return a + (s.shipping || 0); }, 0);
-            var totalCost        = sales.reduce(function(a,s){ return a + ((s.costPrice || 0) * (s.quantity || 0)); }, 0);
-            var totalUnits       = sales.reduce(function(a,s){ return a + (s.quantity || 0); }, 0);
+            // Usar los helpers canónicos saleRevenue/saleProfit (mismo fallback que el resto de la app,
+            // así el encabezado del dashboard cuadra con las tablas) y Number() para nunca concatenar
+            // ni dar NaN si un importe llegó como texto (import Excel / sync Firebase).
+            var _rev = function(s){ return window.saleRevenue ? saleRevenue(s) : (Number(s && s.totalPrice) || 0); };
+            var _prof = function(s){ return window.saleProfit ? saleProfit(s) : (Number(s && s.profit) || 0); };
+            var totalRevenue     = sales.reduce(function(a,s){ return a + _rev(s); }, 0);
+            var totalProfitBruta = sales.reduce(function(a,s){ return a + _prof(s); }, 0);
+            var totalCommissions = sales.reduce(function(a,s){ return a + (Number(s && s.commission) || 0); }, 0);
+            var totalShipping    = sales.reduce(function(a,s){ return a + (Number(s && s.shipping) || 0); }, 0);
+            var totalCost        = sales.reduce(function(a,s){ return a + ((Number(s && s.costPrice) || 0) * (Number(s && s.quantity) || 0)); }, 0);
+            var totalUnits       = sales.reduce(function(a,s){ return a + (Number(s && s.quantity) || 0); }, 0);
             // IVA total = suma mes a mes (manual del SII donde exista, automático en el resto).
             var ivaR = (window.ivaResumenMeses ? window.ivaResumenMeses() : { totalIva: 0 });
             var ivaAmount  = ivaR.totalIva || 0;
@@ -9055,7 +9121,7 @@
             let _algunCostoHeredado = false;
             held.forEach((h, i) => {
                 const qty = h.quantity || 1;
-                const unitPrice = h.price || (_variant ? _variant.precioVenta : product.salePrice);
+                const unitPrice = h.price || (_variant ? (_variant.precioVenta != null ? _variant.precioVenta : (_variant.precio || 0)) : product.salePrice);
                 // Costo y envío: de la variante si hay, si no del producto.
                 // Si la variante NO tiene costo propio, se HEREDA el del producto (mismo criterio
                 // que la venta manual) en vez de quedar en 0, y se marca la venta para revisión.
