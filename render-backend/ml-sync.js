@@ -42,6 +42,9 @@ const USE_SHIP_STATUS = (process.env.USE_SHIP_STATUS || 'true') !== 'false';
 const SHIP_LATE_HOURS = Number(process.env.SHIP_LATE_HOURS || 24);
 const SHIP_REFRESH_DAYS = Number(process.env.SHIP_REFRESH_DAYS || 20);
 const MAX_SHIP_REFRESH_PER_RUN = Number(process.env.MAX_SHIP_REFRESH_PER_RUN || 25);
+// Revertir ventas canceladas/reembolsadas en ML (restituye stock y las marca como borradas
+// para que los totales de Dashboard/Finanzas se autocorrijan). FLAG análogo; por defecto ON.
+const USE_CANCELLATIONS = (process.env.USE_CANCELLATIONS || 'true') !== 'false';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const fmt = (n) => '$' + Math.round(n).toLocaleString('es-CL');
@@ -517,6 +520,18 @@ async function syncOneUser(svc, gtoken, uid, tk, email, clientId, clientSecret) 
   const fresh = allFresh.slice(0, MAX_ORDERS_PER_RUN);
   const restantes = allFresh.length - fresh.length;
 
+  // Cancelaciones/reembolsos: órdenes que pasaron a 'cancelled' en ML y aún no revertimos.
+  const cancelledSet = new Set(Array.isArray(tk.cancelledOrders) ? tk.cancelledOrders.map(String) : []);
+  let cancelledFresh = [];
+  if (USE_CANCELLATIONS) {
+    try {
+      const cxo = await ml.fetchOrders('cancelled', fromISO);
+      cancelledFresh = cxo.filter((o) => !cancelledSet.has(String(o.id)));
+    } catch (e) {
+      console.log('  · No se pudieron revisar cancelaciones:', e.message);
+    }
+  }
+
   let nuevas = 0, pendientes = 0;
 
   // Caché de estados de envío para camino B: se computa UNA VEZ (intent 0) y se reutiliza
@@ -539,9 +554,9 @@ async function syncOneUser(svc, gtoken, uid, tk, email, clientId, clientSecret) 
     }
   }
 
-  // Camino A (fresh.length > 0) y/o Camino B (refresco periódico de estados).
-  // La guarda corre si hay órdenes nuevas O si USE_SHIP_STATUS está activo (puede haber refrescos).
-  if (fresh.length || USE_SHIP_STATUS) {
+  // Camino A (fresh.length > 0) y/o Camino B (refresco periódico de estados) y/o cancelaciones.
+  // La guarda corre si hay órdenes nuevas, si USE_SHIP_STATUS está activo (refrescos) o si hay canceladas.
+  if (fresh.length || USE_SHIP_STATUS || cancelledFresh.length) {
     let written = false;
     for (let attempt = 0; attempt < 3 && !written; attempt++) {
       const cur = await fsGet(svc, gtoken, statePath);
@@ -557,6 +572,39 @@ async function syncOneUser(svc, gtoken, uid, tk, email, clientId, clientSecret) 
         const r = applyOrder(order, ctx);
         added += r.added; pend += r.pending;
         if (!r.hadUnmapped) newlyDone.push(String(order.id));
+      }
+
+      // Revertir órdenes canceladas: restituir stock, marcar la venta como borrada (tombstone
+      // para que el frontend no la resucite) y quitarla para que los totales se autocorrijan.
+      const revertedThisAttempt = [];
+      let cancelReverted = 0;
+      if (cancelledFresh.length) {
+        const _borradasSet = new Set((ctx.salesBorradas || []).map(String));
+        for (const co of cancelledFresh) {
+          const matches = ctx.sales.filter((s) => s && s.source === 'mercadolibre' && String(s.order_id) === String(co.id));
+          for (const s of matches) {
+            const p = ctx.products.find((pr) => pr.id === s.productId);
+            if (p) {
+              const mv = (p.hasVariants && s.variantId != null && Array.isArray(p.variants))
+                ? p.variants.find((x) => String(x.id) === String(s.variantId)) : null;
+              if (mv) { mv.stock = (Number(mv.stock) || 0) + (Number(s.quantity) || 1); recalcVariantStock(p); }
+              else { p.stock = (Number(p.stock) || 0) + (Number(s.quantity) || 1); }
+            }
+            if (!_borradasSet.has(String(s.id))) { _borradasSet.add(String(s.id)); ctx.salesBorradas.push(String(s.id)); }
+            const _notifId = 'c-' + s.id;
+            if (!(ctx.notifications || []).some((n) => n && n.id === _notifId)) {
+              ctx.notifications.push({
+                id: _notifId, type: 'cancel',
+                text: '↩️ Venta cancelada en ML: **' + (s.productName || 'Venta') + '** x' + (Number(s.quantity) || 1) + '. Stock restituido.',
+                createdAt: new Date().toISOString(), read: false
+              });
+            }
+            cancelReverted++;
+          }
+          // Quitar todas las ventas de esa orden (haya o no habido match: marcar la orden procesada).
+          if (matches.length) ctx.sales = ctx.sales.filter((s) => !(s && s.source === 'mercadolibre' && String(s.order_id) === String(co.id)));
+          revertedThisAttempt.push(String(co.id));
+        }
       }
 
       // Camino B: identificar candidatas (solo en attempt 0, para llamar a ML UNA vez) y
@@ -618,14 +666,20 @@ async function syncOneUser(svc, gtoken, uid, tk, email, clientId, clientSecret) 
         }
       }
 
-      // Si no hay órdenes nuevas, refrescos de envío ni notificaciones nuevas, no escribir (ahorra escrituras Firestore).
+      // Si no hay órdenes nuevas, refrescos de envío, notificaciones ni cancelaciones, no escribir (ahorra escrituras Firestore).
       const _notifsAdded = ctx.notifications.length > _prevNotifCount;
-      if (!fresh.length && shipRefreshed === 0 && !_notifsAdded) { written = true; break; }
+      if (!fresh.length && shipRefreshed === 0 && !_notifsAdded && cancelReverted === 0) {
+        // No hubo cambios de estado, pero igual marcamos como procesadas las órdenes canceladas
+        // que no tenían venta que revertir, para no re-consultarlas cada corrida.
+        for (const id of revertedThisAttempt) cancelledSet.add(id);
+        written = true; break;
+      }
 
       const out = Object.assign({}, state);
       delete out.updatedAt; delete out.updatedBy;
       out.products = ctx.products; out.sales = ctx.sales; out.mappings = ctx.mappings;
       out.pendingMappings = ctx.pendingMappings; out.notifications = ctx.notifications;
+      out.salesBorradas = ctx.salesBorradas;
       const fields = encodeFields(out);
       fields.updatedAt = { timestampValue: new Date().toISOString() };
       fields.updatedBy = { stringValue: 'ml-sync-cloud' };
@@ -634,6 +688,7 @@ async function syncOneUser(svc, gtoken, uid, tk, email, clientId, clientSecret) 
       if (w.ok) {
         written = true; nuevas = added; pendientes = pend;
         for (const id of newlyDone) processed.add(id);
+        for (const id of revertedThisAttempt) cancelledSet.add(id);
       } else {
         await sleep(400); // conflicto: el doc cambió, reintentar leyendo de nuevo
       }
@@ -646,9 +701,10 @@ async function syncOneUser(svc, gtoken, uid, tk, email, clientId, clientSecret) 
   // desperdiciadas. Con esto el gasto de Firestore baja al mínimo. La dedupe por
   // processedOrders evita reprocesar, así que es seguro no actualizar lastCheck cada vez.
   const st = ml.state();
-  if (fresh.length || st.refreshed) {
+  if (fresh.length || st.refreshed || cancelledFresh.length) {
     const newTk = Object.assign({}, tk);
     newTk.processedOrders = [...processed].slice(-1000);
+    if (cancelledFresh.length) newTk.cancelledOrders = [...cancelledSet].slice(-500);
     newTk.lastCheck = new Date().toISOString();
     if (st.refreshed) {
       newTk.access_token = st.access;
