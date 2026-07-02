@@ -4720,10 +4720,13 @@
             };
             // Toggles de Productos: ¿pagas comisión? / ¿pagas envío?
             window.syncProductToggles = function(){
+                // Con variantes activas, el envío/comisión de nivel-producto están ocultos (se piden por variante):
+                // no re-mostrar sus campos aquí.
+                var variantsOn = ((document.querySelector('input[name="prodHasVariants"]:checked')||{}).value) === 'si';
                 var cf = document.getElementById('prodCommissionFields');
-                if (cf) cf.style.display = window.prodToggleOn('prodHasCommission') ? '' : 'none';
+                if (cf) cf.style.display = (!variantsOn && window.prodToggleOn('prodHasCommission')) ? '' : 'none';
                 var sf = document.getElementById('prodShippingFields');
-                if (sf) sf.style.display = window.prodToggleOn('prodHasShipping') ? '' : 'none';
+                if (sf) sf.style.display = (!variantsOn && window.prodToggleOn('prodHasShipping')) ? '' : 'none';
                 if (window.syncProductProfit) window.syncProductProfit();
             };
             // Ganancia EN VIVO del producto SIN variantes (AGENTE 2): Venta − Costo − Envío − Comisión.
@@ -5110,10 +5113,12 @@
             // Si el negocio respondió "No" en Mi negocio, ocultamos por completo ese bloque del
             // formulario (envío o comisión). Para 'sí' / 'a veces' / 'omitir' se mantiene visible y
             // la decisión final se toma por producto con su propio toggle.
-            var envioVisible = (b.envio !== 'no');
+            // Con variantes activas, envío/comisión se piden por variante → mantenerlos ocultos a nivel producto.
+            var variantsOn = ((document.querySelector('input[name="prodHasVariants"]:checked')||{}).value) === 'si';
+            var envioVisible = (b.envio !== 'no') && !variantsOn;
             show('prodShippingToggleRow', envioVisible);
             show('prodShippingFields', envioVisible && window.prodToggleOn('prodHasShipping'));
-            var comisionVisible = (b.comision !== 'no');
+            var comisionVisible = (b.comision !== 'no') && !variantsOn;
             show('prodCommissionToggleRow', comisionVisible);
             show('prodCommissionFields', comisionVisible && window.prodToggleOn('prodHasCommission'));
             // --- IVA (sección Finanzas): ocultar la tarjeta si "No paga IVA" ---
@@ -7079,7 +7084,7 @@
                     : `<td><strong>${DOMPurify.sanitize(p.name)}</strong></td>`;
                 const stockCell = _esVar
                     ? `<td style="padding:14px 16px;color:var(--text-muted);" title="Stock total = suma de variantes (edítalo por variante)">${p.stock} <span style="font-size:11px;">total</span></td>`
-                    : `<td data-product-id="${p.id}" class="editable-stock" style="cursor: pointer; padding: 14px 16px; user-select: none;">${p.stock}</td>`;
+                    : `<td data-product-id="${p.id}" class="editable-stock" title="Click para editar el stock" style="cursor: pointer; padding: 14px 16px; user-select: none;"><span class="es-num">${p.stock}</span><i data-lucide="pencil" class="es-pencil"></i></td>`;
                 html += `<tr>
                     ${nameCell}
                     <td><span class="badge ${lvl.badge}"${badgeStyle}>${status}</span></td>
@@ -7404,6 +7409,13 @@
                 // Con variantes, el precio lo define cada variante → ocultar los precios de nivel-producto.
                 var cg = $('prodCostGroup'); if (cg) cg.style.display = on ? 'none' : '';
                 var sg = $('prodSaleGroup'); if (sg) sg.style.display = on ? 'none' : '';
+                // Con variantes, el envío y la comisión se piden por variante → ocultar los de nivel-producto
+                // para no preguntar dos veces lo mismo.
+                ['prodShippingToggleRow','prodShippingFields','prodCommissionToggleRow','prodCommissionFields'].forEach(function(id){
+                    var e = $(id); if (e) e.style.display = on ? 'none' : '';
+                });
+                // Al volver a "sin variantes", respetar los radios No/Sí para los campos de envío/comisión.
+                if (!on && window.syncProductToggles) window.syncProductToggles();
                 if (on) window.varRender();
                 if (window.syncProductProfit) window.syncProductProfit();
                 try { refreshIcons(); } catch(e){}
@@ -7571,6 +7583,9 @@
                 var row = $('prodStockRow'); if (row) row.style.display = '';
                 var cg = $('prodCostGroup'); if (cg) cg.style.display = '';
                 var sg = $('prodSaleGroup'); if (sg) sg.style.display = '';
+                // Sin variantes, volver a mostrar envío/comisión de nivel-producto según la config del negocio.
+                if (window.applyBusinessConfig) window.applyBusinessConfig();
+                if (window.syncProductToggles) window.syncProductToggles();
                 window.varRenderChips();
                 var box = $('varCombosSection'); if (box) box.innerHTML = '';
                 if (window.syncProductProfit) window.syncProductProfit();
@@ -7604,6 +7619,10 @@
                 var row = $('prodStockRow'); if (row) row.style.display = 'none';
                 var cg = $('prodCostGroup'); if (cg) cg.style.display = 'none';
                 var sg = $('prodSaleGroup'); if (sg) sg.style.display = 'none';
+                // Con variantes, envío/comisión se piden por variante → ocultar los de nivel-producto.
+                ['prodShippingToggleRow','prodShippingFields','prodCommissionToggleRow','prodCommissionFields'].forEach(function(id){
+                    var e = $(id); if (e) e.style.display = 'none';
+                });
                 window.varRender();
                 if (window.syncProductProfit) window.syncProductProfit();
             };
@@ -14635,6 +14654,32 @@
         font-family: 'Fira Code', monospace;
         font-variant-numeric: tabular-nums;
         font-weight: 600;
+        transition: background .15s ease;
+    }
+    /* Pista visual de que el stock se puede editar (consistente con el stock por variante) */
+    #inventory tbody tr:not([data-inv-var-row]) > td.editable-stock .es-num {
+        text-decoration: underline dotted;
+        text-decoration-color: var(--text-muted);
+        text-underline-offset: 3px;
+    }
+    #inventory tbody tr:not([data-inv-var-row]) > td.editable-stock .es-pencil {
+        width: 13px;
+        height: 13px;
+        margin-left: 6px;
+        vertical-align: middle;
+        color: var(--text-muted);
+        opacity: .55;
+        transition: opacity .15s ease, color .15s ease;
+    }
+    #inventory tbody tr:not([data-inv-var-row]) > td.editable-stock:hover {
+        background: var(--bg-tertiary);
+    }
+    #inventory tbody tr:not([data-inv-var-row]) > td.editable-stock:hover .es-pencil {
+        opacity: 1;
+        color: var(--accent-primary);
+    }
+    #inventory tbody tr:not([data-inv-var-row]) > td.editable-stock:hover .es-num {
+        text-decoration-color: var(--accent-primary);
     }
     #inventory tbody tr:not([data-inv-var-row]) > td.num {
         font-family: 'Fira Code', monospace;
